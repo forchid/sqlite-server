@@ -1,5 +1,7 @@
 /.classpath
 /.project
+/.settings
 /test/
 /target/
 /logs/
+/data/
