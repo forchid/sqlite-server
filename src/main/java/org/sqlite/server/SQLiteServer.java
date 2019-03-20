@@ -10,7 +10,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
-import java.net.SocketException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,13 +25,20 @@ import org.sqlite.util.IoUtils;
  *
  */
 public class SQLiteServer implements Runnable {
-    final static Logger log = LoggerFactory.getLogger(SQLiteServer.class);
+    static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
+    
+    static final int PORT_DEFAULT = 3272;
+    static final int MAXCONNS_DEFAULT = 151;
     
     private String datadir = "./data";
     
     private String host = "localhost";
-    private int port = 3272;
+    private int port = PORT_DEFAULT;
     private int backlog = 150;
+    private int maxconns= MAXCONNS_DEFAULT;
+    
+    private final AtomicInteger sessionCount = new AtomicInteger(0);
+    private int maxSessionId;
     
     public static void main(String args[]) {
         final SQLiteServer server = new SQLiteServer();
@@ -51,6 +58,8 @@ public class SQLiteServer implements Runnable {
                 this.host = args[++i];
             }else if("-port".equals(arg)) {
                 this.port = Integer.parseInt(args[++i]);
+            }else if("-maxconns".equals(arg)) {
+                this.maxconns = Integer.parseInt(args[++i]);
             }else if("-help".equals(arg) || "-?".equals(arg)) {
                 help(0);
             }else {
@@ -84,33 +93,26 @@ public class SQLiteServer implements Runnable {
                 serverSocket = null;
             }
         }
+        if(serverSocket == null) {
+            return;
+        }
         
         // server loop
-        if(serverSocket != null) {
-            try {
-                log.info("Ready for connection on {}", address);
-                for(;;) {
-                    try {
-                        final Socket socket = serverSocket.accept();
-                        failed = true;
-                        try {
-                            handleSocket(socket);
-                            failed = false;
-                        }finally {
-                            if(failed) {
-                                IoUtils.close(socket);
-                            }
-                        }
-                    } catch (final IOException e) {
-                        log.error("Accept connection error", e);
-                        break;
-                    } catch (final Throwable e) {
-                        log.warn("Server loop error", e);
-                    }
+        try {
+            log.info("Ready for connection on {}", address);
+            for(;;) {
+                try {
+                    final Socket socket = serverSocket.accept();
+                    handleSocket(socket);
+                } catch (final IOException e) {
+                    log.error("Accept connection error", e);
+                    break;
+                } catch (final Throwable e) {
+                    log.warn("Server loop error", e);
                 }
-            } finally {
-                IoUtils.close(serverSocket);
             }
+        } finally {
+            IoUtils.close(serverSocket);
         }
     }
     
@@ -120,30 +122,55 @@ public class SQLiteServer implements Runnable {
      * @param socket
      */
     protected void handleSocket(final Socket socket) {
-        log.debug("A new connection {}", socket);
-        
         boolean failed = true;
         try {
+            final int count = incrSessionCount();
+            log.debug("A new connection {}", socket);
+            if(count > this.maxconns){
+                log.warn("Exceed max connections {}: close", this.maxconns);
+                return;
+            }
+            
             socket.setTcpNoDelay(true);
             socket.setKeepAlive(true);
-            
-            //failed = false;
-        } catch (SocketException e) {
+            final int id = nextSessionId();
+            final SQLiteSession session = new SQLiteSession(this, socket, id);
+            session.start();
+            failed = false;
+        } catch (final Throwable e) {
             log.warn("Init connection error", e);
         } finally {
             if(failed) {
+                decrSessionCount();
                 IoUtils.close(socket);
             }
         }
+    }
+    
+    protected int incrSessionCount(){
+        return this.sessionCount.incrementAndGet();
+    }
+    
+    protected int decrSessionCount(){
+        return this.sessionCount.decrementAndGet();
+    }
+    
+    private int nextSessionId(){
+        int id = ++this.maxSessionId;
+        if(id < 1){
+            id = this.maxSessionId = 1;
+        }
+        return id;
     }
 
     static void help(int status) {
         final PrintStream out = System.out;
         out.println("Usage: java org.sqlite.server.SQLiteServer [OPTIONS]\n"+
                 "OPTIONS: \n"+
-                "  -datadir <DATADIR> The server data directory, default the user home\n"+
-                "  -host    <HOST>    The server listen host or IP, default localhost\n"+
-                "  -port    <PORT>    The server listen port, default 3272\n"+
+                "  -datadir   <DATADIR>   Server data directory, default data in work dir\n"+
+                "  -host      <HOST>      Server listen host or IP, default localhost\n"+
+                "  -port      <PORT>      Server listen port, default "+PORT_DEFAULT+"\n"+
+                "  -maxconns  <MAXCONNS>  Max connections limit, default "+MAXCONNS_DEFAULT+"\n"+
                 "  -help|-? Show this message");
         System.exit(status);
     }
