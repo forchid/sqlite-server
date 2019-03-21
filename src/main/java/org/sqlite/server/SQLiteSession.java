@@ -43,7 +43,7 @@ public class SQLiteSession implements Runnable {
         try{
             log.debug("init");
             // 0. init session
-            final SQLiteTransfer transfer = new SQLiteTransfer(socket);
+            final SQLiteTransfer transfer = new SQLiteTransfer(this);
             
             // 1. connection phase
             if(handleConnection(transfer)){
@@ -72,31 +72,54 @@ public class SQLiteSession implements Runnable {
      * @param transfer
      */
     protected boolean handleConnection(SQLiteTransfer transfer) {
-        // Handshake request packet format:
-        // header 4 bytes(packet length 3 bytes + seq 1 byte)
-        // protocol version 1 byte
-        // database name utf-8 string
+        // Handshake init packet format:
+        // 
+        // header - 4 bytes
+        // protocol version - 1 byte
+        // server version - utf-8 string(var-int, utf-8 bytes)
+        // session id - int 4 bytes(big endian)
+        // login seed - 20 bytes
+        
+        // Login auth packet format:
+        // 
+        // header - 4 bytes(packet length 3 bytes + seq 1 byte)
+        // protocol version - 1 byte
+        // database name - utf-8s
+        // open flags - int 4 bytes
+        // user - utf-8s
+        // login sign - 20 bytes
+        
+        // Handshake response packet format:
+        // 
+        // header
+        // status - int 4 bytes
+        // message- utf-8s
+        // 
         
         return false;
     }
 
     public void start(){
-        final Thread t = new Thread(this, name());
+        final Thread t = new Thread(this, getName());
         t.setPriority(Thread.NORM_PRIORITY);
         t.start();
         this.thread = t;
     }
     
-    public int id(){
+    public int getId(){
         return this.id;
     }
     
-    public String name(){
+    public String getName(){
         return this.name;
     }
     
-    public SQLiteServer server(){
+    public SQLiteServer getServer(){
         return this.server;
+    }
+    
+    Socket getSocket(){
+        return this.socket;
     }
     
     public void interrupt(){

@@ -27,15 +27,18 @@ import org.sqlite.util.IoUtils;
 public class SQLiteServer implements Runnable {
     static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
     
-    static final int PORT_DEFAULT = 3272;
-    static final int MAXCONNS_DEFAULT = 151;
+    static final int PORT_DEFAULT      = 3272;
+    static final int MAX_CONNS_DEFAULT = 151;
+    static final int MAX_PACKET_LEN    = 1 << 20; // default 1 MB
     
-    private String datadir = "./data";
+    private String dataDir = "./data";
     
-    private String host = "localhost";
-    private int port = PORT_DEFAULT;
-    private int backlog = 150;
-    private int maxconns= MAXCONNS_DEFAULT;
+    private String host    = "localhost";
+    private int port       = PORT_DEFAULT;
+    private int backlog    = 150;
+    private int maxConns   = MAX_CONNS_DEFAULT;
+    private int maxPacket  = MAX_PACKET_LEN;
+    private int initPacket = 1 << 12; // default 4 KB
     
     private final AtomicInteger sessionCount = new AtomicInteger(0);
     private int maxSessionId;
@@ -52,15 +55,17 @@ public class SQLiteServer implements Runnable {
     protected void parse(String[] args) {
         for(int i = 0, size = args.length; i < size; ++i) {
             final String arg = args[i];
-            if("-datadir".equals(arg)) {
-                this.datadir = args[++i];
-            }else if("-host".equals(arg)) {
+            if("--data-dir".equals(arg)   || "-D".equals(arg)) {
+                this.dataDir = args[++i];
+            }else if("--host".equals(arg) || "-H".equals(arg)) {
                 this.host = args[++i];
-            }else if("-port".equals(arg)) {
+            }else if("--port".equals(arg) || "-P".equals(arg)) {
                 this.port = Integer.parseInt(args[++i]);
-            }else if("-maxconns".equals(arg)) {
-                this.maxconns = Integer.parseInt(args[++i]);
-            }else if("-help".equals(arg) || "-?".equals(arg)) {
+            }else if("--max-conns".equals(arg)) {
+                this.maxConns = Integer.parseInt(args[++i]);
+            }else if("--max-packet".equals(arg)) {
+                this.maxPacket = Integer.parseInt(args[++i]);
+            }else if("--help".equals(arg) || "-?".equals(arg)) {
                 help(0);
             }else {
                 help(1);
@@ -71,9 +76,9 @@ public class SQLiteServer implements Runnable {
     @Override
     public void run() {
         // bootstrap
-        final File dir = new File(this.datadir);
+        final File dir = new File(this.dataDir);
         if(!dir.exists() || !dir.isDirectory()) {
-            log.error("The datadir not exists: {}", dir);
+            log.error("The data dir not exists: {}", dir);
             return;
         }
         
@@ -126,8 +131,8 @@ public class SQLiteServer implements Runnable {
         try {
             final int count = incrSessionCount();
             log.debug("A new connection {}", socket);
-            if(count > this.maxconns){
-                log.warn("Exceed max connections {}: close", this.maxconns);
+            if(count > this.maxConns){
+                log.warn("Exceed max connections {}: close", this.maxConns);
                 return;
             }
             
@@ -162,16 +167,41 @@ public class SQLiteServer implements Runnable {
         }
         return id;
     }
+    
+    public String getDataDir() {
+        return this.dataDir;
+    }
+
+    public String getHost() {
+        return this.host;
+    }
+
+    public int getPort() {
+        return this.port;
+    }
+
+    public int getMaxConns() {
+        return this.maxConns;
+    }
+
+    public int getMaxPacket() {
+        return this.maxPacket;
+    }
+    
+    public int getInitPacket() {
+        return initPacket;
+    }
 
     static void help(int status) {
         final PrintStream out = System.out;
         out.println("Usage: java org.sqlite.server.SQLiteServer [OPTIONS]\n"+
                 "OPTIONS: \n"+
-                "  -datadir   <DATADIR>   Server data directory, default data in work dir\n"+
-                "  -host      <HOST>      Server listen host or IP, default localhost\n"+
-                "  -port      <PORT>      Server listen port, default "+PORT_DEFAULT+"\n"+
-                "  -maxconns  <MAXCONNS>  Max connections limit, default "+MAXCONNS_DEFAULT+"\n"+
-                "  -help|-? Show this message");
+                "  --data-dir|-D  <path>       Server data directory, default data in work dir\n"+
+                "  --host|-H      <host>       Server listen host or IP, default localhost\n"+
+                "  --port|-P      <number>     Server listen port, default "+PORT_DEFAULT+"\n"+
+                "  --max-conns    <number>     Max connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
+                "  --max-packet   <number>     Max packet length limit, default "+MAX_PACKET_LEN+"\n" +
+                "  --help|-?                   Show this message");
         System.exit(status);
     }
 
