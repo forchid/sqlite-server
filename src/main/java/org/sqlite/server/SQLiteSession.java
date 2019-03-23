@@ -4,11 +4,16 @@
 package org.sqlite.server;
 
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.exception.NetworkException;
+import org.sqlite.protocol.HandshakeInit;
+import org.sqlite.protocol.Transfer;
 import org.sqlite.util.IoUtils;
+import org.sqlite.util.SecurityUtils;
 
 /**<p>
  * The SQLite server connection session.
@@ -43,7 +48,11 @@ public class SQLiteSession implements Runnable {
         try{
             log.debug("init");
             // 0. init session
-            final SQLiteTransfer transfer = new SQLiteTransfer(this);
+            final Map<String, Object> props = new HashMap<>();
+            props.put(Transfer.PROP_SOCKET, socket);
+            props.put(Transfer.PROP_INIT_PACKET, server.getInitPacket());
+            props.put(Transfer.PROP_MAX_PACKET, server.getMaxPacket());
+            final Transfer transfer = new Transfer(props);
             
             // 1. connection phase
             if(handleConnection(transfer)){
@@ -63,7 +72,7 @@ public class SQLiteSession implements Runnable {
     /**
      * @param transfer
      */
-    protected void handleCommand(SQLiteTransfer transfer) {
+    protected void handleCommand(Transfer transfer) {
         
     }
 
@@ -71,14 +80,18 @@ public class SQLiteSession implements Runnable {
     /**
      * @param transfer
      */
-    protected boolean handleConnection(SQLiteTransfer transfer) {
-        // Handshake init packet format:
-        // 
-        // header - 4 bytes
-        // protocol version - 1 byte
-        // server version - utf-8 string(var-int, utf-8 bytes)
-        // session id - int 4 bytes(big endian)
-        // login seed - 20 bytes
+    protected boolean handleConnection(Transfer transfer) {
+        final HandshakeInit hsInit = new HandshakeInit();
+        hsInit.setSeq(0);
+        hsInit.setProtocolVersion(Transfer.PROTOCOL_VERSION);
+        hsInit.setServerVersion(SQLiteServer.VERSION);
+        hsInit.setSessionId(this.id);
+        {
+            final byte[] seed = new byte[20];
+            SecurityUtils.newSecureRandom().nextBytes(seed);
+            hsInit.setSeed(seed);
+        }
+        hsInit.write(transfer);
         
         // Login auth packet format:
         // 
@@ -118,7 +131,7 @@ public class SQLiteSession implements Runnable {
         return this.server;
     }
     
-    Socket getSocket(){
+    public Socket getSocket(){
         return this.socket;
     }
     

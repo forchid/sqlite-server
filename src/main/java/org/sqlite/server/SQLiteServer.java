@@ -14,6 +14,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.protocol.Transfer;
+import org.sqlite.util.ConvertUtils;
 import org.sqlite.util.IoUtils;
 
 /**<p>
@@ -27,9 +29,9 @@ import org.sqlite.util.IoUtils;
 public class SQLiteServer implements Runnable {
     static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
     
+    public static final String VERSION = "SQLite Server-0.27.2";
     static final int PORT_DEFAULT      = 3272;
     static final int MAX_CONNS_DEFAULT = 151;
-    static final int MAX_PACKET_LEN    = 1 << 20; // default 1 MB
     
     private String dataDir = "./data";
     
@@ -37,8 +39,8 @@ public class SQLiteServer implements Runnable {
     private int port       = PORT_DEFAULT;
     private int backlog    = 150;
     private int maxConns   = MAX_CONNS_DEFAULT;
-    private int maxPacket  = MAX_PACKET_LEN;
-    private int initPacket = 1 << 12; // default 4 KB
+    private int maxPacket  = Transfer.MAX_PACKET_LEN;
+    private int initPacket = Transfer.INIT_PACKET_LEN;
     
     private final AtomicInteger sessionCount = new AtomicInteger(0);
     private int maxSessionId;
@@ -60,11 +62,11 @@ public class SQLiteServer implements Runnable {
             }else if("--host".equals(arg) || "-H".equals(arg)) {
                 this.host = args[++i];
             }else if("--port".equals(arg) || "-P".equals(arg)) {
-                this.port = Integer.parseInt(args[++i]);
+                this.port = ConvertUtils.parseInt(args[++i]);
             }else if("--max-conns".equals(arg)) {
-                this.maxConns = Integer.parseInt(args[++i]);
+                this.maxConns = ConvertUtils.parseInt(args[++i]);
             }else if("--max-packet".equals(arg)) {
-                this.maxPacket = Integer.parseInt(args[++i]);
+                this.maxPacket = ConvertUtils.parseInt(args[++i]);
             }else if("--help".equals(arg) || "-?".equals(arg)) {
                 help(0);
             }else {
@@ -200,7 +202,7 @@ public class SQLiteServer implements Runnable {
                 "  --host|-H      <host>       Server listen host or IP, default localhost\n"+
                 "  --port|-P      <number>     Server listen port, default "+PORT_DEFAULT+"\n"+
                 "  --max-conns    <number>     Max connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
-                "  --max-packet   <number>     Max packet length limit, default "+MAX_PACKET_LEN+"\n" +
+                "  --max-packet   <number>     Max packet length limit, default "+Transfer.MAX_PACKET_LEN+"\n" +
                 "  --help|-?                   Show this message");
         System.exit(status);
     }
