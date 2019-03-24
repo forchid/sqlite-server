@@ -49,8 +49,8 @@ public class JDBC4Connection extends JDBC3Connection {
         super(db);
     }
     
-    public JDBC4Connection(String url, Properties props) throws SQLException {
-        super(url, props);
+    public JDBC4Connection(String url, String address, Properties props) throws SQLException {
+        super(url, address, props);
     }
     
     @Override

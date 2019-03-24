@@ -37,7 +37,7 @@ import org.sqlite.util.IoUtils;
  * @since 2019-3-20
  *
  */
-public class Transfer {
+public class Transfer implements AutoCloseable {
     static final Logger log = LoggerFactory.getLogger(Transfer.class);
     
     public static final boolean TRACE = Boolean.getBoolean("sqlite.server.protocol.trace");
@@ -59,6 +59,7 @@ public class Transfer {
     private final int initPacket;
     private final int maxPacket;
     private byte buffer[];
+    private int position;
     
     private int protocolVersion = PROTOCOL_VERSION;
     private String encoding = ENCODING;
@@ -213,16 +214,20 @@ public class Transfer {
     }
 
     public int readPacketLen() {
-        final byte a[] = this.buffer;
-        readFully(a, 0, 3);
+        readFully(0, 3);
+        final byte a[] = this.buffer; 
         int i = 0, index = 0;
         i |= (0xFF & a[index++]) << 16;
         i |= (0xFF & a[index++]) << 8;
         i |= (0xFF & a[index++]);
+        if(i >= this.maxPacket) {
+            throw new NetworkException(i+" exceeds max packet limit " + this.maxPacket);
+        }
         return i;
     }
     
-    public void readFully(byte a[], int offset, int len) {
+    public void readFully(int offset, int len) {
+        final byte a[] = this.buffer;
         try {
             final InputStream in = this.in;
             final int size = offset + len;
@@ -240,4 +245,97 @@ public class Transfer {
         }
     }
 
+    @Override
+    public void close() {
+        IoUtils.close(this.socket);
+    }
+
+    /**
+     * @param i
+     * @return the byte
+     */
+    public int readByte(int index) {
+        return this.buffer[index] & 0xFF;
+    }
+    
+    public int readVarint(int index) {
+        int offset = index;
+        int b = readByte(offset++);
+        int i = b & 0x7F;
+        for (int shift = 7; (b & 0x80) != 0; shift += 7) {
+            b = readByte(offset++);
+            i |= (b & 0x7F) << shift;
+        }
+        return i;
+    }
+    
+    public int readVarint() {
+        int b = readByte(this.position++);
+        int i = b & 0x7F;
+        for (int shift = 7; (b & 0x80) != 0; shift += 7) {
+            b = readByte(this.position++);
+            i |= (b & 0x7F) << shift;
+        }
+        return i;
+    }
+    
+    public int position() {
+        return this.position;
+    }
+    
+    public Transfer position(int pos) {
+        this.position = pos;
+        return this;
+    }
+
+    /**
+     * @return
+     */
+    public String readString() {
+        final int len = readVarint();
+        if(len > this.buffer.length - this.position) {
+            throw new NetworkException("Malformed packet at " + this.position);
+        }
+        final String s;
+        try {
+            s = new String(this.buffer, this.position, len, this.encoding);
+        } catch (UnsupportedEncodingException e) {
+            throw new NetworkException("Encode string error", e);
+        }
+        this.position += len;
+        return s;
+    }
+
+    /**
+     * @return
+     */
+    public int readInt() {
+        final byte a[] = this.buffer;
+        int 
+        i  = (a[this.position++] & 0xFF) << 24;
+        i |= (a[this.position++] & 0xFF) << 16;
+        i |= (a[this.position++] & 0xFF) << 8;
+        i |= (a[this.position++] & 0xFF);
+        
+        return i;
+    }
+
+    /**
+     * @param len
+     * @return
+     */
+    public byte[] readBytes(int len) {
+        final byte a[] = new byte[len];
+        System.arraycopy(this.buffer, this.position, a, 0, len);
+        this.position += len;
+        return a;
+    }
+
+    /**
+     * @return a byte
+     */
+    public int readByte() {
+        return this.buffer[this.position++];
+    }
+    
 }

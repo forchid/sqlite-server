@@ -24,9 +24,11 @@ import java.util.Properties;
 import java.util.logging.Logger;
 
 import org.sqlite.jdbc.v4.JDBC4Connection;
+import org.sqlite.util.IoUtils;
 
 /**<p>
- * The SQLite server JDBC driver.
+ * The SQLite server JDBC driver. The JDBC url pattern: <br/>
+ * jdbc:sqlites://[domain[:port]]/fileName[?k1=v1&k2=v2...]
  * </p>
  * 
  * @author little-pan
@@ -60,7 +62,8 @@ public class Driver implements java.sql.Driver {
             return null;
         }
         
-        return new JDBC4Connection(url, props);
+        url = url.trim();
+        return new JDBC4Connection(url, extractAddress(url), props);
     }
 
     @Override
@@ -88,4 +91,17 @@ public class Driver implements java.sql.Driver {
         return false;
     }
 
+    static String extractAddress(String url) {
+        return url.substring(PREFIX.length() + 2/*//*/);
+    }
+    
+    public static void main(String args[]) throws SQLException {
+        Connection conn = DriverManager.getConnection("jdbc:sqlites://localhost/test.db");
+        try {
+            
+        } finally {
+            IoUtils.close(conn);
+        }
+    }
+    
 }

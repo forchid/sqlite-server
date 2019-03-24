@@ -28,9 +28,11 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteOpenMode;
 import org.sqlite.core.DB;
+import org.sqlite.core.RemoteDB;
 
 /**<p>
  * The JDBC v3 connection.
@@ -51,11 +53,12 @@ public abstract class JDBC3Connection extends SQLiteConnection {
 
     /**
      * @param url
+     * @param address
      * @param prop
      * @throws SQLException
      */
-    protected JDBC3Connection(String url, Properties prop) throws SQLException {
-        this(open(url, prop));
+    protected JDBC3Connection(String url, String address, Properties prop) throws SQLException {
+        this(open(url, address, prop));
     }
     
     /**
@@ -303,11 +306,20 @@ public abstract class JDBC3Connection extends SQLiteConnection {
 
     /**
      * @param url
-     * @param prop
-     * @return
+     * @param address [domain[:port]]/fileName[?k1=v1&k2=v2...]
+     * @param props
+     * @return The DB instance
      */
-    static DB open(String url, Properties prop) throws SQLException {
-        return null;
+    static DB open(String url, String address, Properties props) throws SQLException {
+        final Properties newProps = new Properties();
+        newProps.putAll(props);
+        
+        final String fileName = extractPragmasFromFilename(url, address, props);
+        final SQLiteConfig config = new SQLiteConfig(newProps);
+        
+        final DB db = new RemoteDB(url, fileName, config);
+        db.open(fileName, config.getOpenModeFlags());
+        return db;
     }
 
 }

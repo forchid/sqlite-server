@@ -121,4 +121,20 @@ public class HandshakeInit {
         .flush(p);
     }
 
+    /**
+     * @param t
+     */
+    public void read(Transfer t) {
+        final int plen = t.readPacketLen();
+        int p = 3;
+        t.readFully(p, plen - p);
+        t.position(p);
+        this.seq = t.readByte();
+        this.protocolVersion = t.readByte();
+        t.position(p);
+        this.serverVersion = t.readString();
+        this.sessionId = t.readInt();
+        this.seed = t.readBytes(20);
+    }
+
 }
