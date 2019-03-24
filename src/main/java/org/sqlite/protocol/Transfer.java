@@ -11,8 +11,11 @@ import java.io.UnsupportedEncodingException;
 import java.net.Socket;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sqlite.exception.NetworkException;
 import org.sqlite.util.ConvertUtils;
+import org.sqlite.util.IoUtils;
 
 /**<p>
  * The SQLite client/server protocol codec.
@@ -23,6 +26,9 @@ import org.sqlite.util.ConvertUtils;
  *
  */
 public class Transfer {
+    static final Logger log = LoggerFactory.getLogger(Transfer.class);
+    
+    public static final boolean TRACE = Boolean.getBoolean("sqlite.server.protocol.trace");
     
     public static final String PROP_SOCKET = "socket";
     public static final String PROP_INIT_PACKET = "initPacket";
@@ -174,30 +180,49 @@ public class Transfer {
         try {
             this.out.write(this.buffer, 0, len);
             this.out.flush();
+            trace("Flush buffer", this.buffer, 0, len);
         } catch(IOException e) {
             throw new NetworkException("Flush buffer error", e);
         }
     }
     
+    /**
+     * @param tag
+     * @param a
+     * @param offset
+     * @param len
+     */
+    private static void trace(String tag, byte[] a, int offset, int len) {
+        if(TRACE) {
+            final StringBuilder sb = new StringBuilder(len << 1);
+            IoUtils.dump(sb, a, offset, len);
+            log.info("{} ->\n{}<-", tag, sb);
+        }
+    }
+
     public int readPacketLen() {
-        readFully(this.buffer, 0, 3);
+        final byte a[] = this.buffer;
+        readFully(a, 0, 3);
         int i = 0, index = 0;
-        i |= (0xFF & this.buffer[index++]) << 16;
-        i |= (0xFF & this.buffer[index++]) << 8;
-        i |= (0xFF & this.buffer[index++]);
+        i |= (0xFF & a[index++]) << 16;
+        i |= (0xFF & a[index++]) << 8;
+        i |= (0xFF & a[index++]);
         return i;
     }
     
     public void readFully(byte a[], int offset, int len) {
         try {
-            int i = 0;
-            for(; i < len; ) {
-                final int n = this.in.read(this.buffer, i, len-i);
+            final InputStream in = this.in;
+            final int size = offset + len;
+            int i = offset;
+            for(; i < size; ) {
+                final int n = in.read(a, i, size-i);
                 if(n == -1) {
                     throw new EOFException();
                 }
                 i += n;
             }
+            trace("Fill buffer", a, offset, len);
         } catch(IOException e) {
             throw new NetworkException("Socket read error", e);
         }
