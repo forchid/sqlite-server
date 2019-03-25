@@ -21,6 +21,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -58,8 +60,7 @@ public class Transfer implements AutoCloseable {
     
     private final int initPacket;
     private final int maxPacket;
-    private byte buffer[];
-    private int position;
+    private ByteBuffer buffer;
     
     private int protocolVersion = PROTOCOL_VERSION;
     private String encoding = ENCODING;
@@ -68,7 +69,7 @@ public class Transfer implements AutoCloseable {
         this.socket     = (Socket)props.get(PROP_SOCKET);
         this.initPacket = ConvertUtils.parseInt(PROP_INIT_PACKET, INIT_PACKET_LEN);
         this.maxPacket  = ConvertUtils.parseInt(PROP_MAX_PACKET, MAX_PACKET_LEN);
-        this.buffer     = new byte[this.initPacket];
+        this.buffer     = newBuffer(this.initPacket);
         try {
             this.in  = this.socket.getInputStream();
             this.out = this.socket.getOutputStream();
@@ -77,6 +78,47 @@ public class Transfer implements AutoCloseable {
         }
     }
     
+    /**
+     * @param size
+     * @return
+     */
+    protected static ByteBuffer newBuffer(int size) {
+        final ByteBuffer b = ByteBuffer.allocate(size);
+        b.order(ByteOrder.BIG_ENDIAN);
+        return b;
+    }
+    
+    public int position() {
+        return this.buffer.position();
+    }
+    
+    public Transfer position(int pos) {
+        this.buffer.position(pos);
+        return this;
+    }
+    
+    public int limit(){
+        return this.buffer.limit();
+    }
+    
+    public Transfer limit(int lim){
+        this.buffer.limit(lim);
+        return this;
+    }
+    
+    public int capacity(){
+        return this.buffer.capacity();
+    }
+    
+    /**<p>
+     * Clear buffer for read or write.
+     * </p>
+     */
+    public Transfer clear(){
+        this.buffer.clear();
+        return this;
+    }
+
     public int getProtocolVersion() {
         return this.protocolVersion;
     }
@@ -88,114 +130,135 @@ public class Transfer implements AutoCloseable {
     public String getEncoding() {
         return this.encoding;
     }
+    
+    public void readyWrite(){
+        if(position() > 0){
+            return;
+        }
+        this.buffer.position(3);
+    }
 
     /**
-     * @param index
      * @param seq
      */
-    public int writeByte(int index, int b) {
-        ensureCapacity(index, 1);
-        this.buffer[index] = (byte)b;
-        return 1;
+    public Transfer writeByte(int b) {
+        readyWrite();
+        
+        ensureCapacity(position(), 1);
+        this.buffer.put((byte)b);
+        return this;
     }
 
     /**
-     * @param i
-     * @param len
-     */
-    private void ensureCapacity(int i, int len) {
-        final int size = i + len;
-        if(size > this.buffer.length) {
-            if(size > this.maxPacket) {
-                final String s = String.format("Exceed max packet limit %s, expect %s", 
-                        this.maxPacket, size);
-                throw new NetworkException(s);
-            }
-            final int cap = Math.max(this.buffer.length << 1, size);
-            final byte buf[] = new byte[Math.min(cap, this.maxPacket)];
-            System.arraycopy(this.buffer, 0, buf, 0, this.buffer.length);
-            this.buffer = buf;
-        }
-    }
-
-    /**
-     * @param index
      * @param serverVersion
      */
-    public int writeString(int index, String s) {
+    public Transfer writeString(String s) {
+        readyWrite();
+        
         try {
-            int offset = index;
             final byte a[] = s.getBytes(ENCODING);
-            offset += writeVarint(offset, a.length);
-            offset += writeBytes(offset, a);
-            return offset - index;
+            writeVarint(a.length);
+            writeBytes(a);
+            return this;
         } catch(UnsupportedEncodingException e) {
             throw new NetworkException("Decode string error", e);
         }
     }
     
     /**
-     * @param index
      * @param a
-     * @return writen
+     * @return this transfer
      */
-    public int writeBytes(int index, byte[] a) {
-        return writeBytes(index, a, 0, a.length);
+    public Transfer writeBytes(byte[] a) {
+        readyWrite();
+        
+        return writeBytes(a, 0, a.length);
     }
     
     /**
-     * @param index
      * @param a
-     * @return writen
+     * @return this transfer
      */
-    public int writeBytes(int index, byte[] a, int offset, int len) {
-        ensureCapacity(index, len);
-        System.arraycopy(a, offset, this.buffer, index, len);
-        return len;
+    public Transfer writeBytes(byte[] a, int offset, int len) {
+        readyWrite();
+        
+        ensureCapacity(position(), len);
+        this.buffer.put(a, offset, len);
+        return this;
     }
 
-    public final int writeVarint(int index, int i) {
-        int offset = index;
+    public final Transfer writeVarint(int i) {
+        readyWrite();
+        
         for(; (i & ~0x7F) != 0; ) {
-            writeByte(offset++, (i & 0x7f) | 0x80);
+            writeByte((i & 0x7f) | 0x80);
             i >>>= 7;
         }
-        writeByte(offset++, i);
-        return offset - index;
+        writeByte(i);
+        return this;
     }
 
     /**
-     * @param index
      * @param sessionId
-     * @return writen
+     * @return this transfer
      */
-    public int writeInt(int index, int i) {
-        final int len = 4;
-        ensureCapacity(index, len);
-        this.buffer[index++] = (byte)(i >> 24);
-        this.buffer[index++] = (byte)(i >> 16);
-        this.buffer[index++] = (byte)(i >> 8);
-        this.buffer[index++] = (byte)(i);
-        return len;
-    }
-
-    /**
-     * @param p
-     */
-    public Transfer writePacketLen(int len) {
-        this.buffer[0] = (byte)(len >> 16);
-        this.buffer[1] = (byte)(len >> 8);
-        this.buffer[2] = (byte)(len);
+    public Transfer writeInt(int i) {
+        readyWrite();
+        
+        ensureCapacity(this.position(), 4);
+        this.buffer.putInt(i);
         return this;
     }
     
-    public void flush(int len) {
+    protected int writePacketLen(){
+        final int len = position();
+        if(len < 4){
+            throw new NetworkException("Packet header not complete");
+        }
+        
+        final ByteBuffer buf = this.buffer;
+        buf.put(0, (byte)(len >> 16));
+        buf.put(1, (byte)(len >> 8));
+        buf.put(2, (byte)(len));
+        return len;
+    }
+    
+    /**<p>
+     * Flush a packet into socket.
+     * </p>
+     */
+    public void flush() {
+        final int len = writePacketLen();
         try {
-            this.out.write(this.buffer, 0, len);
+            final byte a[] = this.buffer.array();
+            this.out.write(a, 0, len);
             this.out.flush();
-            trace("Flush buffer", this.buffer, 0, len);
+            this.clear();
+            trace("Flush buffer", a, 0, len);
         } catch(IOException e) {
             throw new NetworkException("Flush buffer error", e);
+        }
+    }
+    
+    /**
+     * @param i
+     * @param len
+     */
+    protected void ensureCapacity(int index, int len) {
+        final int size = index + len;
+        if(size > this.capacity()) {
+            if(size > this.maxPacket) {
+                final String s = String.format("Exceed max packet limit %s, expect %s", 
+                        this.maxPacket, size);
+                throw new NetworkException(s);
+            }
+            
+            final ByteBuffer sli = this.buffer.slice();
+            sli.flip();
+            
+            final int cap = Math.max(this.capacity() << 1, size);
+            final ByteBuffer buf = newBuffer(Math.min(cap, this.maxPacket));
+            this.buffer = buf.put(sli);
         }
     }
     
@@ -212,24 +275,45 @@ public class Transfer implements AutoCloseable {
             log.info("{} ->\n{}<-", tag, sb);
         }
     }
+    
+    public void readyRead(){
+        if(position() > 0){
+            return;
+        }
+        fill();
+    }
+    
+    /**<p>
+     * Read a packet into buffer.
+     * </p>
+     * @return this transfer
+     */
+    protected Transfer fill(){
+        final int len = readPacketLen();
+        readFully(len - 3);
+        return this;
+    }
 
-    public int readPacketLen() {
-        readFully(0, 3);
-        final byte a[] = this.buffer; 
-        int i = 0, index = 0;
-        i |= (0xFF & a[index++]) << 16;
-        i |= (0xFF & a[index++]) << 8;
-        i |= (0xFF & a[index++]);
-        if(i >= this.maxPacket) {
+    protected int readPacketLen() {
+        readFully(3);
+        final ByteBuffer buf = this.buffer;
+        int 
+        i  = (0xFF & buf.get()) << 16;
+        i |= (0xFF & buf.get()) << 8;
+        i |= (0xFF & buf.get());
+        if(i > this.maxPacket) {
             throw new NetworkException(i+" exceeds max packet limit " + this.maxPacket);
         }
         return i;
     }
     
-    public void readFully(int offset, int len) {
-        final byte a[] = this.buffer;
+    protected void readFully(final int len) {
         try {
+            final int offset = this.position();
+            ensureCapacity(offset, len);
+            final byte a[] = this.buffer.array();
             final InputStream in = this.in;
+            
             final int size = offset + len;
             int i = offset;
             for(; i < size; ) {
@@ -239,6 +323,8 @@ public class Transfer implements AutoCloseable {
                 }
                 i += n;
             }
+            this.limit(size);
+            
             trace("Fill buffer", a, offset, len);
         } catch(IOException e) {
             throw new NetworkException("Socket read error", e);
@@ -251,73 +337,48 @@ public class Transfer implements AutoCloseable {
     }
 
     /**
-     * @param i
      * @return the byte
      */
-    public int readByte(int index) {
-        return this.buffer[index] & 0xFF;
-    }
-    
-    public int readVarint(int index) {
-        int offset = index;
-        int b = readByte(offset++);
-        int i = b & 0x7F;
-        for (int shift = 7; (b & 0x80) != 0; shift += 7) {
-            b = readByte(offset++);
-            i |= (b & 0x7F) << shift;
-        }
-        return i;
+    public int readByte() {
+        readyRead();
+        
+        return this.buffer.get() & 0xFF;
     }
     
     public int readVarint() {
-        int b = readByte(this.position++);
+        readyRead();
+        
+        int b = readByte();
         int i = b & 0x7F;
         for (int shift = 7; (b & 0x80) != 0; shift += 7) {
-            b = readByte(this.position++);
+            b = readByte();
             i |= (b & 0x7F) << shift;
         }
         return i;
-    }
-    
-    public int position() {
-        return this.position;
-    }
-    
-    public Transfer position(int pos) {
-        this.position = pos;
-        return this;
     }
 
     /**
      * @return
      */
     public String readString() {
+        readyRead();
+        
         final int len = readVarint();
-        if(len > this.buffer.length - this.position) {
-            throw new NetworkException("Malformed packet at " + this.position);
-        }
-        final String s;
         try {
-            s = new String(this.buffer, this.position, len, this.encoding);
+            final byte a[] = readBytes(len);
+            return new String(a, 0, len, this.encoding);
         } catch (UnsupportedEncodingException e) {
             throw new NetworkException("Encode string error", e);
         }
-        this.position += len;
-        return s;
     }
 
     /**
      * @return
      */
     public int readInt() {
-        final byte a[] = this.buffer;
-        int 
-        i  = (a[this.position++] & 0xFF) << 24;
-        i |= (a[this.position++] & 0xFF) << 16;
-        i |= (a[this.position++] & 0xFF) << 8;
-        i |= (a[this.position++] & 0xFF);
+        readyRead();
         
-        return i;
+        return this.buffer.getInt();
     }
 
     /**
@@ -325,17 +386,11 @@ public class Transfer implements AutoCloseable {
      * @return
      */
     public byte[] readBytes(int len) {
+        readyRead();
+        
         final byte a[] = new byte[len];
-        System.arraycopy(this.buffer, this.position, a, 0, len);
-        this.position += len;
+        this.buffer.get(a, 0, len);
         return a;
-    }
-
-    /**
-     * @return a byte
-     */
-    public int readByte() {
-        return this.buffer[this.position++];
     }
     
 }

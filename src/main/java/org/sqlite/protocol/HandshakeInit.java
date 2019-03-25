@@ -111,30 +111,24 @@ public class HandshakeInit {
     }
     
     public void write(Transfer t) {
-        int p = 3;
-        p += t.writeByte(p, this.seq);
-        p += t.writeByte(p, this.protocolVersion);
-        p += t.writeString(p, this.serverVersion);
-        p += t.writeInt(p, this.sessionId);
-        p += t.writeBytes(p, this.seed);
-        t.writePacketLen(p)
-        .flush(p);
+        t.writeByte(this.seq)
+        .writeByte(this.protocolVersion)
+        .writeString(this.serverVersion)
+        .writeInt(this.sessionId)
+        .writeBytes(this.seed)
+        .flush();
     }
 
     /**
      * @param t
      */
     public void read(Transfer t) {
-        final int plen = t.readPacketLen();
-        int p = 3;
-        t.readFully(p, plen - p);
-        t.position(p);
         this.seq = t.readByte();
         this.protocolVersion = t.readByte();
-        t.position(p);
         this.serverVersion = t.readString();
         this.sessionId = t.readInt();
         this.seed = t.readBytes(20);
+        t.clear();
     }
 
 }
