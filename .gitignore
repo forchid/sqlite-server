@@ -3,6 +3,6 @@
 /.settings
 /test/
 /target/
-/logs/*
-/data/*
-/lib/*
+/logs/
+/data/
+/lib/
