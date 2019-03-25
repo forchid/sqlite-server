@@ -21,11 +21,16 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.SQLiteErrorCode;
 import org.sqlite.exception.NetworkException;
 import org.sqlite.protocol.HandshakeInit;
+import org.sqlite.protocol.HandshakeResponse;
+import org.sqlite.protocol.ResultPacket;
 import org.sqlite.protocol.Transfer;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SecurityUtils;
+
+import static org.sqlite.util.SecurityUtils.*;
 
 /**<p>
  * The SQLite server connection session.
@@ -82,45 +87,49 @@ public class SQLiteSession implements Runnable {
     }
     
     /**
-     * @param transfer
+     * @param t
      */
-    protected void handleCommand(Transfer transfer) {
+    protected void handleCommand(Transfer t) {
+        log.debug("Handle command");
         
     }
 
 
     /**
-     * @param transfer
+     * @param t
      */
-    protected boolean handleConnection(Transfer transfer) {
+    protected boolean handleConnection(Transfer t) {
+        log.debug("Handle connection");
+        
         final HandshakeInit hsInit = new HandshakeInit();
         hsInit.setSeq(0);
         hsInit.setProtocolVersion(Transfer.PROTOCOL_VERSION);
         hsInit.setServerVersion(SQLiteServer.VERSION);
         hsInit.setSessionId(this.id);
-        {
-            final byte[] seed = new byte[20];
-            SecurityUtils.newSecureRandom().nextBytes(seed);
-            hsInit.setSeed(seed);
+        hsInit.setSeed(SecurityUtils.genSeed());
+        hsInit.write(t);
+        
+        final HandshakeResponse response = new HandshakeResponse();
+        response.read(t);
+        response.checkSeq(hsInit.getSeq() + 1);
+        
+        // - Test
+        final String user = "root";
+        final String encPassword = "6bb4837eb74329105ee4568dda7dc67ed2ca2ad9";
+        // 
+        
+        final ResultPacket result;
+        if(user.equals(response.getUser()) && 
+                signEquals(response.getSign(), hsInit.getSeed(), encPassword)){
+            result = new ResultPacket(SQLiteErrorCode.SQLITE_OK);
+            result.setSeq(response.getSeq() + 1);
+            result.write(t);
+            return true;
         }
-        hsInit.write(transfer);
         
-        // Login auth packet format:
-        // 
-        // header - 4 bytes(packet length 3 bytes + seq 1 byte)
-        // protocol version - 1 byte
-        // database name - utf-8s
-        // open flags - int 4 bytes
-        // user - utf-8s
-        // login sign - 20 bytes
-        
-        // Handshake response packet format:
-        // 
-        // header
-        // status - int 4 bytes
-        // message- utf-8s
-        // 
-        
+        result = new ResultPacket(SQLiteErrorCode.SQLITE_PERM);
+        result.setSeq(response.getSeq() + 1);
+        result.write(t);
         return false;
     }
 

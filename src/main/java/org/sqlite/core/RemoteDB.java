@@ -22,15 +22,21 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sqlite.BusyHandler;
 import org.sqlite.Function;
 import org.sqlite.ProgressHandler;
 import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.DB;
 import org.sqlite.protocol.HandshakeInit;
+import org.sqlite.protocol.HandshakeResponse;
+import org.sqlite.protocol.ResultPacket;
 import org.sqlite.protocol.Transfer;
 import org.sqlite.util.ConvertUtils;
 import org.sqlite.util.IoUtils;
+import org.sqlite.util.SecurityUtils;
 
 /**<p>
  * The remote DB implementation.
@@ -41,10 +47,16 @@ import org.sqlite.util.IoUtils;
  *
  */
 public class RemoteDB extends DB {
+    static final Logger log = LoggerFactory.getLogger(RemoteDB.class);
     
     protected String host = "localhost";
     protected int port = 3272;
-    protected String dbName;
+    protected String fileName;
+    
+    private String user = "";
+    private String password = "";
+    
+    private int openFlags;
     
     protected Transfer transfer;
 
@@ -79,9 +91,9 @@ public class RemoteDB extends DB {
             throw new SQLException("DB address malformed: " + fileName);
         }
         if(i == 0) {
-            this.dbName = fileName.substring(i+1);
+            this.fileName = fileName.substring(i+1);
         }else {
-            this.dbName = fileName.substring(i + 1);
+            this.fileName = fileName.substring(i + 1);
             final String addr = fileName.substring(0, i);
             final String sa[] = addr.split(":");
             this.host = sa[0];
@@ -116,10 +128,30 @@ public class RemoteDB extends DB {
     /**
      * @param t
      */
-    protected Transfer doHandshake(Transfer t) {
+    protected Transfer doHandshake(Transfer t) throws SQLException {
         final HandshakeInit init = new HandshakeInit();
         init.read(t);
+        log.debug("Server: {}", init.getServerVersion());
         
+        final byte sign[] = SecurityUtils.sign(this.password, init.getSeed());
+        final HandshakeResponse response = new HandshakeResponse();
+        response.setSeq(init.getSeq() + 1);
+        response.setProtocolVersion(Transfer.PROTOCOL_VERSION);
+        response.setFileName(this.fileName);
+        response.setOpenFlags(this.openFlags);
+        response.setUser(this.user);
+        response.setSign(sign);
+        response.write(t);
+        
+        // check result
+        final ResultPacket result = new ResultPacket();
+        result.read(t);
+        result.checkSeq(response.getSeq() + 1);
+        if(result.getStatus() != SQLiteErrorCode.SQLITE_OK.code){
+            throw new SQLException(result.getMessage(), null, result.getStatus());
+        }
+        
+        log.debug("Result: {}", result);
         return t;
     }
 
@@ -459,6 +491,20 @@ public class RemoteDB extends DB {
     public int value_type(Function f, int arg) throws SQLException {
         // TODO Auto-generated method stub
         return 0;
+    }
+
+    /**
+     * @param user
+     */
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    /**
+     * @param password
+     */
+    public void setPassword(String password) {
+        this.password = password;
     }
 
 }

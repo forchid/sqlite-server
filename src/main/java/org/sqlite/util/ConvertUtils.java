@@ -68,5 +68,25 @@ public final class ConvertUtils {
         return Boolean.getBoolean(o + "");
     }
     
+    public static final String hexString(byte a[]){
+        if(a == null){
+            return null;
+        }
+        
+        final StringBuilder sb = new StringBuilder(a.length<<1);
+        for(int i = 0, size = a.length; i < size; ++i){
+            sb.append(String.format("%02x", a[i]));
+        }
+        return sb.toString();
+    }
+    
+    public static final byte[] hexBytes(String hex){
+        final byte a[] = new byte[hex.length()>>1];
+        for(int i = 0, size = a.length; i < size; ++i){
+            final int j = i << 1;
+            a[i] = (byte)Integer.parseInt(hex.substring(j, j + 2), 16);
+        }
+        return a;
+    }
     
 }

@@ -272,7 +272,7 @@ public class Transfer implements AutoCloseable {
         if(TRACE) {
             final StringBuilder sb = new StringBuilder(len << 1);
             IoUtils.dump(sb, a, offset, len);
-            log.info("{} ->\n{}<-", tag, sb);
+            log.info("{}\n{}", tag, sb);
         }
     }
     

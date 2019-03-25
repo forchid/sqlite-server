@@ -62,6 +62,12 @@ public final class IoUtils {
                 for( ; i < size; ) {
                     out.append(String.format("%02X", a[i++]));
                     if((++j%lineLen) == 0 || i == size) {
+                        if(i == size && j < lineLen){
+                            // padding
+                            for(int k = j; k < lineLen; ++k){
+                                out.append("   ");
+                            }
+                        }
                         dumpAscii(out, a, i - j, j, "    ");
                         out.append(LNSEP);
                         if(i < size) {

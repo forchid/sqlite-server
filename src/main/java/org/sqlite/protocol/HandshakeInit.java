@@ -15,8 +15,10 @@
  */
 package org.sqlite.protocol;
 
+import org.sqlite.util.SecurityUtils;
+
 /**<p>
- * Handshake init packet format:<br/>
+ * Handshake init packet format: <br/><br/>
  * header - 4 bytes(length 3 bytes, seq 1 byte) <br/>
  * protocol version - 1 byte <br/>
  * server version - utf-8 string(var-int, utf-8 bytes) <br/>
@@ -28,9 +30,8 @@ package org.sqlite.protocol;
  * @since 2019-03-23
  *
  */
-public class HandshakeInit {
+public class HandshakeInit extends Packet {
     
-    private int seq;
     private int protocolVersion;
     private String serverVersion;
     private int sessionId;
@@ -38,20 +39,6 @@ public class HandshakeInit {
     
     public HandshakeInit() {
         
-    }
-
-    /**
-     * @return the seq
-     */
-    public int getSeq() {
-        return seq;
-    }
-
-    /**
-     * @param seq the seq to set
-     */
-    public void setSeq(int seq) {
-        this.seq = seq;
     }
 
     /**
@@ -110,25 +97,26 @@ public class HandshakeInit {
         this.seed = seed;
     }
     
-    public void write(Transfer t) {
-        t.writeByte(this.seq)
-        .writeByte(this.protocolVersion)
+    /**
+     * @param t
+     */
+    @Override
+    public void writeBody(Transfer t) {
+        t.writeByte(this.protocolVersion)
         .writeString(this.serverVersion)
         .writeInt(this.sessionId)
-        .writeBytes(this.seed)
-        .flush();
+        .writeBytes(this.seed);
     }
 
     /**
      * @param t
      */
-    public void read(Transfer t) {
-        this.seq = t.readByte();
+    @Override
+    public void readBody(Transfer t) {
         this.protocolVersion = t.readByte();
         this.serverVersion = t.readString();
         this.sessionId = t.readInt();
-        this.seed = t.readBytes(20);
-        t.clear();
+        this.seed = t.readBytes(SecurityUtils.SEED_LEN);
     }
 
 }

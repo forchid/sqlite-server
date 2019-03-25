@@ -15,8 +15,11 @@
  */
 package org.sqlite.util;
 
+import java.io.UnsupportedEncodingException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Arrays;
 
 /**
  * @author little-pan
@@ -24,6 +27,8 @@ import java.security.SecureRandom;
  *
  */
 public final class SecurityUtils {
+    
+    public static final int SEED_LEN = 20;
     
     private SecurityUtils() {}
     
@@ -37,6 +42,117 @@ public final class SecurityUtils {
             }
         }
         return new SecureRandom();
+    }
+    
+    public static byte[] genSeed(){
+        final byte seed[] = new byte[SEED_LEN];
+        newSecureRandom().nextBytes(seed);
+        return seed;
+    }
+
+    /**
+     * @param password
+     * @param seed
+     * @return the sign
+     */
+    public static byte[] sign(String password, byte[] seed) {
+        final MessageDigest md = sha1();
+        
+        final byte p[] = toBytes(password);
+        final byte hash1[] = md.digest(p);
+        final byte hash2[] = md.digest(hash1);
+        
+        md.update(seed);
+        md.update(hash2);
+        final byte hash3[] = md.digest();
+        
+        for(int i = 0, size = hash1.length; i < size; ++i){
+            hash1[i] ^= hash3[i];
+        }
+        
+        return hash1;
+    }
+    
+    public static MessageDigest sha1(){
+        final MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("SHA-1");
+            return md;
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    
+    private static byte[] toBytes(String s){
+        try {
+            return s.getBytes("UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    
+    public static byte[] sha1(byte a[]){
+        return sha1().digest(a);
+    }
+    
+    public static byte[] sha1(String s){
+        return sha1(toBytes(s));
+    }
+    
+    public static String sha1hex(byte a[]){
+        final byte b[] = sha1(a);
+        return ConvertUtils.hexString(b);
+    }
+    
+    public static String sha1hex(String s){
+        final byte b[] = sha1(s);
+        return ConvertUtils.hexString(b);
+    }
+    
+    public static byte[] sha1dup(byte a[]){
+        final MessageDigest md = sha1();
+        a = md.digest(a);
+        a = md.digest(a);
+        return a;
+    }
+    
+    public static byte[] sha1dup(String s){
+        return sha1dup(toBytes(s));
+    }
+    
+    public static String sha1duphex(byte a[]){
+        final byte b[] = sha1dup(a);
+        return ConvertUtils.hexString(b);
+    }
+    
+    public static String sha1duphex(String s){
+        final byte b[] = sha1dup(s);
+        return ConvertUtils.hexString(b);
+    }
+    
+    /**
+     * @param sign
+     * @param seed
+     * @param encPassword
+     */
+    public static boolean signEquals(byte[] sign, byte[] seed, String encPassword) {
+        final byte hash2[] = ConvertUtils.hexBytes(encPassword);
+        
+        final MessageDigest md = sha1();
+        md.update(seed);
+        md.update(hash2);
+        final byte hash3[] = md.digest();
+        
+        final byte hash1[] = new byte[SEED_LEN];
+        for(int i = 0, size = hash1.length; i < size; ++i){
+            hash1[i] = (byte)(sign[i] ^ hash3[i]);
+        }
+        
+        return (Arrays.equals(md.digest(hash1), hash2));
+    }
+    
+    public static void main(String args[]){
+        System.out.println(sha1duphex("123456"));
     }
 
 }

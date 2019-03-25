@@ -96,7 +96,10 @@ public class Driver implements java.sql.Driver {
     }
     
     public static void main(String args[]) throws SQLException {
-        Connection conn = DriverManager.getConnection("jdbc:sqlites://localhost/test.db");
+        final String url= "jdbc:sqlites://localhost/test.db";
+        final String user = "root", password = "123456";
+        
+        final Connection conn = DriverManager.getConnection(url, user, password);
         try {
             
         } finally {

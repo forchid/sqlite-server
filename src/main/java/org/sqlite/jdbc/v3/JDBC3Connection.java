@@ -317,7 +317,9 @@ public abstract class JDBC3Connection extends SQLiteConnection {
         final String fileName = extractPragmasFromFilename(url, address, props);
         final SQLiteConfig config = new SQLiteConfig(newProps);
         
-        final DB db = new RemoteDB(url, fileName, config);
+        final RemoteDB db = new RemoteDB(url, fileName, config);
+        db.setUser(props.getProperty("user", ""));
+        db.setPassword(props.getProperty("password", ""));
         db.open(fileName, config.getOpenModeFlags());
         return db;
     }
