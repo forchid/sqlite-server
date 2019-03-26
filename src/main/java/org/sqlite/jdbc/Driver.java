@@ -20,6 +20,7 @@ import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Statement;
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -101,7 +102,8 @@ public class Driver implements java.sql.Driver {
         
         final Connection conn = DriverManager.getConnection(url, user, password);
         try {
-            
+            final Statement stmt = conn.createStatement();
+            stmt.execute("select 1");
         } finally {
             IoUtils.close(conn);
         }
