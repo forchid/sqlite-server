@@ -30,7 +30,6 @@ import java.util.Properties;
 import org.sqlite.core.DB;
 import org.sqlite.jdbc.v3.JDBC3Connection;
 import org.sqlite.jdbc4.JDBC4PreparedStatement;
-import org.sqlite.jdbc4.JDBC4Statement;
 
 /**<p>
  * The JDBC v4 connection.
