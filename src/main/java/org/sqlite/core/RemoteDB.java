@@ -73,8 +73,7 @@ public class RemoteDB extends DB {
 
     @Override
     protected void _close() throws SQLException {
-        // TODO Auto-generated method stub
-        
+        IoUtils.close(this.transfer);
     }
 
     @Override
