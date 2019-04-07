@@ -211,8 +211,8 @@ public class Transfer implements AutoCloseable {
     }
     
     protected int writePacketLen(){
-        final int len = position();
-        if(len < 4){
+        final int len = position() - 4;
+        if(len < 0){
             throw new NetworkException("Packet header not complete");
         }
         
@@ -228,13 +228,13 @@ public class Transfer implements AutoCloseable {
      * </p>
      */
     public void flush() {
-        final int len = writePacketLen();
+        final int size = writePacketLen() + 4;
         try {
             final byte a[] = this.buffer.array();
-            this.out.write(a, 0, len);
+            this.out.write(a, 0, size);
             this.out.flush();
             this.clear();
-            trace("Flush buffer", a, 0, len);
+            trace("Flush buffer", a, 0, size);
         } catch(IOException e) {
             throw new NetworkException("Flush buffer error", e);
         }
@@ -247,9 +247,10 @@ public class Transfer implements AutoCloseable {
     protected void ensureCapacity(int index, int len) {
         final int size = index + len;
         if(size > this.capacity()) {
-            if(size > this.maxPacket) {
+            final int plen = size - 4;
+            if(plen > this.maxPacket) {
                 final String s = String.format("Exceed max packet limit %s, expect %s", 
-                        this.maxPacket, size);
+                        this.maxPacket, plen);
                 throw new NetworkException(s);
             }
             
@@ -290,7 +291,7 @@ public class Transfer implements AutoCloseable {
      */
     protected Transfer fill(){
         final int len = readPacketLen();
-        readFully(len - 3);
+        readFully(1/*seq*/ + len);
         return this;
     }
 
