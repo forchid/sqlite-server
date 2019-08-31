@@ -20,16 +20,14 @@ import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
-import java.sql.Statement;
 import java.util.Properties;
 import java.util.logging.Logger;
 
 import org.sqlite.jdbc.v4.JDBC4Connection;
-import org.sqlite.util.IoUtils;
 
 /**<p>
  * The SQLite server JDBC driver. The JDBC url pattern: <br/>
- * jdbc:sqlites://[domain[:port]]/fileName[?k1=v1&k2=v2...]
+ * jdbc:sqlite-server://[domain[:port]]/fileName[?k1=v1&k2=v2...]
  * </p>
  * 
  * @author little-pan
@@ -38,7 +36,7 @@ import org.sqlite.util.IoUtils;
  */
 public class Driver implements java.sql.Driver {
     
-    public static final String PREFIX = "jdbc:sqlites:";
+    public static final String PREFIX = "jdbc:sqlite-server:";
     
     static {
         try {
@@ -96,17 +94,8 @@ public class Driver implements java.sql.Driver {
         return url.substring(PREFIX.length() + 2/*//*/);
     }
     
-    public static void main(String args[]) throws SQLException {
-        final String url= "jdbc:sqlites://localhost/test.db";
-        final String user = "root", password = "123456";
+    public static void load() {
         
-        final Connection conn = DriverManager.getConnection(url, user, password);
-        try {
-            final Statement stmt = conn.createStatement();
-            stmt.execute("select 1");
-        } finally {
-            IoUtils.close(conn);
-        }
     }
     
 }
