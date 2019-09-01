@@ -30,6 +30,8 @@ public final class SecurityUtils {
     
     public static final int SEED_LEN = 20;
     
+    private static SecureRandom secureRandom;
+    
     private SecurityUtils() {}
     
     public static SecureRandom newSecureRandom() {
@@ -44,9 +46,17 @@ public final class SecurityUtils {
         return new SecureRandom();
     }
     
+    public static synchronized SecureRandom getSecureRandom() {
+        if (secureRandom == null) {
+            secureRandom = newSecureRandom();
+        }
+        
+        return secureRandom;
+    }
+    
     public static byte[] genSeed(){
         final byte seed[] = new byte[SEED_LEN];
-        newSecureRandom().nextBytes(seed);
+        getSecureRandom().nextBytes(seed);
         return seed;
     }
 
@@ -150,9 +160,14 @@ public final class SecurityUtils {
         
         return (Arrays.equals(md.digest(hash1), hash2));
     }
-    
-    public static void main(String args[]){
-        System.out.println(sha1duphex("123456"));
-    }
 
+    /**
+     * Get a cryptographically secure pseudo random long value.
+     *
+     * @return the random long value
+     */
+    public static long secureRandomLong() {
+        return getSecureRandom().nextLong();
+    }
+    
 }

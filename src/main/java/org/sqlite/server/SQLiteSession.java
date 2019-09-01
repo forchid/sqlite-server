@@ -15,151 +15,88 @@
  */
 package org.sqlite.server;
 
-import java.net.Socket;
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.SQLException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sqlite.SQLiteErrorCode;
-import org.sqlite.exception.NetworkException;
-import org.sqlite.protocol.HandshakeInit;
-import org.sqlite.protocol.HandshakeResponse;
-import org.sqlite.protocol.ResultPacket;
-import org.sqlite.protocol.Transfer;
+import org.sqlite.SQLiteConnection;
 import org.sqlite.util.IoUtils;
-import org.sqlite.util.SecurityUtils;
-
-import static org.sqlite.util.SecurityUtils.*;
 
 /**<p>
- * The SQLite server connection session.
+ * The SQLite server session.
  * </p>
  * 
  * @author little-pan
  * @since 2019-03-20
  *
  */
-public class SQLiteSession implements Runnable {
+public class SQLiteSession implements AutoCloseable {
     
     static final Logger log = LoggerFactory.getLogger(SQLiteSession.class);
     
-    protected final SQLiteServer server;
-    protected final Socket socket;
-    protected final int id;
-    protected final String name;
+    protected final Processor processor;
+    protected final Server server;
+    protected SQLiteConnection connection;
     
-    private volatile Thread thread;
-    
-    public SQLiteSession(SQLiteServer server, Socket socket, int id){
-        this.server = server;
-        this.socket = socket;
-        this.id = id;
-        this.name = String.format("session-%s", this.id);
-    }
-
-
-    @Override
-    public void run() {
-        final Socket socket = this.socket;
-        try{
-            log.debug("init");
-            // 0. init session
-            final Map<String, Object> props = new HashMap<>();
-            props.put(Transfer.PROP_SOCKET, socket);
-            props.put(Transfer.PROP_INIT_PACKET, server.getInitPacket());
-            props.put(Transfer.PROP_MAX_PACKET, server.getMaxPacket());
-            final Transfer transfer = new Transfer(props);
-            
-            // 1. connection phase
-            if(handleConnection(transfer)){
-             // 2. command phase
-                handleCommand(transfer);
-            }
-            log.debug("exit");
-        }catch(final NetworkException e){
-            log.debug("Network error", e);
-        }finally{
-            IoUtils.close(socket);
-            this.server.decrSessionCount();
-            this.thread = null;
-        }
-    }
-    
-    /**
-     * @param t
-     */
-    protected void handleCommand(Transfer t) {
-        log.debug("Handle command");
-        
-    }
-
-
-    /**
-     * @param t
-     */
-    protected boolean handleConnection(Transfer t) {
-        log.debug("Handle connection");
-        
-        final HandshakeInit hsInit = new HandshakeInit();
-        hsInit.setSeq(0);
-        hsInit.setProtocolVersion(Transfer.PROTOCOL_VERSION);
-        hsInit.setServerVersion(SQLiteServer.VERSION);
-        hsInit.setSessionId(this.id);
-        hsInit.setSeed(SecurityUtils.genSeed());
-        hsInit.write(t);
-        
-        final HandshakeResponse response = new HandshakeResponse();
-        response.read(t);
-        response.checkSeq(hsInit.getSeq() + 1);
-        
-        // - Test
-        final String user = "root";
-        final String encPassword = "6bb4837eb74329105ee4568dda7dc67ed2ca2ad9";
-        // 
-        
-        final ResultPacket result;
-        if(user.equals(response.getUser()) && 
-                signEquals(response.getSign(), hsInit.getSeed(), encPassword)){
-            result = new ResultPacket(SQLiteErrorCode.SQLITE_OK);
-            result.setSeq(response.getSeq() + 1);
-            result.write(t);
-            return true;
-        }
-        
-        result = new ResultPacket(SQLiteErrorCode.SQLITE_PERM);
-        result.setSeq(response.getSeq() + 1);
-        result.write(t);
-        return false;
-    }
-
-    public void start(){
-        final Thread t = new Thread(this, getName());
-        t.setPriority(Thread.NORM_PRIORITY);
-        t.start();
-        this.thread = t;
+    public SQLiteSession(Processor processor){
+        this.processor = processor;
+        this.server = processor.getServer();
     }
     
     public int getId(){
-        return this.id;
+        return processor.getId();
     }
     
     public String getName(){
-        return this.name;
+        return processor.getName();
     }
     
-    public SQLiteServer getServer(){
+    public Processor getProcessor(){
+        return this.processor;
+    }
+    
+    public Server getServer() {
         return this.server;
     }
     
-    public Socket getSocket(){
-        return this.socket;
+    public SQLiteConnection getConnection() {
+        return this.connection;
     }
     
-    public void interrupt(){
-        final Thread t = this.thread;
-        if(t != null){
-            t.interrupt();
+    public void setConnection(SQLiteConnection connection) {
+        if (connection == null) {
+            throw new NullPointerException("connection");
+        }
+        
+        if (this.connection != null) {
+            throw new IllegalStateException("connection has been set");
+        }
+        
+        this.connection = connection;
+    }
+    
+    public boolean isOpen() {
+        SQLiteConnection conn = getConnection();
+        try {
+            return (conn != null && !conn.isClosed());
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    @Override
+    public void close() {
+        if (!isOpen()) {
+            return;
+        }
+        
+        IoUtils.close(getConnection());
+    }
+    
+    public void interrupt() throws SQLException {
+        SQLiteConnection conn = getConnection();
+        if (conn != null && isOpen()) {
+            conn.getDatabase().interrupt();
         }
     }
 

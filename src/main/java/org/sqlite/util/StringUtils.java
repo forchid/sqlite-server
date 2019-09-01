@@ -13,22 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.jdbc.v3;
+package org.sqlite.util;
 
-import org.sqlite.SQLiteConnection;
+import java.util.Locale;
 
-/**
+/**String utils.
+ * 
  * @author little-pan
- * @since 2019-04-06
+ * @since 2019-09-01
  *
  */
-public class JDBC3Statement extends org.sqlite.jdbc3.JDBC3Statement {
-
-    /**
-     * @param conn
-     */
-    protected JDBC3Statement(SQLiteConnection conn) {
-        super(conn);
+public final class StringUtils {
+    
+    private StringUtils() {}
+    
+    public static String toLowerEnglish(String s) {
+        return s.toLowerCase(Locale.ENGLISH);
+    }
+    
+    public static String toUpperEnglish(String s) {
+        return s.toUpperCase(Locale.ENGLISH);
     }
 
 }

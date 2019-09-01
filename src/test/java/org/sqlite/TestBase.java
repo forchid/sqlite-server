@@ -19,7 +19,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
-import org.sqlite.jdbc.Driver;
+import org.sqlite.server.SQLiteServer;
 
 import junit.framework.TestCase;
 
@@ -29,15 +29,28 @@ import junit.framework.TestCase;
  *
  */
 public abstract class TestBase extends TestCase {
-    protected static String url = "jdbc:sqlite-server://localhost/test.db";
+    protected static String url = "jdbc:postgresql://localhost:5434/test.db";
     protected static String user = "root";
     protected static String password = "123456";
+    
+    protected static final SQLiteServer server;
+    static {
+        server = new SQLiteServer();
+        server.init("--trace");
+        server.start();
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                server.listen();
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
+    }
     
     public abstract void test() throws SQLException;
     
     protected Connection getConnection() throws SQLException {
-        Driver.load();
-        
         return (DriverManager.getConnection(url, user, password));
     }
 

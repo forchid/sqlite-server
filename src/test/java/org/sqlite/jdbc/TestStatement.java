@@ -16,6 +16,7 @@
 package org.sqlite.jdbc;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -35,12 +36,30 @@ public class TestStatement extends TestBase {
     @Override
     public void test() throws SQLException {
         simpleScalarQueryTest();
+        createTableTest();
     }
     
     private void simpleScalarQueryTest() throws SQLException {
         try (Connection conn = getConnection()) {
             Statement stmt = conn.createStatement();
             assertTrue(stmt.execute("select 1;"));
+            
+            ResultSet rs = stmt.executeQuery("select 1;");
+            rs.next();
+            assertTrue(1 == rs.getInt(1));
+            rs.close();
+        }
+    }
+    
+    private void createTableTest() throws SQLException {
+        try (Connection conn = getConnection()) {
+            Statement stmt = conn.createStatement();
+            int n = stmt.executeUpdate("create table if not exists accounts("
+                    + "id integer primary key, "
+                    + "name varchar(50) not null,"
+                    + "balance decimal(12,1) not null)");
+            assertTrue(0 == n);
+            stmt.close();
         }
     }
 

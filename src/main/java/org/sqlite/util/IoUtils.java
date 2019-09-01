@@ -15,7 +15,12 @@
  */
 package org.sqlite.util;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * @author little-pan
@@ -23,6 +28,7 @@ import java.io.IOException;
  *
  */
 public final class IoUtils {
+    public static final int BUFFER_SIZE = Integer.getInteger("sqlite.server.io.bufferSize", 8192);
     
     static final String PROP_DUMP = "sqlite.server.io.dump";
     
@@ -118,11 +124,83 @@ public final class IoUtils {
         }
     }
 
-    public static void main(String args[]) {
-        dump(System.out, new byte[] {1, 2, 3, 4, 5, 6, 7});
-        dump(System.out, new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-        dump(System.out, new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17});
-        dump(new byte[] {31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
+    /**
+     * @param name
+     * @return 
+     */
+    public static byte[] getResource(String name) throws IOException {
+        return loadResource(name);
+    }
+    
+    public static byte[] loadResource(String name) throws IOException {
+        InputStream in = IoUtils.class.getResourceAsStream("data.zip");
+        if (in == null) {
+            in = IoUtils.class.getResourceAsStream(name);
+            if (in == null) {
+                return null;
+            }
+            return IoUtils.readBytesAndClose(in, 0);
+        }
+
+        try (ZipInputStream zipIn = new ZipInputStream(in)) {
+            while (true) {
+                ZipEntry entry = zipIn.getNextEntry();
+                if (entry == null) {
+                    break;
+                }
+                String entryName = entry.getName();
+                if (!entryName.startsWith("/")) {
+                    entryName = "/" + entryName;
+                }
+                if (entryName.equals(name)) {
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    IoUtils.copy(zipIn, out);
+                    zipIn.closeEntry();
+                    return out.toByteArray();
+                }
+                zipIn.closeEntry();
+            }
+        } catch (IOException e) {
+            // if this happens we have a real problem
+        }
+        return null;
+    }
+    
+    public static byte[] readBytesAndClose(InputStream in, int length) throws IOException {
+        try {
+            if (length <= 0) {
+                length = BUFFER_SIZE;
+            }
+            int block = Math.min(BUFFER_SIZE, length);
+            ByteArrayOutputStream out = new ByteArrayOutputStream(block);
+            copy(in, out, length);
+            return out.toByteArray();
+        } finally {
+            in.close();
+        }
+    }
+    
+    public static long copy(InputStream in, OutputStream out) throws IOException {
+        return copy(in, out, Long.MAX_VALUE);
+    }
+    
+    public static long copy(InputStream in, OutputStream out, long length) throws IOException {
+        long copied = 0;
+        int len = (int) Math.min(length, BUFFER_SIZE);
+        byte[] buffer = new byte[len];
+        while (length > 0) {
+            len = in.read(buffer, 0, len);
+            if (len < 0) {
+                break;
+            }
+            if (out != null) {
+                out.write(buffer, 0, len);
+            }
+            copied += len;
+            length -= len;
+            len = (int) Math.min(length, BUFFER_SIZE);
+        }
+        return copied;
     }
 
 }
