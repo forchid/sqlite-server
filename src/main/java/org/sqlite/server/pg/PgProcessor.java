@@ -491,13 +491,13 @@ public class PgProcessor extends Processor implements Runnable {
                         while (rs.next()) {
                             sendDataRow(rs, p.resultColumnFormat);
                         }
-                        sendCommandComplete(prepared.sql, 0);
+                        sendCommandComplete(prepared.sql, 0, result);
                     } catch (SQLException e) {
                         sendErrorResponse(e);
                         flush = true;
                     }
                 } else {
-                    sendCommandComplete(prepared.sql, prep.getUpdateCount());
+                    sendCommandComplete(prepared.sql, prep.getUpdateCount(), result);
                 }
             } catch (SQLException e) {
                 if (isCanceled(e)) {
@@ -540,13 +540,13 @@ public class PgProcessor extends Processor implements Runnable {
                                 while (rs.next()) {
                                     sendDataRow(rs, null);
                                 }
-                                sendCommandComplete(s, 0);
+                                sendCommandComplete(s, 0, result);
                             } catch (SQLException e) {
                                 sendErrorResponse(e);
                                 break;
                             }
                         } else {
-                            sendCommandComplete(s, stat.getUpdateCount());
+                            sendCommandComplete(s, stat.getUpdateCount(), result);
                         }
                     } catch (SQLException e) {
                         if (stat != null && isCanceled(e)) {
@@ -663,7 +663,7 @@ public class PgProcessor extends Processor implements Runnable {
         sendMessage();
     }
     
-    private void sendCommandComplete(String sql, int updateCount)
+    private void sendCommandComplete(String sql, int updateCount, boolean resultSet)
             throws IOException {
         startMessage('C');
         switch (parseCommandType(sql)) {
@@ -688,7 +688,7 @@ public class PgProcessor extends Processor implements Runnable {
             break;
         default:
             server.trace(log, "check CommandComplete tag for command {}", sql);
-            writeStringPart("UPDATE ");
+            writeStringPart(resultSet? "SELECT": "UPDATE ");
             writeString(Integer.toString(updateCount));
         }
         sendMessage();
