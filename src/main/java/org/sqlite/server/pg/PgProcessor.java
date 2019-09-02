@@ -269,6 +269,11 @@ public class PgProcessor extends Processor implements Runnable {
                     String value = readString();
                     if ("user".equals(param)) {
                         this.userName = value;
+                        if (!server.getUser().equals(this.userName)){
+                            sendErrorAuth();
+                            flush = true;
+                            break;
+                        }
                     } else if ("database".equals(param)) {
                         this.databaseName = server.checkKeyAndGetDatabaseName(value);
                     } else if ("client_encoding".equals(param)) {
@@ -292,8 +297,13 @@ public class PgProcessor extends Processor implements Runnable {
         case 'p': {
             server.trace(log, "PasswordMessage");
             flush = true;
-            // TODO check user
+            
+            String serverPw = server.getPassword();
             String password = readString();
+            if (serverPw != null && !serverPw.equals(password)) {
+                sendErrorAuth();
+                break;
+            }
             
             String url = "jdbc:sqlite::memory:";
             if (!":memory:".equals(this.databaseName)) {
@@ -682,6 +692,12 @@ public class PgProcessor extends Processor implements Runnable {
             writeString(Integer.toString(updateCount));
         }
         sendMessage();
+    }
+    
+    private void sendErrorAuth() throws IOException {
+        SQLiteErrorCode error = SQLiteErrorCode.SQLITE_AUTH;
+        sendErrorResponse(new SQLException(error.message, "28000", error.code));
+        stop();
     }
     
     private void sendErrorResponse(SQLException e) throws IOException {

@@ -35,7 +35,6 @@ import org.sqlite.server.Server;
 public class PgServer extends Server {
     static final Logger log = LoggerFactory.getLogger(PgServer.class);
     
-    public static final int PORT_DEFAULT = 5434;
     public static final String PG_VERSION = "8.2.23";
     
     /**
@@ -65,7 +64,6 @@ public class PgServer extends Server {
     
     @Override
     public void init(String... args) {
-        port = PORT_DEFAULT;
         super.init(args);
         if (args != null) {
             for (int i = 0, argc = args.length; i < argc; ++i) {

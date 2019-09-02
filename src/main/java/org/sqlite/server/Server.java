@@ -39,8 +39,12 @@ public abstract class Server {
     static final Logger log = LoggerFactory.getLogger(Server.class);
     
     public static final String VERSION = "0.3.27";
+    public static final String USER_DEFAULT = "root";
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 151;
+    
+    private String user = USER_DEFAULT;
+    private String password;
     
     protected String host = "localhost";
     protected int port = PORT_DEFAULT;
@@ -64,6 +68,10 @@ public abstract class Server {
             String a = args[i];
             if ("--trace".equals(a) || "-T".equals(a)) {
                 trace = true;
+            } else if ("--user".equals(a) || "-U".equals(a)) {
+                user = args[++i];
+            } else if ("--password".equals(a) || "-p".equals(a)) {
+                password = args[++i];
             } else if ("--host".equals(a) || "-H".equals(a)) {
                 host = args[++i];
             } else if ("--port".equals(a) || "-P".equals(a)) {
@@ -73,6 +81,9 @@ public abstract class Server {
             } else if ("--max-conns".equals(a)) {
                 maxConns = Integer.decode(args[++i]);
             }
+        }
+        if (this.password == null) {
+            log.warn("No password given");
         }
         
         // init dataDir
@@ -247,6 +258,14 @@ public abstract class Server {
     
     public String getVersion() {
         return VERSION;
+    }
+    
+    public String getUser() {
+        return this.user;
+    }
+    
+    public String getPassword() {
+        return this.password;
     }
     
 }

@@ -56,7 +56,6 @@ public class SQLiteServer extends Server {
                 }
             }
         }
-        super.init(args);
         
         if (this.base == null) {
             this.base = new PgServer();
@@ -90,6 +89,8 @@ public class SQLiteServer extends Server {
         out.println("Usage: java org.sqlite.server.SQLiteServer [OPTIONS]\n"+
                 "OPTIONS: \n"+
                 "  --data-dir|-D  <path>       Server data directory, default data in work dir\n"+
+                "  --user|-U      <user>       User name, default "+USER_DEFAULT+"\n"+
+                "  --password|-p  <password>   User password, skip password check if not specified\n"+
                 "  --host|-H      <host>       Server listen host or IP, default localhost\n"+
                 "  --port|-P      <number>     Server listen port, default "+PORT_DEFAULT+"\n"+
                 "  --max-conns    <number>     Max connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
