@@ -20,12 +20,18 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteConnection;
+import org.sqlite.SQLiteConfig.Encoding;
+import org.sqlite.SQLiteConfig.JournalMode;
+import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.util.IoUtils;
 
 /**The server that abstracts various protocol, based on TCP/IP, and 
@@ -175,6 +181,23 @@ public abstract class Server {
             return proc;
         }
         return null;
+    }
+    
+    public SQLiteConnection newSQLiteConnection(String databaseName) throws SQLException {
+        String url = "jdbc:sqlite::memory:";
+        if (!":memory:".equals(databaseName)) {
+            url = String.format("jdbc:sqlite:%s", getDbFile(databaseName));
+        }
+        trace(log, "SQLite connection {}", url);
+        
+        SQLiteConfig config = new SQLiteConfig();
+        config.setJournalMode(JournalMode.WAL);
+        config.setSynchronous(SynchronousMode.NORMAL);
+        config.setBusyTimeout(50000);
+        config.enforceForeignKeys(true);
+        config.setEncoding(Encoding.UTF8);
+        
+        return (SQLiteConnection)config.createConnection(url);
     }
     
     public Processor getProcessor(int id) {

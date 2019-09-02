@@ -46,10 +46,6 @@ import java.util.HashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sqlite.SQLiteConfig;
-import org.sqlite.SQLiteConfig.Encoding;
-import org.sqlite.SQLiteConfig.JournalMode;
-import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
@@ -305,19 +301,8 @@ public class PgProcessor extends Processor implements Runnable {
                 break;
             }
             
-            String url = "jdbc:sqlite::memory:";
-            if (!":memory:".equals(this.databaseName)) {
-                url = String.format("jdbc:sqlite:%s", server.getDbFile(databaseName));
-            }
-            server.trace(log, "SQLite connection {}", url);
-            SQLiteConfig config = new SQLiteConfig();
-            config.setJournalMode(JournalMode.WAL);
-            config.setSynchronous(SynchronousMode.NORMAL);
-            config.setBusyTimeout(50000);
-            config.enforceForeignKeys(true);
-            config.setEncoding(Encoding.UTF8);
             try {
-                SQLiteConnection conn = (SQLiteConnection)config.createConnection(url);
+                SQLiteConnection conn = server.newSQLiteConnection(this.databaseName);
                 this.session.setConnection(conn);
                 sendAuthenticationOk();
             } catch (SQLException cause) {
