@@ -173,15 +173,15 @@ public class PgProcessor extends Processor implements Runnable {
                 break;
             case PgServer.PG_TYPE_INT8:
                 checkParamLength(8, paramLen);
-                prep.setLong(col, dataIn.readLong());
+                prep.setLong(col, dataBuf.readLong());
                 break;
             case PgServer.PG_TYPE_FLOAT4:
                 checkParamLength(4, paramLen);
-                prep.setFloat(col, dataIn.readFloat());
+                prep.setFloat(col, dataBuf.readFloat());
                 break;
             case PgServer.PG_TYPE_FLOAT8:
                 checkParamLength(8, paramLen);
-                prep.setDouble(col, dataIn.readDouble());
+                prep.setDouble(col, dataBuf.readDouble());
                 break;
             case PgServer.PG_TYPE_BYTEA:
                 byte[] d1 = new byte[paramLen];
@@ -204,6 +204,8 @@ public class PgProcessor extends Processor implements Runnable {
     }
     
     private void process() throws IOException {
+        PgServer server = getServer();
+        
         int x;
         if (this.initDone) {
             x = this.dataIn.read();
@@ -217,11 +219,12 @@ public class PgProcessor extends Processor implements Runnable {
         
         int len = this.dataIn.readInt();
         len -= 4;
+        server.trace(log, "x {}(c) {}, len {}", (char)x, x, len);
+        
         byte[] data = new byte[len];
         this.dataIn.readFully(data, 0, len);
         this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 0, len));
         
-        PgServer server = getServer();
         switch (x) {
         case 0:
             server.trace(log, "Init");
@@ -440,7 +443,17 @@ public class PgProcessor extends Processor implements Runnable {
             server.trace(log, "Execute SQL {}", prepared.sql);
             try {
                 prep.setMaxRows(maxRows);
+                // tx state control: begin
+                String command = parseCommandType(prepared.sql);
+                SQLiteConnection conn = getConnection();
+                if ("BEGIN".equals(command)) {
+                    conn.getConnectionConfig().setAutoCommit(false);
+                }
                 boolean result = prep.execute();
+                // tx state control: end
+                if ("COMMIT".equals(command) || "ROLLBACK".equals(command)) {
+                    conn.getConnectionConfig().setAutoCommit(true);
+                }
                 if (result) {
                     try {
                         ResultSet rs = prep.getResultSet();
@@ -777,7 +790,7 @@ public class PgProcessor extends Processor implements Runnable {
         if (meta instanceof CoreResultSet) {
             rs = (CoreResultSet)meta;
         }
-        if (meta == null || (rs != null && rs.colsMeta.length == 0)) {
+        if (meta == null || (rs != null && (rs.colsMeta==null || rs.colsMeta.length==0))) {
             sendNoData();
         } else {
             PgServer server = getServer();
@@ -985,6 +998,9 @@ public class PgProcessor extends Processor implements Runnable {
     private String parseCommandType(String sql) {
         int i = sql.indexOf(' ');
         if (i == -1) {
+            if (sql.endsWith(";")) {
+                sql = sql.substring(0, sql.length() - 1);
+            }
             return StringUtils.toUpperEnglish(sql);
         }
         
