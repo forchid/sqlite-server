@@ -120,6 +120,8 @@ public abstract class Server {
                         trace(log, "Exceeds maxConns limit({}), close connection", getMaxConns());
                         continue;
                     }
+                    s.setTcpNoDelay(true);
+                    s.setKeepAlive(true);
                     
                     int processId = nextProcessId();
                     Processor processor = newProcessor(s, processId);

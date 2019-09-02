@@ -17,6 +17,8 @@ package org.sqlite.server.pg;
 
 import static java.lang.String.format;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -109,12 +111,16 @@ public class PgProcessor extends Processor implements Runnable {
     public void run() {
         try {
             server.trace(log, "Connect");
-            InputStream ins = socket.getInputStream();
-            out = socket.getOutputStream();
-            dataIn = new DataInputStream(ins);
+            // buffer is very important for performance!
+            int bufferSize = IoUtils.BUFFER_SIZE;
+            InputStream in = new BufferedInputStream(socket.getInputStream(), bufferSize << 2);
+            out = new BufferedOutputStream(socket.getOutputStream(), bufferSize << 4);
+            dataIn = new DataInputStream(in);
             while (!isStopped()) {
-                process();
-                out.flush();
+                // Optimize flush()
+                if (process()) {
+                    out.flush();
+                }
             }
         } catch (EOFException e) {
             // more or less normal disconnect
@@ -203,7 +209,7 @@ public class PgProcessor extends Processor implements Runnable {
         }
     }
     
-    private void process() throws IOException {
+    private boolean process() throws IOException {
         PgServer server = getServer();
         
         int x;
@@ -211,7 +217,7 @@ public class PgProcessor extends Processor implements Runnable {
             x = this.dataIn.read();
             if (x < 0) {
                 stop();
-                return;
+                return true;
             }
         } else {
             x = 0;
@@ -225,6 +231,7 @@ public class PgProcessor extends Processor implements Runnable {
         this.dataIn.readFully(data, 0, len);
         this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 0, len));
         
+        boolean flush = false;
         switch (x) {
         case 0:
             server.trace(log, "Init");
@@ -250,6 +257,7 @@ public class PgProcessor extends Processor implements Runnable {
             } else if (version == 80877103) {
                 server.trace(log, "SSLRequest");
                 out.write('N');
+                flush = true;
             } else {
                 server.trace(log, "StartupMessage");
                 server.trace(log, "version {} ({}.{})", version, (version >> 16), (version & 0xff));
@@ -277,11 +285,13 @@ public class PgProcessor extends Processor implements Runnable {
                     server.trace(log, "param {} = {}", param, value);
                 }
                 sendAuthenticationCleartextPassword();
+                flush = true;
                 initDone = true;
             }
             break;
         case 'p': {
             server.trace(log, "PasswordMessage");
+            flush = true;
             // TODO check user
             String password = readString();
             
@@ -338,6 +348,7 @@ public class PgProcessor extends Processor implements Runnable {
                 sendParseComplete();
             } catch (SQLException e) {
                 sendErrorResponse(e);
+                flush = true;
             }
             break;
         }
@@ -349,6 +360,7 @@ public class PgProcessor extends Processor implements Runnable {
             Prepared prep = prepared.get(prepName);
             if (prep == null) {
                 sendErrorResponse("Prepared not found");
+                flush = true;
                 break;
             }
             portal.prep = prep;
@@ -365,6 +377,7 @@ public class PgProcessor extends Processor implements Runnable {
                 }
             } catch (SQLException e) {
                 sendErrorResponse(e);
+                flush = true;
                 break;
             }
             int resultCodeCount = readShort();
@@ -376,9 +389,10 @@ public class PgProcessor extends Processor implements Runnable {
             break;
         }
         case 'C': {
+            server.trace(log, "Close");
+            flush = true;
             char type = (char) readByte();
             String name = readString();
-            server.trace(log, "Close");
             if (type == 'S') {
                 Prepared p = prepared.remove(name);
                 if (p != null) {
@@ -402,18 +416,21 @@ public class PgProcessor extends Processor implements Runnable {
                 Prepared p = prepared.get(name);
                 if (p == null) {
                     sendErrorResponse("Prepared not found: " + name);
+                    flush = true;
                 } else {
                     try {
                         sendParameterDescription(p.prep.getParameterMetaData(), p.paramType);
                         sendRowDescription(p.prep.getMetaData());
                     } catch (SQLException e) {
                         sendErrorResponse(e);
+                        flush = true;
                     }
                 }
             } else if (type == 'P') {
                 Portal p = portals.get(name);
                 if (p == null) {
                     sendErrorResponse("Portal not found: " + name);
+                    flush = true;
                 } else {
                     PreparedStatement prep = p.prep.prep;
                     try {
@@ -421,11 +438,13 @@ public class PgProcessor extends Processor implements Runnable {
                         sendRowDescription(meta);
                     } catch (SQLException e) {
                         sendErrorResponse(e);
+                        flush = true;
                     }
                 }
             } else {
                 server.trace(log, "expected S or P, got {}", type);
                 sendErrorResponse("expected S or P");
+                flush = true;
             }
             break;
         }
@@ -435,6 +454,7 @@ public class PgProcessor extends Processor implements Runnable {
             Portal p = portals.get(name);
             if (p == null) {
                 sendErrorResponse("Portal not found: " + name);
+                flush = true;
                 break;
             }
             int maxRows = readShort();
@@ -464,6 +484,7 @@ public class PgProcessor extends Processor implements Runnable {
                         sendCommandComplete(prepared.sql, 0);
                     } catch (SQLException e) {
                         sendErrorResponse(e);
+                        flush = true;
                     }
                 } else {
                     sendCommandComplete(prepared.sql, prep.getUpdateCount());
@@ -474,16 +495,19 @@ public class PgProcessor extends Processor implements Runnable {
                 } else {
                     sendErrorResponse(e);
                 }
+                flush = true;
             }
             break;
         }
         case 'S': {
             server.trace(log, "Sync");
+            flush = true;
             sendReadyForQuery();
             break;
         }
         case 'Q': {
             server.trace(log, "Query");
+            flush = true;
             String query = readString();
             try (SQLReader reader = new SQLReader(new StringReader(query))){
                 Connection conn = getConnection();
@@ -536,8 +560,11 @@ public class PgProcessor extends Processor implements Runnable {
         }
         default:
             server.trace(log, "Unsupported: {} ({})", x, (char) x);
+            flush = true;
             break;
         }
+        
+        return flush;
     }
     
     private static boolean isCanceled(SQLException e) {
@@ -697,7 +724,6 @@ public class PgProcessor extends Processor implements Runnable {
         this.dataOut.write(this.messageType);
         this.dataOut.writeInt(len + 4);
         this.dataOut.write(buff);
-        this.dataOut.flush();
     }
     
     private void sendNoData() throws IOException {
