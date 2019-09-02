@@ -292,7 +292,7 @@ public class PgProcessor extends Processor implements Runnable {
             config.setSynchronous(SynchronousMode.NORMAL);
             config.setBusyTimeout(50000);
             config.enforceForeignKeys(true);
-            config.setEncoding(Encoding.getEncoding(getEncoding().name()));
+            config.setEncoding(Encoding.UTF8);
             try {
                 SQLiteConnection conn = (SQLiteConnection)config.createConnection(url);
                 this.session.setConnection(conn);
@@ -542,13 +542,14 @@ public class PgProcessor extends Processor implements Runnable {
     }
     
     private String getSQL(String s) {
+        server.trace(log, "SQL {} ->", s);
         String lower = StringUtils.toLowerEnglish(s);
         if (lower.startsWith("show max_identifier_length")) {
-            s = "CALL 63";
+            s = "select 63";
         } else if (lower.startsWith("set client_encoding to")) {
             s = "set DATESTYLE ISO";
         }
-        server.trace(log, "{};", s);
+        server.trace(log, "SQL {} <-", s);
         
         return s;
     }
@@ -645,11 +646,15 @@ public class PgProcessor extends Processor implements Runnable {
     
     private void sendErrorResponse(SQLException e) throws IOException {
         server.traceError(log, "send error", e);
+        String sqlState = e.getSQLState();
+        if (sqlState == null) {
+            sqlState = "HY000";
+        }
         startMessage('E');
         write('S');
         writeString("ERROR");
         write('C');
-        writeString(e.getSQLState());
+        writeString(sqlState);
         write('M');
         writeString(e.getMessage());
         write('D');

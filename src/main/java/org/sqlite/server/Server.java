@@ -39,6 +39,7 @@ import org.sqlite.util.IoUtils;
 public abstract class Server {
     static final Logger log = LoggerFactory.getLogger(Server.class);
     
+    public static final String VERSION = "0.3.27";
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 151;
     
@@ -104,7 +105,8 @@ public abstract class Server {
         try {
             Thread.currentThread().setName(getName());
             
-            log.info("{}: ready for connection on {}:{}", getName(), getHost(), getPort());
+            log.info("{}: ready for connections on {}:{}, version {}", 
+                 getName(), getHost(), getPort(), getVersion());
             while (!isStopped()) {
                 Socket s = this.serverSocket.accept();
                 try {
@@ -240,6 +242,10 @@ public abstract class Server {
     
     public int getMaxConns() {
         return this.maxConns;
+    }
+    
+    public String getVersion() {
+        return VERSION;
     }
     
 }

@@ -82,6 +82,11 @@ public class PgServer extends Server {
     public String getName() {
         return "SQLite PG server";
     }
+    
+    @Override
+    public String getVersion() {
+        return PG_VERSION;
+    }
 
     @Override
     protected Processor newProcessor(Socket s, int processId) {
