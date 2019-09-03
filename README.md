@@ -29,6 +29,15 @@ test.db=> select count(*) from accounts;
 
 
 Time: 338.081 ms
+test.db=> select balance, count(*) from accounts where balance > 1000 group by balance limit 2;
+ balance | count(*)
+---------+----------
+    1001 |      321
+    1002 |      321
+(Rows 2)
+
+
+Time: 9592.378 ms (00:09.592)
 test.db=>
 ```
 
