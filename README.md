@@ -1,11 +1,11 @@
 # SQLite Server
 A [SQLite](https://www.sqlite.org/index.html) server based on the client/server architecture and org.xerial [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) project
-- Implement a subset(PgServer) of [postgreSQL c/s protocol](https://www.postgresql.org/docs/8.2/protocol.html) for supporting [pgjdbc](https://github.com/pgjdbc/pgjdbc) , psql, or ODBC
-- Support md5(default) and password authentication method in PgServer
-- High performance(insert 30,000 ~ 50,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
+1) Implement a subset(PgServer) of [postgreSQL c/s protocol](https://www.postgresql.org/docs/8.2/protocol.html) for supporting [pgjdbc](https://github.com/pgjdbc/pgjdbc) , psql, or ODBC
+2) Support md5(default) and password authentication method in PgServer
+3) High performance(insert 30,000 ~ 50,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
 
 # Examples
-* Standalone SQLite server
+1) Standalone SQLite server
 Console 1
 ```shell
 $java -Xmx128m org.sqlite.server.SQLiteServer -p 123456
@@ -31,7 +31,7 @@ Time: 338.081 ms
 test.db=>
 ```
 
-* Embedded SQLite server
+2) Embedded SQLite server
 ```java
 SQLiteServer server = new SQLiteServer();
 server.bootAsync("-p", "123456");
