@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.jdbc;
+package org.sqlite.server.jdbc;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import org.sqlite.TestBase;
+import org.sqlite.server.TestBase;
 
 /**
  * @author little-pan

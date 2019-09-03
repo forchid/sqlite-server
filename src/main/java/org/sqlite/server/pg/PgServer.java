@@ -21,17 +21,17 @@ import java.sql.Types;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.server.Processor;
-import org.sqlite.server.Server;
+import org.sqlite.server.SQLiteServer;
 import org.sqlite.util.StringUtils;
 
 /**
- * This class implements a subset of the PostgreSQL protocol.
+ * This SQLite server implements a subset of the PostgreSQL protocol.
  * 
  * @author little-pan
  * @since 2019-09-01
  *
  */
-public class PgServer extends Server {
+public class PgServer extends SQLiteServer {
     static final Logger log = LoggerFactory.getLogger(PgServer.class);
     
     public static final String PG_VERSION = "8.2.23";
@@ -62,9 +62,17 @@ public class PgServer extends Server {
     private String key, keyDatabase;
     private String authMethod = AUTH_DEFAULT;
     
+    public static void main(String args[]) {
+        SQLiteServer server = new PgServer();
+        server.init(args);
+        server.start();
+        server.listen();
+    }
+    
     @Override
     public void init(String... args) {
         super.init(args);
+        
         if (args != null) {
             for (int i = 0, argc = args.length; i < argc; ++i) {
                 String a = args[i];
@@ -89,10 +97,17 @@ public class PgServer extends Server {
             throw new IllegalArgumentException("Unsupported auth method: " + this.authMethod);
         }
     }
+    
+    @Override
+    protected String getHelp() {
+        return super.getHelp() + "\n"
+                + "  --key|-K  <key> <keyDatabase> The database specified by arg key\n"
+                + "  --auth-method|-A <authMethod> Auth method(md5 | password), default "+AUTH_DEFAULT;
+    }
 
     @Override
     public String getName() {
-        return "SQLite PG server " + PG_VERSION;
+        return "SQLite PG server";
     }
     
     @Override
@@ -103,7 +118,7 @@ public class PgServer extends Server {
     public String getAuthMethod() {
         return this.authMethod;
     }
-
+    
     @Override
     protected Processor newProcessor(Socket s, int processId) {
         return new PgProcessor(s, processId, this);

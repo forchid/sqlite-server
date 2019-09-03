@@ -13,14 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite;
+package org.sqlite.server;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-
-import org.sqlite.server.SQLiteServer;
-import org.sqlite.server.Server;
 
 import junit.framework.TestCase;
 
@@ -30,7 +27,7 @@ import junit.framework.TestCase;
  *
  */
 public abstract class TestBase extends TestCase {
-    protected static String url = "jdbc:postgresql://localhost:"+Server.PORT_DEFAULT+"/test.db";
+    protected static String url = "jdbc:postgresql://localhost:"+SQLiteServer.PORT_DEFAULT+"/test.db";
     protected static String user = "root";
     protected static String password = "123456";
     

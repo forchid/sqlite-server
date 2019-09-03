@@ -13,49 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite;
+package org.sqlite.server.jdbc;
 
+import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
 
-import org.sqlite.jdbc.TestDriver;
-import org.sqlite.jdbc.TestStatement;
+import org.sqlite.server.TestBase;
 
 /**
  * @author little-pan
  * @since 2019-08-31
  *
  */
-public class TestAll extends TestBase {
-    
-    protected final List<TestBase> tests = new ArrayList<>();
+public class TestDriver extends TestBase {
     
     public static void main(String[] args) throws SQLException {
-        new TestAll().test();
+        new TestDriver().test();
     }
-
-    @Override
+    
     public void test() throws SQLException {
-        addAll();
-        doTest();
-    }
-    
-    protected void doTest() throws SQLException {
-        for(TestBase test: tests) {
-            test.test();
+        try (Connection conn = getConnection()) {
+            assertTrue(conn != null);
         }
-        tests.clear();
     }
 
-    protected TestAll add(TestBase test) {
-        tests.add(test);
-        return this;
-    }
-    
-    protected void addAll() {
-        add(new TestDriver()).
-        add(new TestStatement());
-    }
-    
 }

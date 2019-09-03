@@ -62,7 +62,7 @@ import org.sqlite.util.StringUtils;
  * @since 2019-09-01
  *
  */
-public class PgProcessor extends Processor implements Runnable {
+public class PgProcessor extends Processor {
     
     static final Logger log = LoggerFactory.getLogger(PgProcessor.class);
     private static final boolean INTEGER_DATE_TYPES = false;
@@ -103,10 +103,6 @@ public class PgProcessor extends Processor implements Runnable {
     
     public PgServer getServer() {
         return (PgServer)this.server;
-    }
-    
-    protected SQLiteConnection getConnection() {
-        return this.session.getConnection();
     }
 
     @Override
@@ -307,13 +303,20 @@ public class PgProcessor extends Processor implements Runnable {
             }
             this.authMethod = null;
             
+            SQLiteConnection conn = null;
+            boolean failed = true;
             try {
-                SQLiteConnection conn = server.newSQLiteConnection(this.databaseName);
-                this.session.setConnection(conn);
+                conn = server.newSQLiteConnection(this.databaseName);
+                setConnection(conn);
                 sendAuthenticationOk();
+                failed = false;
             } catch (SQLException cause) {
                 stop();
                 server.traceError(log, "Can't init database", cause);
+            } finally {
+                if(failed) {
+                    IoUtils.close(conn);
+                }
             }
             break;
         }

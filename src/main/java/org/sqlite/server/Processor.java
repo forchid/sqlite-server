@@ -20,6 +20,7 @@ import java.sql.SQLException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.SQLiteConnection;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -36,19 +37,18 @@ public abstract class Processor implements Runnable, AutoCloseable {
     protected Socket socket;
     protected final int id;
     protected final String name;
-    protected final Server server;
+    protected final SQLiteServer server;
     
-    protected volatile boolean stopped;
-    protected volatile boolean open;
+    private volatile boolean open = true;
+    private volatile boolean stopped;
     protected Thread runner;
-    protected SQLiteSession session;
+    protected SQLiteConnection connection;
     
-    protected Processor(Socket socket, int processId, Server server) {
+    protected Processor(Socket socket, int processId, SQLiteServer server) {
         this.socket = socket;
         this.server = server;
         this.id = processId;
         this.name = String.format("%s processor-%d", server.getName(), processId);
-        this.open = true;
     }
     
     public int getId() {
@@ -59,15 +59,41 @@ public abstract class Processor implements Runnable, AutoCloseable {
         return this.name;
     }
     
-    public Server getServer() {
+    public SQLiteServer getServer() {
         return this.server;
+    }
+    
+    public void setConnection(SQLiteConnection connection) {
+        if (!isOpen()) {
+            throw new IllegalStateException("Processor has been closed");
+        }
+        
+        if (connection == null) {
+            throw new NullPointerException("connection");
+        }
+        
+        if (this.connection != null) {
+            throw new IllegalStateException("connection has been set");
+        }
+        
+        this.connection = connection;
+    }
+    
+    public SQLiteConnection getConnection() {
+        return this.connection;
+    }
+    
+    public void cancelRequest() throws SQLException {
+        SQLiteConnection conn = getConnection();
+        if (conn != null && isOpen()) {
+            conn.getDatabase().interrupt();
+        }
     }
 
     public void start() {
         if (isStopped()) {
             throw new IllegalStateException(getName() + " has been stopped");
         }
-        this.session = new SQLiteSession(this);
         
         Thread thread = new Thread(this, getName());
         this.runner = thread;
@@ -98,13 +124,9 @@ public abstract class Processor implements Runnable, AutoCloseable {
         
         stop();
         IoUtils.close(this.socket);
-        IoUtils.close(this.session);
+        IoUtils.close(this.connection);
         this.server.removeProcessor(this);
         this.server.trace(log, "Close");
-    }
-    
-    public void cancelRequest() throws SQLException {
-        this.session.interrupt();
     }
 
 }
