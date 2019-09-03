@@ -88,9 +88,6 @@ public abstract class Server {
                 maxConns = Integer.decode(args[++i]);
             }
         }
-        if (this.password == null) {
-            log.warn("No password given");
-        }
         
         // init dataDir
         try {
@@ -121,8 +118,7 @@ public abstract class Server {
         try {
             Thread.currentThread().setName(getName());
             
-            log.info("{}: ready for connections on {}:{}, version {}", 
-                 getName(), getHost(), getPort(), getVersion());
+            log.info("Ready for connections on {}:{}", getHost(), getPort());
             while (!isStopped()) {
                 Socket s = this.serverSocket.accept();
                 try {
@@ -256,7 +252,7 @@ public abstract class Server {
     }
     
     public String getName() {
-        return "SQLite server";
+        return "SQLite server " + VERSION;
     }
     
     public int getPort() {

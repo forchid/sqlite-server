@@ -89,8 +89,8 @@ public class SQLiteServer extends Server {
         out.println("Usage: java org.sqlite.server.SQLiteServer [OPTIONS]\n"+
                 "OPTIONS: \n"+
                 "  --data-dir|-D  <path>       Server data directory, default data in work dir\n"+
-                "  --user|-U      <user>       User name, default "+USER_DEFAULT+"\n"+
-                "  --password|-p  <password>   User password, skip password check if not specified\n"+
+                "  --user|-U      <user>       User's name, default "+USER_DEFAULT+"\n"+
+                "  --password|-p  <password>   User's password, must be provided in md5 auth method\n"+
                 "  --host|-H      <host>       Server listen host or IP, default localhost\n"+
                 "  --port|-P      <number>     Server listen port, default "+PORT_DEFAULT+"\n"+
                 "  --max-conns    <number>     Max connections limit, default "+MAX_CONNS_DEFAULT+"\n"+

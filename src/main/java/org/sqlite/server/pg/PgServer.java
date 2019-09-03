@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.server.Processor;
 import org.sqlite.server.Server;
+import org.sqlite.util.StringUtils;
 
 /**
  * This class implements a subset of the PostgreSQL protocol.
@@ -36,6 +37,7 @@ public class PgServer extends Server {
     static final Logger log = LoggerFactory.getLogger(PgServer.class);
     
     public static final String PG_VERSION = "8.2.23";
+    public static final String AUTH_DEFAULT = "md5";
     
     /**
      * The VARCHAR type.
@@ -61,6 +63,7 @@ public class PgServer extends Server {
     
     private final HashSet<Integer> typeSet = new HashSet<>();
     private String key, keyDatabase;
+    private String authMethod = AUTH_DEFAULT;
     
     @Override
     public void init(String... args) {
@@ -69,21 +72,39 @@ public class PgServer extends Server {
             for (int i = 0, argc = args.length; i < argc; ++i) {
                 String a = args[i];
                 if ("--key".equals(a) || "-K".equals(a)) {
-                    key = args[++i];
-                    keyDatabase = args[++i];
+                    this.key = args[++i];
+                    this.keyDatabase = args[++i];
+                } else if ("--auth-method".equals(a) || "-A".equals(a)) {
+                    this.authMethod = StringUtils.toLowerEnglish(args[++i]);
                 }
             }
+        }
+        
+        // check auth method
+        switch (this.authMethod) {
+        case "md5":
+            if (getPassword() == null) {
+                throw new IllegalArgumentException("No password was provided");
+            }
+        case "password":
+            break;
+        default:
+            throw new IllegalArgumentException("Unsupported auth method: " + this.authMethod);
         }
     }
 
     @Override
     public String getName() {
-        return "SQLite PG server";
+        return "SQLite PG server " + PG_VERSION;
     }
     
     @Override
     public String getVersion() {
         return PG_VERSION;
+    }
+    
+    public String getAuthMethod() {
+        return this.authMethod;
     }
 
     @Override

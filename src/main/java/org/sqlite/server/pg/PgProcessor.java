@@ -67,7 +67,13 @@ public class PgProcessor extends Processor implements Runnable {
     static final Logger log = LoggerFactory.getLogger(PgProcessor.class);
     private static final boolean INTEGER_DATE_TYPES = false;
     
+    // auth method
+    private static final int AUTH_REQ_OK = 0;
+    private static final int AUTH_REQ_PASSWORD = 3;
+    private static final int AUTH_REQ_MD5 = 5;
+    
     private final int secret;
+    private AuthMethod authMethod;
     
     private DataInputStream dataIn, dataBuf;
     private OutputStream out;
@@ -285,7 +291,7 @@ public class PgProcessor extends Processor implements Runnable {
                     // geqo on (Genetic Query Optimization)
                     server.trace(log, "param {} = {}", param, value);
                 }
-                sendAuthenticationCleartextPassword();
+                sendAuthenticationMessage();
                 flush = true;
                 initDone = true;
             }
@@ -294,12 +300,12 @@ public class PgProcessor extends Processor implements Runnable {
             server.trace(log, "PasswordMessage");
             flush = true;
             
-            String serverPw = server.getPassword();
             String password = readString();
-            if (serverPw != null && !serverPw.equals(password)) {
+            if (!this.authMethod.equals(password)) {
                 sendErrorAuth();
                 break;
             }
+            this.authMethod = null;
             
             try {
                 SQLiteConnection conn = server.newSQLiteConnection(this.databaseName);
@@ -600,15 +606,41 @@ public class PgProcessor extends Processor implements Runnable {
         }
     }
     
+    private void sendAuthenticationMessage() throws IOException {
+        switch (getServer().getAuthMethod()) {
+        case "password":
+            sendAuthenticationCleartextPassword();
+            break;
+        default: // md5
+            sendAuthenticationMD5Password();
+            break;
+        }
+        getServer().trace(log, "authMethod {}", this.authMethod);
+    }
+    
     private void sendAuthenticationCleartextPassword() throws IOException {
+        PgServer server = getServer();
+        this.authMethod = new AuthPassword(server.getPassword());
+        
         startMessage('R');
-        writeInt(3);
+        writeInt(AUTH_REQ_PASSWORD);
+        sendMessage();
+    }
+    
+    private void sendAuthenticationMD5Password() throws IOException {
+        PgServer server = getServer();
+        MD5Password md5 = new MD5Password(server.getUser(), server.getPassword());
+        this.authMethod = md5;
+        
+        startMessage('R');
+        writeInt(AUTH_REQ_MD5);
+        write(md5.getSalt());
         sendMessage();
     }
     
     private void sendAuthenticationOk() throws IOException {
         startMessage('R');
-        writeInt(0);
+        writeInt(AUTH_REQ_OK);
         sendMessage();
         sendParameterStatus("client_encoding", clientEncoding);
         sendParameterStatus("DateStyle", dateStyle);

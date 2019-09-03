@@ -25,6 +25,9 @@ package org.sqlite.util;
  */
 public final class ConvertUtils {
     
+    static final char[] HEXTBL =
+        {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+    
     private ConvertUtils() {}
     
     public final static int parseInt(Object o, final int defaultValue) {
@@ -69,15 +72,7 @@ public final class ConvertUtils {
     }
     
     public static final String hexString(byte a[]){
-        if(a == null){
-            return null;
-        }
-        
-        final StringBuilder sb = new StringBuilder(a.length<<1);
-        for(int i = 0, size = a.length; i < size; ++i){
-            sb.append(String.format("%02x", a[i]));
-        }
-        return sb.toString();
+        return bytesToHexString(a);
     }
     
     public static final byte[] hexBytes(String hex){
@@ -88,5 +83,40 @@ public final class ConvertUtils {
         }
         return a;
     }
+    
+    public static void bytesToHex(byte[] bytes, byte[] hex, int offset) {
+        int i, j, c, pos = offset;
+        
+        for (i = 0; i < 16; i++) {
+            c = bytes[i] & 0xFF;
+            j = c >> 4;
+            hex[pos++] = (byte) HEXTBL[j];
+            j = (c & 0xF);
+            hex[pos++] = (byte) HEXTBL[j];
+        }
+    }
+    
+    public static String bytesToHexString(byte[] bytes) {
+        return bytesToHex(bytes, 0, bytes.length);
+    }
+    
+    public static String bytesToHex(byte[] bytes, int offset, int len) {
+        if (bytes == null) {
+            return null;
+        }
+        
+        int i, j, c;
+        
+        StringBuilder sb = new StringBuilder(len << 1);
+        for (i = offset; i < len; i++) {
+            c = bytes[i] & 0xFF;
+            j = c >> 4;
+            sb.append(HEXTBL[j]);
+            j = (c & 0xF);
+            sb.append(HEXTBL[j]);
+        }
+        
+        return sb.toString();
+   }
     
 }
