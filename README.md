@@ -5,7 +5,7 @@ A [SQLite](https://www.sqlite.org/index.html) server based on the client/server 
 - High performance(insert 30,000 ~ 50,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
 
 # Examples
-## Standalone SQLite server
+* Standalone SQLite server
 Console 1
 ```shell
 $java -Xmx128m org.sqlite.server.SQLiteServer -p 123456
@@ -31,7 +31,7 @@ Time: 338.081 ms
 test.db=>
 ```
 
-## Embedded SQLite server
+* Embedded SQLite server
 ```java
 SQLiteServer server = new SQLiteServer();
 server.bootAsync("-p", "123456");
