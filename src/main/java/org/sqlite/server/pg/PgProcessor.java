@@ -50,11 +50,11 @@ import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.Processor;
-import org.sqlite.util.DateTimeUtils;
-import org.sqlite.util.IoUtils;
-import org.sqlite.util.SQLReader;
-import org.sqlite.util.SecurityUtils;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.DateTimeUtils;
+import org.sqlite.server.util.IoUtils;
+import org.sqlite.server.util.SQLReader;
+import org.sqlite.server.util.SecurityUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**The PG protocol handler.
  * 
@@ -91,11 +91,6 @@ public class PgProcessor extends Processor {
     private final HashMap<String, Prepared> prepared = new HashMap<>();
     private final HashMap<String, Portal> portals = new HashMap<>();
 
-    /**
-     * @param socket
-     * @param processId
-     * @param server
-     */
     protected PgProcessor(Socket socket, int processId, PgServer server) {
         super(socket, processId, server);
         this.secret = (int)SecurityUtils.secureRandomLong();

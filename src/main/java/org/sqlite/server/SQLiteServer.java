@@ -24,6 +24,7 @@ import java.net.Socket;
 import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -34,8 +35,8 @@ import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.server.pg.PgServer;
-import org.sqlite.util.IoUtils;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.IoUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
  * and can be started and stopped.
@@ -68,14 +69,66 @@ public class SQLiteServer {
     private int maxProcessId;
     
     protected ServerSocket serverSocket;
-    protected final ConcurrentMap<Integer, Processor> processors = new ConcurrentHashMap<>();
+    final ConcurrentMap<Integer, Processor> processors = new ConcurrentHashMap<>();
     private volatile boolean stopped;
     
     public static void main(String args[]) {
-        final SQLiteServer server = new SQLiteServer();
-        server.init(args);
-        server.start();
-        server.listen();
+        SQLiteServer server = new SQLiteServer();
+        try {
+            server.boot(args);
+        } catch (Exception e) {
+            System.err.println("ERROR: " + e.getMessage());
+            server.help(1);
+        }
+    }
+    
+    public void boot(String... args) {
+        try {
+            init(args);
+            start();
+            listen();
+        } finally {
+            stop();
+        }
+    }
+    
+    public SQLiteServer bootAsync(String... args) {
+        return bootAsync(true, args);
+    }
+    
+    public SQLiteServer bootAsync(final boolean daemon, String... args) {
+        return bootAsync(new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                Thread runner = new Thread(command);
+                runner.setDaemon(daemon);
+                runner.start();
+            }
+        }, args);
+    }
+    
+    public SQLiteServer bootAsync(Executor executor, String... args) {
+        boolean failed = true;
+        try {
+            init(args);
+            start();
+            executor.execute(new Runnable(){
+                @Override
+                public void run() {
+                    try {
+                        listen();
+                    } finally {
+                        stop();
+                    }
+                }
+            });
+            failed = false;
+            return this;
+        } finally {
+            if (failed) {
+                stop();
+            }
+        }
     }
     
     public void init(String... args) {
@@ -196,10 +249,9 @@ public class SQLiteServer {
             
             // 1. Close this server
             IoUtils.close(this.serverSocket);
-            this.serverSocket = null;
             
             // 2. Stop all processors
-            for(Processor p : processors.values()) {
+            for(Processor p : this.processors.values()) {
                 p.stop();
             }
         }
@@ -236,8 +288,6 @@ public class SQLiteServer {
     public Processor getProcessor(int id) {
         return this.processors.get(id);
     }
-    
-
     
     public boolean isStopped() {
         return this.stopped;
@@ -332,13 +382,25 @@ public class SQLiteServer {
         return id;
     }
     
-    protected void help(int status) {
-        final PrintStream out = System.out;
-        out.println(getHelp());
+    public void help(int status) {
+        PrintStream out = System.out;
+        String message;
+        
+        if (this.base == null) {
+            message = getHelp();
+        } else {
+            message = this.base.getHelp();
+        }
+        
+        if (status > 0) {
+            out = System.err;
+        }
+        
+        out.println(message);
         System.exit(status);
     }
     
-    protected String getHelp() {
+    public String getHelp() {
         return "Usage: java "+getClass().getName()+" [OPTIONS]\n"+
                 "OPTIONS: \n"+
                 "  --help|-h|-?                  Show this message\n" +

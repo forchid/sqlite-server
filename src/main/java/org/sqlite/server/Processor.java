@@ -21,7 +21,7 @@ import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
-import org.sqlite.util.IoUtils;
+import org.sqlite.server.util.IoUtils;
 
 /**
  * The server protocol handler.

@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.server.Processor;
 import org.sqlite.server.SQLiteServer;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**
  * This SQLite server implements a subset of the PostgreSQL protocol.
@@ -64,9 +64,12 @@ public class PgServer extends SQLiteServer {
     
     public static void main(String args[]) {
         SQLiteServer server = new PgServer();
-        server.init(args);
-        server.start();
-        server.listen();
+        try {
+            server.boot(args);
+        } catch (Exception e) {
+            System.err.println("ERROR: " + e.getMessage());
+            server.help(1);
+        }
     }
     
     @Override
@@ -99,7 +102,7 @@ public class PgServer extends SQLiteServer {
     }
     
     @Override
-    protected String getHelp() {
+    public String getHelp() {
         return super.getHelp() + "\n"
                 + "  --key|-K  <key> <keyDatabase> The database specified by arg key\n"
                 + "  --auth-method|-A <authMethod> Auth method(md5 | password), default "+AUTH_DEFAULT;

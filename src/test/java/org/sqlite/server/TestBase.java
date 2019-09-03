@@ -34,16 +34,7 @@ public abstract class TestBase extends TestCase {
     protected static final SQLiteServer server;
     static {
         server = new SQLiteServer();
-        server.init("--trace", "-p", password);
-        server.start();
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                server.listen();
-            }
-        });
-        thread.setDaemon(true);
-        thread.start();
+        server.bootAsync("--trace", "-p", password);
     }
     
     public abstract void test() throws SQLException;
