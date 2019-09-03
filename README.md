@@ -6,6 +6,7 @@ A [SQLite](https://www.sqlite.org/index.html) server based on the client/server 
 
 # Examples
 1. Standalone SQLite server
+
 Console 1
 ```shell
 $java -Xmx128m org.sqlite.server.SQLiteServer -p 123456
