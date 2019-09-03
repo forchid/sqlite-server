@@ -339,7 +339,6 @@ public class PgProcessor extends Processor implements Runnable {
                     int type;
                     if (i < paramTypesCount && paramTypes[i] != 0) {
                         type = paramTypes[i];
-                        server.checkType(type);
                     } else {
                         type = PgServer.convertType(meta.getParameterType(i + 1));
                     }
@@ -461,20 +460,15 @@ public class PgProcessor extends Processor implements Runnable {
             int maxRows = readShort();
             Prepared prepared = p.prep;
             PreparedStatement prep = prepared.prep;
-            server.trace(log, "Execute SQL {}", prepared.sql);
+            server.trace(log, "execute SQL {}", prepared.sql);
             try {
                 prep.setMaxRows(maxRows);
-                // tx state control: begin
                 String command = parseCommandType(prepared.sql);
-                SQLiteConnection conn = getConnection();
-                if ("BEGIN".equals(command)) {
-                    conn.getConnectionConfig().setAutoCommit(false);
-                }
+                
+                txTryBegin(command);
                 boolean result = prep.execute();
-                // tx state control: end
-                if ("COMMIT".equals(command) || "ROLLBACK".equals(command)) {
-                    conn.getConnectionConfig().setAutoCommit(true);
-                }
+                txTryFinish(command);
+                
                 if (result) {
                     try {
                         ResultSet rs = prep.getResultSet();
@@ -482,13 +476,14 @@ public class PgProcessor extends Processor implements Runnable {
                         while (rs.next()) {
                             sendDataRow(rs, p.resultColumnFormat);
                         }
-                        sendCommandComplete(prepared.sql, 0, result);
+                        sendCommandComplete(command, prepared.sql, 0, result);
                     } catch (SQLException e) {
                         sendErrorResponse(e);
                         flush = true;
                     }
                 } else {
-                    sendCommandComplete(prepared.sql, prep.getUpdateCount(), result);
+                    int n = prep.getUpdateCount();
+                    sendCommandComplete(command, prepared.sql, n, result);
                 }
             } catch (SQLException e) {
                 if (isCanceled(e)) {
@@ -522,7 +517,13 @@ public class PgProcessor extends Processor implements Runnable {
                         }
                         s = getSQL(s);
                         stat = conn.createStatement();
+                        String command = parseCommandType(s);
+                        
+                        txTryBegin(command);
+                        server.trace(log, "execute SQL {}", s);
                         boolean result = stat.execute(s);
+                        txTryFinish(command);
+                        
                         if (result) {
                             ResultSet rs = stat.getResultSet();
                             ResultSetMetaData meta = rs.getMetaData();
@@ -531,13 +532,14 @@ public class PgProcessor extends Processor implements Runnable {
                                 while (rs.next()) {
                                     sendDataRow(rs, null);
                                 }
-                                sendCommandComplete(s, 0, result);
+                                sendCommandComplete(command, s, 0, result);
                             } catch (SQLException e) {
                                 sendErrorResponse(e);
                                 break;
                             }
                         } else {
-                            sendCommandComplete(s, stat.getUpdateCount(), result);
+                            int n = stat.getUpdateCount();
+                            sendCommandComplete(command, s, n, result);
                         }
                     } catch (SQLException e) {
                         if (stat != null && isCanceled(e)) {
@@ -568,6 +570,26 @@ public class PgProcessor extends Processor implements Runnable {
         return flush;
     }
     
+    private void txTryBegin(String command) {
+        SQLiteConnection conn = getConnection();
+        if ("BEGIN".equals(command)) {
+            server.trace(log, "tx begin");
+            conn.getConnectionConfig().setAutoCommit(false);
+        }
+    }
+    
+    private void txTryFinish(String command) {
+        SQLiteConnection conn = getConnection();
+        switch (command) {
+        case "COMMIT":
+        case "END":
+        case "ROLLBACK":
+            conn.getConnectionConfig().setAutoCommit(true);
+            server.trace(log, "tx finish");
+            break;
+        }
+    }
+    
     private static boolean isCanceled(SQLException e) {
         return (e.getErrorCode() == SQLiteErrorCode.SQLITE_INTERRUPT.code);
     }
@@ -583,14 +605,14 @@ public class PgProcessor extends Processor implements Runnable {
     }
     
     private String getSQL(String s) {
-        server.trace(log, "SQL {} ->", s);
+        server.trace(log, "sql {}", s);
+        
         String lower = StringUtils.toLowerEnglish(s);
         if (lower.startsWith("show max_identifier_length")) {
             s = "select 63";
         } else if (lower.startsWith("set client_encoding to")) {
             s = "set DATESTYLE ISO";
         }
-        server.trace(log, "SQL {} <-", s);
         
         return s;
     }
@@ -680,10 +702,10 @@ public class PgProcessor extends Processor implements Runnable {
         sendMessage();
     }
     
-    private void sendCommandComplete(String sql, int updateCount, boolean resultSet)
+    private void sendCommandComplete(String command, String sql, int updateCount, boolean resultSet)
             throws IOException {
         startMessage('C');
-        switch (parseCommandType(sql)) {
+        switch (command) {
         case "INSERT":
             writeStringPart("INSERT 0 ");
             writeString(Integer.toString(updateCount));
@@ -769,7 +791,6 @@ public class PgProcessor extends Processor implements Runnable {
         int count = meta.getParameterCount();
         startMessage('t');
         writeShort(count);
-        PgServer server = getServer();
         for (int i = 0; i < count; i++) {
             int type;
             if (paramTypes != null && paramTypes[i] != 0) {
@@ -777,7 +798,6 @@ public class PgProcessor extends Processor implements Runnable {
             } else {
                 type = PgServer.PG_TYPE_VARCHAR;
             }
-            server.checkType(type);
             writeInt(type);
         }
         sendMessage();
@@ -852,7 +872,6 @@ public class PgProcessor extends Processor implements Runnable {
         if (meta == null || (rs != null && (rs.colsMeta==null || rs.colsMeta.length==0))) {
             sendNoData();
         } else {
-            PgServer server = getServer();
             int columns = meta.getColumnCount();
             int[] types = new int[columns];
             int[] precision = new int[columns];
@@ -870,9 +889,6 @@ public class PgProcessor extends Processor implements Runnable {
                 //     type = PgServer.PG_TYPE_INT2VECTOR;
                 // }
                 precision[i] = meta.getColumnDisplaySize(i + 1);
-                if (type != Types.NULL) {
-                    server.checkType(pgType);
-                }
                 types[i] = pgType;
             }
             startMessage('T');
@@ -1055,15 +1071,20 @@ public class PgProcessor extends Processor implements Runnable {
     }
     
     private String parseCommandType(String sql) {
+        String command;
         int i = sql.indexOf(' ');
         if (i == -1) {
             if (sql.endsWith(";")) {
                 sql = sql.substring(0, sql.length() - 1);
             }
-            return StringUtils.toUpperEnglish(sql);
+            command = sql;
+        } else {
+            command = sql.substring(0, i);
         }
+        command = StringUtils.toUpperEnglish(command);
         
-        return StringUtils.toUpperEnglish(sql.substring(0, i));
+        getServer().trace(log, "command {}", command);
+        return command;
     }
     
     /**

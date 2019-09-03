@@ -17,8 +17,6 @@ package org.sqlite.server.pg;
 
 import java.net.Socket;
 import java.sql.Types;
-import java.util.HashSet;
-import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +59,6 @@ public class PgServer extends Server {
     public static final int PG_TYPE_TIMESTAMP_NO_TMZONE = 1114;
     public static final int PG_TYPE_NUMERIC = 1700;
     
-    private final HashSet<Integer> typeSet = new HashSet<>();
     private String key, keyDatabase;
     private String authMethod = AUTH_DEFAULT;
     
@@ -130,24 +127,6 @@ public class PgServer extends Server {
         }
         
         throw new IllegalArgumentException("key '" + db + "'");
-    }
-    
-    /**
-     * Get the type hash set.
-     *
-     * @return the type set
-     */
-    Set<Integer> getTypeSet() {
-        return typeSet;
-    }
-
-    /**
-     * @param type
-     */
-    void checkType(int type) {
-        if (!typeSet.contains(type)) {
-            trace(log, "Unsupported type: {}", type);
-        }
     }
     
     public static int convertType(final int type) {
