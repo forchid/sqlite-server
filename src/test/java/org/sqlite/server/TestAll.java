@@ -21,6 +21,7 @@ import java.util.List;
 
 import org.sqlite.server.jdbc.TestDriver;
 import org.sqlite.server.jdbc.TestStatement;
+import org.sqlite.server.util.TestSQLReader;
 
 /**
  * @author little-pan
@@ -55,7 +56,8 @@ public class TestAll extends TestBase {
     
     protected void addAll() {
         add(new TestDriver()).
-        add(new TestStatement());
+        add(new TestStatement()).
+        add(new TestSQLReader());
     }
     
 }
