@@ -34,7 +34,7 @@ public abstract class TestBase extends TestCase {
     protected static final SQLiteServer server;
     static {
         server = new SQLiteServer();
-        server.bootAsync("--trace", "-p", password);
+        server.bootAsync("-p", password);
     }
     
     public abstract void test() throws SQLException;

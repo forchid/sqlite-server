@@ -50,9 +50,9 @@ import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.Processor;
+import org.sqlite.server.sql.SQLReader;
 import org.sqlite.server.util.DateTimeUtils;
 import org.sqlite.server.util.IoUtils;
-import org.sqlite.server.util.SQLReader;
 import org.sqlite.server.util.SecurityUtils;
 import org.sqlite.server.util.StringUtils;
 

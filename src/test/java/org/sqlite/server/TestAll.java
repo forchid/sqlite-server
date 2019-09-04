@@ -15,13 +15,14 @@
  */
 package org.sqlite.server;
 
+import java.io.PrintStream;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.sqlite.server.jdbc.TestDriver;
 import org.sqlite.server.jdbc.TestStatement;
-import org.sqlite.server.util.TestSQLReader;
+import org.sqlite.server.sql.TestSQLReader;
 
 /**
  * @author little-pan
@@ -43,8 +44,14 @@ public class TestAll extends TestBase {
     }
     
     protected void doTest() throws SQLException {
+        PrintStream out = System.out;
         for(TestBase test: tests) {
+            String className = test.getClass().getName();
+            long start = System.currentTimeMillis();
+            out.println(String.format("%s start", className));
             test.test();
+            long end = System.currentTimeMillis();
+            out.println(String.format("%s ok(%dms)", className, end - start));
         }
         tests.clear();
     }

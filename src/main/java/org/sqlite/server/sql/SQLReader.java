@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.util;
+package org.sqlite.server.sql;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayDeque;
 import java.util.Deque;
+
+import org.sqlite.server.util.IoUtils;
 
 /**SQL statement reader.
  * 
