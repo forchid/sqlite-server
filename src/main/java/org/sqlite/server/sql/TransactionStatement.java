@@ -24,9 +24,20 @@ package org.sqlite.server.sql;
  */
 public class TransactionStatement extends SQLStatement {
     
+    protected String savepointName;
+    
     public TransactionStatement(String sql, String command) {
         super(sql, command);
         this.tx = true;
+    }
+    
+    public TransactionStatement(String sql, String command, String savepointName) {
+        this(sql, command);
+        this.savepointName = savepointName;
+    }
+    
+    public String getSavepointName() {
+        return this.savepointName;
     }
     
     public boolean isBegin() {
@@ -41,5 +52,18 @@ public class TransactionStatement extends SQLStatement {
     public boolean isRollback() {
         return ("ROLLBACK".equals(getCommand()));
     }
+    
+    public boolean isSavepoint() {
+        return ("SAVEPOINT".equals(getCommand()));
+    }
+    
+    public boolean isRelease() {
+        return ("RELEASE".equals(getCommand()));
+    }
+    
+    public boolean hasSavepoint() {
+        return (getSavepointName() != null);
+    }
+    
 }
 

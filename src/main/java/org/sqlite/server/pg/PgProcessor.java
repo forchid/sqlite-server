@@ -346,7 +346,6 @@ public class PgProcessor extends Processor {
                 sendParseComplete();
             } catch (SQLException e) {
                 sendErrorResponse(e);
-                flush = true;
             }
             break;
         }
@@ -358,7 +357,6 @@ public class PgProcessor extends Processor {
             Prepared prep = prepared.get(prepName);
             if (prep == null) {
                 sendErrorResponse("Prepared not found");
-                flush = true;
                 break;
             }
             portal.prep = prep;
@@ -375,7 +373,6 @@ public class PgProcessor extends Processor {
                 }
             } catch (SQLException e) {
                 sendErrorResponse(e);
-                flush = true;
                 break;
             }
             int resultCodeCount = readShort();
@@ -414,21 +411,18 @@ public class PgProcessor extends Processor {
                 Prepared p = prepared.get(name);
                 if (p == null) {
                     sendErrorResponse("Prepared not found: " + name);
-                    flush = true;
                 } else {
                     try {
                         sendParameterDescription(p.prep.getParameterMetaData(), p.paramType);
                         sendRowDescription(p.prep.getMetaData());
                     } catch (SQLException e) {
                         sendErrorResponse(e);
-                        flush = true;
                     }
                 }
             } else if (type == 'P') {
                 Portal p = portals.get(name);
                 if (p == null) {
                     sendErrorResponse("Portal not found: " + name);
-                    flush = true;
                 } else {
                     PreparedStatement prep = p.prep.prep;
                     try {
@@ -436,13 +430,11 @@ public class PgProcessor extends Processor {
                         sendRowDescription(meta);
                     } catch (SQLException e) {
                         sendErrorResponse(e);
-                        flush = true;
                     }
                 }
             } else {
                 server.trace(log, "expected S or P, got {}", type);
                 sendErrorResponse("expected S or P");
-                flush = true;
             }
             break;
         }
@@ -452,7 +444,6 @@ public class PgProcessor extends Processor {
             Portal p = portals.get(name);
             if (p == null) {
                 sendErrorResponse("Portal not found: " + name);
-                flush = true;
                 break;
             }
             int maxRows = readShort();
@@ -477,7 +468,6 @@ public class PgProcessor extends Processor {
                         sendCommandComplete(command, prepared.sql, 0, result);
                     } catch (SQLException e) {
                         sendErrorResponse(e);
-                        flush = true;
                     }
                 } else {
                     int n = prep.getUpdateCount();
@@ -489,7 +479,6 @@ public class PgProcessor extends Processor {
                 } else {
                     sendErrorResponse(e);
                 }
-                flush = true;
             }
             break;
         }

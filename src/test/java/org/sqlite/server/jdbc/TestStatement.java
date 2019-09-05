@@ -20,14 +20,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import org.sqlite.server.TestBase;
+import org.sqlite.server.TestDbBase;
 
 /**
  * @author little-pan
  * @since 2019-08-31
  *
  */
-public class TestStatement extends TestBase {
+public class TestStatement extends TestDbBase {
     
     public static void main(String args[]) throws SQLException {
         new TestStatement().test();

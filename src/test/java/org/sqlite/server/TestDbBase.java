@@ -15,31 +15,28 @@
  */
 package org.sqlite.server;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-
-import junit.framework.TestCase;
 
 /**
  * @author little-pan
- * @since 2019-08-31
+ * @since 2019-09-05
  *
  */
-public abstract class TestBase extends TestCase {
+public abstract class TestDbBase extends TestBase {
+    protected static String url = "jdbc:postgresql://localhost:"+SQLiteServer.PORT_DEFAULT+"/test.db";
+    protected static String user = "root";
+    protected static String password = "123456";
     
-    public abstract void test() throws SQLException;
+    protected static final SQLiteServer server;
+    static {
+        server = new SQLiteServer();
+        server.bootAsync("-p", password);
+    }
     
-    protected static void printfln(String format, Object ...args) {
-        printf(format + System.getProperty("line.separator"), args);
+    protected Connection getConnection() throws SQLException {
+        return (DriverManager.getConnection(url, user, password));
     }
 
-    protected static void printf(String format, Object ...args) {
-        DateFormat df = new SimpleDateFormat("HH:mm:ss.SSS");
-        String prefix = String.format("%s[%s] ", 
-                df.format(new Date()), Thread.currentThread().getName());
-        System.out.printf(prefix +format, args);
-    }
-    
 }

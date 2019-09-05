@@ -9,6 +9,6 @@ set CLASSPATH=%BINDIR%\target\classes;^
 
 rem mvn dependency:copy-dependencies -DoutputDirectory="%BINDIR%\lib"
 
-java -Dsqlite.server.protocol.trace=true -Dsqlite.server.io.dump=true %*
+java %*
 
 endlocal

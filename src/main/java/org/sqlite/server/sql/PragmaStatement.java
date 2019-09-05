@@ -24,6 +24,7 @@ package org.sqlite.server.sql;
  */
 public class PragmaStatement extends SQLStatement {
     
+    protected String schemaName;
     protected String name;
     protected String value;
     
@@ -33,6 +34,14 @@ public class PragmaStatement extends SQLStatement {
 
     public PragmaStatement(String sql, String command, boolean query) {
         super(sql, command, query);
+    }
+    
+    public String getSchemaName() {
+        return schemaName;
+    }
+    
+    public void setSchemaName(String schemaName) {
+        this.schemaName = schemaName;
     }
     
     public String getName() {

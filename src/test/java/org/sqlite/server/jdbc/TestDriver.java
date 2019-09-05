@@ -18,14 +18,14 @@ package org.sqlite.server.jdbc;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-import org.sqlite.server.TestBase;
+import org.sqlite.server.TestDbBase;
 
 /**
  * @author little-pan
  * @since 2019-08-31
  *
  */
-public class TestDriver extends TestBase {
+public class TestDriver extends TestDbBase {
     
     public static void main(String[] args) throws SQLException {
         new TestDriver().test();

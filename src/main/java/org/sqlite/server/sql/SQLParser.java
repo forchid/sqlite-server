@@ -27,7 +27,7 @@ import java.util.NoSuchElementException;
  * @since 2019-09-04
  *
  */
-public class SQLParser implements Iterator<SQLStatement> {
+public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement> {
     
     protected final SQLReader reader;
     protected int bi, ei;
@@ -41,6 +41,11 @@ public class SQLParser implements Iterator<SQLStatement> {
     
     public SQLParser(Reader reader) {
         this.reader = new SQLReader(reader);
+    }
+    
+    @Override
+    public Iterator<SQLStatement> iterator() {
+        return this;
     }
     
     @Override
@@ -94,7 +99,7 @@ public class SQLParser implements Iterator<SQLStatement> {
         String s = this.sql;
         int len = s.length();
         
-        skipSpaces();
+        skipSpacesIf();
         if ((this.ei == len) || 
                 (this.ei + 1 == len && ';' == s.charAt(this.ei))) {
             return new SQLStatement(s);
@@ -102,7 +107,7 @@ public class SQLParser implements Iterator<SQLStatement> {
         
         this.bi = this.ei;
         for (;;) {
-            char c = s.charAt(this.ei);
+            char c = s.charAt(this.ei++);
             switch (c) {
             case '-':
                 nextChar('-');
@@ -214,17 +219,39 @@ public class SQLParser implements Iterator<SQLStatement> {
     
     protected SQLStatement parseSavepoint() {
         nextString("vepoint");
-        return new SQLStatement(this.sql, "SAVEPOINT");
+        skipIgnorable();
+        String savepointName = nextString();
+        return new TransactionStatement(this.sql, "SAVEPOINT", savepointName);
     }
 
     protected SQLStatement parseRelease() {
         nextString("ease");
-        return new SQLStatement(this.sql, "RELEASE");
+        skipIgnorable();
+        if (nextStringIf("savepoint") != -1) {
+            skipIgnorable();
+        }
+        String savepointName = nextString();
+        return new TransactionStatement(this.sql, "RELEASE", savepointName);
     }
 
     protected SQLStatement parseRollback() {
-        nextString("ollback");
-        return new TransactionStatement(this.sql, "ROLLBACK"); 
+        nextString("llback");
+        
+        skipIgnorableIf();
+        if (nextStringIf("transaction") != -1) {
+            skipIgnorableIf();
+        }
+        
+        if (nextStringIf("to") != -1) {
+            skipIgnorable();
+            if (nextStringIf("savepoint") != -1) {
+                skipIgnorable();
+            }
+            String savepointName = nextString();
+            return new TransactionStatement(this.sql, "ROLLBACK", savepointName); 
+        }
+        
+        return new TransactionStatement(this.sql, "ROLLBACK");
     }
 
     protected SQLStatement parseVacuum() {
@@ -238,7 +265,7 @@ public class SQLParser implements Iterator<SQLStatement> {
     }
 
     protected SQLStatement parseSelect() {
-        nextString("elect");
+        nextString("lect");
         return new SQLStatement(this.sql, "SELECT", true);
     }
 
@@ -254,12 +281,22 @@ public class SQLParser implements Iterator<SQLStatement> {
 
     protected SQLStatement parsePragma() {
         PragmaStatement stmt;
+        String schemaName = null;
         String name, value;
         
         nextString("ragma");
+        
+        // parse [schema-name.]pragma-name
         skipIgnorable();
         name = nextString();
         skipIgnorableIf();
+        if (nextCharIf('.') != -1) {
+            skipIgnorableIf();
+            schemaName = name;
+            name = nextString();
+            skipIgnorableIf();
+        }
+        
         if (nextCharIf('=') != -1) {
             skipIgnorableIf();
             value = nextExpr();
@@ -276,8 +313,9 @@ public class SQLParser implements Iterator<SQLStatement> {
             nextCharIf(';');
             stmt = new PragmaStatement(this.sql, "PRAGMA", true);
         }
-        stmt.setName(name);
         
+        stmt.setSchemaName(schemaName);
+        stmt.setName(name);
         return stmt;
     }
 
@@ -536,25 +574,25 @@ public class SQLParser implements Iterator<SQLStatement> {
         int i = 0, len = s.length();
         boolean forward= false;
         for (; i < len; ) {
-            if(nextCharIf(s.charAt(i), ignoreCase, forward) == -1) {
+            if(nextCharIf(s.charAt(i), ignoreCase, forward, i) == -1) {
                 break;
             }
             ++i;
         }
         if (i == len) {
-            return (this.ei = i);
+            return (this.ei += i);
         }
         
         return -1;
     }
     
     protected int nextCharIf(char c) {
-        return nextCharIf(c, true, true);
+        return nextCharIf(c, true, true, 0);
     }
     
-    protected int nextCharIf(char c, boolean ignoreCase, boolean forward) {
+    protected int nextCharIf(char c, boolean ignoreCase, boolean forward, int offset) {
         int len = this.sql.length();
-        int i = this.ei;
+        int i = this.ei + offset;
         if (i < len) {
             char a = this.sql.charAt(i++);
             if (a == c || (ignoreCase && toLowerCase(a) == toLowerCase(c))) {
@@ -584,7 +622,7 @@ public class SQLParser implements Iterator<SQLStatement> {
     
     protected void nextChar(char c, boolean ignoreCase) {
         boolean forward = true;
-        if (nextCharIf(c, ignoreCase, forward) == -1) {
+        if (nextCharIf(c, ignoreCase, forward, 0) == -1) {
             throw syntaxError();
         }
     }
@@ -691,13 +729,20 @@ public class SQLParser implements Iterator<SQLStatement> {
         int len = s.length();
         
         for (; i < len; ) {
-            char c = s.charAt(i++);
+            char c = s.charAt(i);
             if (c > 32 && c != 127) {
+                if (i == this.ei) {
+                    return -1;
+                }
                 return (this.ei = i);
             }
+            ++i;
+        }
+        if (i == this.ei) {
+            return -1;
         }
        
-        return -1;
+        return (this.ei = i);
     }
     
     protected void skipIgnorable() {
@@ -720,7 +765,11 @@ public class SQLParser implements Iterator<SQLStatement> {
     }
     
     protected SQLParseException syntaxError() {
+        if (this.ei < this.sql.length()) {
+            return new SQLParseException(this.sql.substring(0, this.ei + 1) + "^");
+        }
+        
         return new SQLParseException(this.sql.substring(0, this.ei) + "^");
     }
-    
+
 }

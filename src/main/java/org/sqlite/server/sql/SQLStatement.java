@@ -87,4 +87,9 @@ public class SQLStatement {
         this.empty = empty;
     }
     
+    @Override
+    public String toString() {
+        return this.sql;
+    }
+    
 }
