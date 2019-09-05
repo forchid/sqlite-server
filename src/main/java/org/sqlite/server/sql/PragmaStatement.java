@@ -19,7 +19,7 @@ package org.sqlite.server.sql;
  * PRAGMA [schema-name.]pragma-name [=pragma-value | (pragma-value)]
  * 
  * @author little-pan
- * @since 2019年9月5日
+ * @since 2019-09-05
  *
  */
 public class PragmaStatement extends SQLStatement {
