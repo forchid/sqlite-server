@@ -15,8 +15,6 @@
  */
 package org.sqlite.server.sql;
 
-import java.io.IOException;
-import java.io.StringReader;
 import java.sql.SQLException;
 
 import org.sqlite.server.TestBase;
@@ -82,7 +80,7 @@ public class TestSQLReader extends TestBase {
     }
 
     protected void sqlTest(String sqls, String ... results) throws SQLException {
-        try (SQLReader reader = new SQLReader(new StringReader(sqls))) {
+        try (SQLReader reader = new SQLReader(sqls)) {
             String stmt;
             // test per stmt
             for (String res : results) {
@@ -92,8 +90,6 @@ public class TestSQLReader extends TestBase {
             // EOF
             stmt = reader.readStatement();
             assertTrue(stmt == null);
-        } catch (IOException e) {
-            throw new SQLException("Can't read sql statement", e);
         }
     }
     
