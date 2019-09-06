@@ -19,6 +19,7 @@ import java.sql.SQLException;
 import java.util.NoSuchElementException;
 
 import org.sqlite.server.TestBase;
+import org.sqlite.server.util.IoUtils;
 
 /**
  * @author little-pan
@@ -33,6 +34,8 @@ public class TestSQLParser extends TestBase {
 
     @Override
     public void test() throws SQLException {
+        closeTest("select 1;");
+        
         emptyTest(";", 1);
         emptyTest(" ;", 1);
         emptyTest("; ", 2);
@@ -603,6 +606,15 @@ public class TestSQLParser extends TestBase {
             parser.remove();
         }
         overTest(parser, i, stmts);
+    }
+    
+    private void closeTest(String sql) {
+        SQLParser parser = new SQLParser(sql);
+        assertTrue(parser.isOpen());
+        assertTrue(parser.hasNext());
+        IoUtils.close(parser);
+        assertTrue(!parser.isOpen());
+        assertTrue(!parser.hasNext());
     }
     
     private void overTest(SQLParser parser, int n, int stmts) {

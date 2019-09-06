@@ -21,13 +21,15 @@ import java.io.Reader;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+import org.sqlite.server.util.IoUtils;
+
 /**A simple SQL parser.
  * 
  * @author little-pan
  * @since 2019-09-04
  *
  */
-public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement> {
+public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>, AutoCloseable {
     
     protected final SQLReader reader;
     protected int bi, ei;
@@ -75,6 +77,19 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         throw new IllegalStateException();
+    }
+    
+    public boolean isOpen () {
+        return this.reader.isOpen();
+    }
+    
+    @Override
+    public void close() {
+        try {
+            IoUtils.close(this.reader);
+        } finally {
+            reset();
+        }
     }
     
     protected void reset() {
@@ -766,10 +781,6 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     }
     
     protected SQLParseException syntaxError() {
-        if (this.ei < this.sql.length()) {
-            return new SQLParseException(this.sql.substring(0, this.ei + 1) + "^");
-        }
-        
         return new SQLParseException(this.sql.substring(0, this.ei) + "^");
     }
 

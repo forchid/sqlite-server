@@ -27,7 +27,6 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.StringReader;
 import java.net.Socket;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -50,7 +49,9 @@ import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.Processor;
-import org.sqlite.server.sql.SQLReader;
+import org.sqlite.server.sql.SQLParseException;
+import org.sqlite.server.sql.SQLParser;
+import org.sqlite.server.sql.SQLStatement;
 import org.sqlite.server.util.DateTimeUtils;
 import org.sqlite.server.util.IoUtils;
 import org.sqlite.server.util.SecurityUtils;
@@ -302,6 +303,9 @@ public class PgProcessor extends Processor {
             boolean failed = true;
             try {
                 conn = server.newSQLiteConnection(this.databaseName);
+                if (server.isTrace()) {
+                    server.trace(log, "SQLiteConn init: autocommit {}", conn.getAutoCommit());
+                }
                 setConnection(conn);
                 sendAuthenticationOk();
                 failed = false;
@@ -450,9 +454,10 @@ public class PgProcessor extends Processor {
             Prepared prepared = p.prep;
             PreparedStatement prep = prepared.prep;
             server.trace(log, "execute SQL {}", prepared.sql);
-            try {
+            try (SQLParser parser = new SQLParser(prepared.sql)) {
                 prep.setMaxRows(maxRows);
-                String command = parseCommandType(prepared.sql);
+                SQLStatement sql = parser.next();
+                String command = sql.getCommand();
                 
                 txTryBegin(command);
                 boolean result = prep.execute();
@@ -465,14 +470,16 @@ public class PgProcessor extends Processor {
                         while (rs.next()) {
                             sendDataRow(rs, p.resultColumnFormat);
                         }
-                        sendCommandComplete(command, prepared.sql, 0, result);
+                        sendCommandComplete(sql, 0, result);
                     } catch (SQLException e) {
                         sendErrorResponse(e);
                     }
                 } else {
                     int n = prep.getUpdateCount();
-                    sendCommandComplete(command, prepared.sql, n, result);
+                    sendCommandComplete(sql, n, result);
                 }
+            } catch (SQLParseException e) {
+                sendErrorResponse(e);
             } catch (SQLException e) {
                 if (isCanceled(e)) {
                     sendCancelQueryResponse();
@@ -492,23 +499,25 @@ public class PgProcessor extends Processor {
             server.trace(log, "Query");
             flush = true;
             String query = readString();
-            try (SQLReader reader = new SQLReader(new StringReader(query))){
+            try (SQLParser parser = new SQLParser(query)){
                 Connection conn = getConnection();
                 while (true) {
                     Statement stat = null;
-                    String s = null;
+                    SQLStatement s = null;
                     try {
-                        s = reader.readStatement();
-                        if (s == null) {
+                        if (!parser.hasNext()) {
                             break;
                         }
-                        s = getSQL(s);
+                        s = parser.next();
+                        if (s == null || s.isEmpty()) {
+                            break;
+                        }
                         stat = conn.createStatement();
-                        String command = parseCommandType(s);
+                        String command = s.getCommand();
                         
                         txTryBegin(command);
                         server.trace(log, "execute SQL {}", s);
-                        boolean result = stat.execute(s);
+                        boolean result = stat.execute(s.getSQL());
                         txTryFinish(command);
                         
                         if (result) {
@@ -519,15 +528,18 @@ public class PgProcessor extends Processor {
                                 while (rs.next()) {
                                     sendDataRow(rs, null);
                                 }
-                                sendCommandComplete(command, s, 0, result);
+                                sendCommandComplete(s, 0, result);
                             } catch (SQLException e) {
                                 sendErrorResponse(e);
                                 break;
                             }
                         } else {
                             int n = stat.getUpdateCount();
-                            sendCommandComplete(command, s, n, result);
+                            sendCommandComplete(s, n, result);
                         }
+                    } catch (SQLParseException e) {
+                        sendErrorResponse(e);
+                        break;
                     } catch (SQLException e) {
                         if (stat != null && isCanceled(e)) {
                             sendCancelQueryResponse();
@@ -557,15 +569,18 @@ public class PgProcessor extends Processor {
         return flush;
     }
     
-    private void txTryBegin(String command) {
+    private void txTryBegin(String command) throws SQLException {
         SQLiteConnection conn = getConnection();
         if ("BEGIN".equals(command)) {
             server.trace(log, "tx begin");
             conn.getConnectionConfig().setAutoCommit(false);
         }
+        if (server.isTrace()) {
+            server.trace(log, "SQLiteConn execute: autocommit {} ->", conn.getAutoCommit());
+        }
     }
     
-    private void txTryFinish(String command) {
+    private void txTryFinish(String command) throws SQLException {
         SQLiteConnection conn = getConnection();
         switch (command) {
         case "COMMIT":
@@ -574,6 +589,9 @@ public class PgProcessor extends Processor {
             conn.getConnectionConfig().setAutoCommit(true);
             server.trace(log, "tx finish");
             break;
+        }
+        if (server.isTrace()) {
+            server.trace(log, "SQLiteConn execute: autocommit {} <-", conn.getAutoCommit());
         }
     }
     
@@ -689,33 +707,36 @@ public class PgProcessor extends Processor {
         sendMessage();
     }
     
-    private void sendCommandComplete(String command, String sql, int updateCount, boolean resultSet)
+    private void sendCommandComplete(SQLStatement sql, int updateCount, boolean resultSet)
             throws IOException {
+        String command = sql.getCommand();
+        
         startMessage('C');
         switch (command) {
         case "INSERT":
             writeStringPart("INSERT 0 ");
-            writeString(Integer.toString(updateCount));
+            writeString(updateCount + "");
             break;
         case "UPDATE":
             writeStringPart("UPDATE ");
-            writeString(Integer.toString(updateCount));
+            writeString(updateCount + "");
             break;
         case "DELETE":
             writeStringPart("DELETE ");
-            writeString(Integer.toString(updateCount));
+            writeString(updateCount + "");
             break;
         case "SELECT":
         case "CALL":
+        case "PRAGMA":
             writeString("SELECT");
             break;
         case "BEGIN":
             writeString("BEGIN");
             break;
         default:
-            server.trace(log, "check CommandComplete tag for command {}", sql);
-            writeStringPart(resultSet? "SELECT": "UPDATE ");
-            writeString(Integer.toString(updateCount));
+            server.trace(log, "check CommandComplete tag for command {}", command);
+            writeStringPart(sql.isQuery()? "SELECT": "UPDATE ");
+            writeString(updateCount + "");
         }
         sendMessage();
     }
@@ -724,6 +745,13 @@ public class PgProcessor extends Processor {
         SQLiteErrorCode error = SQLiteErrorCode.SQLITE_AUTH;
         sendErrorResponse(new SQLException(error.message, "28000", error.code));
         stop();
+    }
+    
+    private void sendErrorResponse(SQLParseException e) throws IOException {
+        SQLiteErrorCode code = SQLiteErrorCode.SQLITE_ERROR;
+        String message = format("SQL error, %s", e.getMessage());
+        SQLException sqlError = new SQLException(message, "42000", code.code);
+        sendErrorResponse(sqlError);
     }
     
     private void sendErrorResponse(SQLException e) throws IOException {
@@ -814,13 +842,15 @@ public class PgProcessor extends Processor {
         char c;
         try {
             SQLiteConnection conn = getConnection();
-            if (conn.getAutoCommit()) {
+            boolean autocommit = conn.getAutoCommit();
+            if (autocommit) {
                 // idle
                 c = 'I';
             } else {
                 // in a transaction block
                 c = 'T';
             }
+            server.trace(log, "SQLiteConn ready: autocommit {}", autocommit);
         } catch (SQLException e) {
             // failed transaction block
             c = 'E';
@@ -1055,23 +1085,6 @@ public class PgProcessor extends Processor {
     
     private static long toPostgreDays(long dateValue) {
         return DateTimeUtils.absoluteDayFromDateValue(dateValue) - 10_957;
-    }
-    
-    private String parseCommandType(String sql) {
-        String command;
-        int i = sql.indexOf(' ');
-        if (i == -1) {
-            if (sql.endsWith(";")) {
-                sql = sql.substring(0, sql.length() - 1);
-            }
-            command = sql;
-        } else {
-            command = sql.substring(0, i);
-        }
-        command = StringUtils.toUpperEnglish(command);
-        
-        getServer().trace(log, "command {}", command);
-        return command;
     }
     
     /**
