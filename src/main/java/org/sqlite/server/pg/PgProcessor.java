@@ -464,9 +464,23 @@ public class PgProcessor extends Processor {
                 
                 // Set correct autoCommit for transaction status 
                 // in readyForQuery() response
-                txTryBegin(sql);
-                boolean result = prep.execute();
-                txTryFinish(sql);
+                boolean txBegin = tryBegin(sql);
+                boolean exeFail = true, result = false;
+                try {
+                    result = prep.execute();
+                    if (!txBegin && sql.isTransaction()) {
+                        TransactionStatement txSql = (TransactionStatement)sql;
+                        if (txSql.isSavepoint()) {
+                            this.savepointStack.push(txSql);
+                        }
+                    }
+                    exeFail= false;
+                } finally {
+                    if (exeFail && txBegin) {
+                        resetAutoCommit();
+                    }
+                }
+                tryFinish(sql);
                 
                 if (result) {
                     try {
@@ -508,21 +522,35 @@ public class PgProcessor extends Processor {
                 Connection conn = getConnection();
                 while (true) {
                     Statement stat = null;
-                    SQLStatement s = null;
+                    SQLStatement sql = null;
                     try {
                         if (!parser.hasNext()) {
                             break;
                         }
-                        s = parser.next();
-                        if (s == null || s.isEmpty()) {
+                        sql = parser.next();
+                        if (sql == null || sql.isEmpty()) {
                             break;
                         }
                         stat = conn.createStatement();
+                        server.trace(log, "execute SQL {}", sql);
                         
-                        txTryBegin(s);
-                        server.trace(log, "execute SQL {}", s);
-                        boolean result = stat.execute(s.getSQL());
-                        txTryFinish(s);
+                        boolean txBegin = tryBegin(sql);
+                        boolean exeFail = true, result = false;
+                        try {
+                            result = stat.execute(sql.getSQL());
+                            if (!txBegin && sql.isTransaction()) {
+                                TransactionStatement txSql = (TransactionStatement)sql;
+                                if (txSql.isSavepoint()) {
+                                    this.savepointStack.push(txSql);
+                                }
+                            }
+                            exeFail= false;
+                        } finally {
+                            if (txBegin && exeFail) {
+                                resetAutoCommit();
+                            }
+                        }
+                        tryFinish(sql);
                         
                         if (result) {
                             ResultSet rs = stat.getResultSet();
@@ -532,14 +560,14 @@ public class PgProcessor extends Processor {
                                 while (rs.next()) {
                                     sendDataRow(rs, null);
                                 }
-                                sendCommandComplete(s, 0, result);
+                                sendCommandComplete(sql, 0, result);
                             } catch (SQLException e) {
                                 sendErrorResponse(e);
                                 break;
                             }
                         } else {
                             int n = stat.getUpdateCount();
-                            sendCommandComplete(s, n, result);
+                            sendCommandComplete(sql, n, result);
                         }
                     } catch (SQLParseException e) {
                         sendErrorResponse(e);
@@ -573,28 +601,27 @@ public class PgProcessor extends Processor {
         return flush;
     }
     
-    private void txTryBegin(SQLStatement sql) throws SQLException {
+    private boolean tryBegin(SQLStatement sql) throws SQLException {
+        boolean success = false;
         SQLiteConnection conn = getConnection();
-        if (sql.isTransaction()) {
+        if (sql.isTransaction() && conn.getAutoCommit()) {
             TransactionStatement txSql = (TransactionStatement)sql;
-            boolean savepoint = false;
-            if (txSql.isBegin() || (savepoint=txSql.isSavepoint())) {
-                if (conn.getAutoCommit()) {
-                    server.trace(log, "tx: begin");
-                    this.savepointStack.clear();
-                    conn.getConnectionConfig().setAutoCommit(false);
-                    this.savepointStack.push(txSql);
-                } else if (savepoint) {
-                    this.savepointStack.push(txSql);
-                }
+            if (txSql.isBegin() || txSql.isSavepoint()) {
+                server.trace(log, "tx: begin");
+                this.savepointStack.clear();
+                conn.getConnectionConfig().setAutoCommit(false);
+                this.savepointStack.push(txSql);
+                success = true;
             } 
         }
         if (server.isTrace()) {
             server.trace(log, "SQLiteConn execute: autocommit {} ->", conn.getAutoCommit());
         }
+        
+        return success;
     }
     
-    private void txTryFinish(SQLStatement sql) throws SQLException {
+    private void tryFinish(SQLStatement sql) throws SQLException {
         SQLiteConnection conn = getConnection();
         if (sql.isTransaction()) {
             TransactionStatement txSql = (TransactionStatement)sql;
@@ -636,6 +663,12 @@ public class PgProcessor extends Processor {
         if (server.isTrace()) {
             server.trace(log, "SQLiteConn execute: autocommit {} <-", conn.getAutoCommit());
         }
+    }
+    
+    private void resetAutoCommit() {
+        getConnection().getConnectionConfig()
+        .setAutoCommit(true);
+        this.savepointStack.clear();
     }
     
     private static boolean isCanceled(SQLException e) {
