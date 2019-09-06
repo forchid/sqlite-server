@@ -305,6 +305,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         } else if(nextCharIf('(') != -1) {
             skipIgnorableIf();
             value = nextExpr();
+            skipIgnorableIf();
             nextChar(')');
             stmt = new PragmaStatement(this.sql, "PRAGMA");
             stmt.setValue(value);
@@ -441,8 +442,8 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         if (i < len) {
             StringBuilder sb = new StringBuilder();
             sb.append(pfx);
-            for (; i < len;) {
-                char c = s.charAt(i++);
+            for (; i < len; ++i) {
+                char c = s.charAt(i);
                 if ((c >= '0' && c <= '9')) {
                     sb.append(c);
                     continue;
