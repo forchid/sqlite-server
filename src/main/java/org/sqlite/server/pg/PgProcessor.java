@@ -42,6 +42,8 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map.Entry;
 import java.util.Stack;
 
 import org.slf4j.Logger;
@@ -75,6 +77,8 @@ public class PgProcessor extends Processor {
     private static final int AUTH_REQ_PASSWORD = 3;
     private static final int AUTH_REQ_MD5 = 5;
     
+    protected static final String UNNAMED  = "";
+    
     private final int secret;
     private AuthMethod authMethod;
     
@@ -90,7 +94,7 @@ public class PgProcessor extends Processor {
     private String clientEncoding = "UTF-8";
     private String dateStyle = "ISO, MDY";
     
-    private boolean initDone;
+    private boolean initDone, xQueryFailed;
     private final HashMap<String, Prepared> prepared = new HashMap<>();
     private final HashMap<String, Portal> portals = new HashMap<>();
     private final Stack<TransactionStatement> savepointStack;
@@ -227,6 +231,10 @@ public class PgProcessor extends Processor {
         
         byte[] data = new byte[len];
         this.dataIn.readFully(data, 0, len);
+        if (this.xQueryFailed && 'S' != x) {
+            server.trace(log, "Discard any message for xQuery error detected until Sync");
+            return false;
+        }
         this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 0, len));
         
         boolean flush = false;
@@ -329,6 +337,9 @@ public class PgProcessor extends Processor {
             p.name = readString();
             p.sql = getSQL(readString());
             server.trace(log, "name {}, SQL {}", p.name, p.sql);
+            if (UNNAMED.equals(p.name)) {
+                destroyPrepared(UNNAMED);
+            }
             int paramTypesCount = readShort();
             int[] paramTypes = null;
             if (paramTypesCount > 0) {
@@ -353,6 +364,7 @@ public class PgProcessor extends Processor {
                 prepared.put(p.name, p);
                 sendParseComplete();
             } catch (SQLException e) {
+                this.xQueryFailed = true;
                 sendErrorResponse(e);
             }
             break;
@@ -364,6 +376,7 @@ public class PgProcessor extends Processor {
             String prepName = readString();
             Prepared prep = prepared.get(prepName);
             if (prep == null) {
+                this.xQueryFailed = true;
                 sendErrorResponse("Prepared not found");
                 break;
             }
@@ -380,6 +393,7 @@ public class PgProcessor extends Processor {
                     setParameter(prep.prep, prep.paramType[i], i, formatCodes);
                 }
             } catch (SQLException e) {
+                this.xQueryFailed = true;
                 sendErrorResponse(e);
                 break;
             }
@@ -397,10 +411,7 @@ public class PgProcessor extends Processor {
             char type = (char) readByte();
             String name = readString();
             if (type == 'S') {
-                Prepared p = prepared.remove(name);
-                if (p != null) {
-                    IoUtils.close(p.prep);
-                }
+                destroyPrepared(name);
             } else if (type == 'P') {
                 portals.remove(name);
             } else {
@@ -418,12 +429,14 @@ public class PgProcessor extends Processor {
             if (type == 'S') {
                 Prepared p = prepared.get(name);
                 if (p == null) {
+                    this.xQueryFailed = true;
                     sendErrorResponse("Prepared not found: " + name);
                 } else {
                     try {
                         sendParameterDescription(p.prep.getParameterMetaData(), p.paramType);
                         sendRowDescription(p.prep.getMetaData());
                     } catch (SQLException e) {
+                        this.xQueryFailed = true;
                         sendErrorResponse(e);
                     }
                 }
@@ -437,11 +450,13 @@ public class PgProcessor extends Processor {
                         ResultSetMetaData meta = prep.getMetaData();
                         sendRowDescription(meta);
                     } catch (SQLException e) {
+                        this.xQueryFailed = true;
                         sendErrorResponse(e);
                     }
                 }
             } else {
                 server.trace(log, "expected S or P, got {}", type);
+                this.xQueryFailed = true;
                 sendErrorResponse("expected S or P");
             }
             break;
@@ -451,6 +466,7 @@ public class PgProcessor extends Processor {
             String name = readString();
             Portal p = portals.get(name);
             if (p == null) {
+                this.xQueryFailed = true;
                 sendErrorResponse("Portal not found: " + name);
                 break;
             }
@@ -491,6 +507,7 @@ public class PgProcessor extends Processor {
                         }
                         sendCommandComplete(sql, 0, result);
                     } catch (SQLException e) {
+                        this.xQueryFailed = true;
                         sendErrorResponse(e);
                     }
                 } else {
@@ -498,8 +515,10 @@ public class PgProcessor extends Processor {
                     sendCommandComplete(sql, n, result);
                 }
             } catch (SQLParseException e) {
+                this.xQueryFailed = true;
                 sendErrorResponse(e);
             } catch (SQLException e) {
+                this.xQueryFailed = true;
                 if (isCanceled(e)) {
                     sendCancelQueryResponse();
                 } else {
@@ -510,6 +529,7 @@ public class PgProcessor extends Processor {
         }
         case 'S': {
             server.trace(log, "Sync");
+            this.xQueryFailed = false;
             flush = true;
             sendReadyForQuery();
             break;
@@ -517,8 +537,9 @@ public class PgProcessor extends Processor {
         case 'Q': {
             server.trace(log, "Query");
             flush = true;
+            destroyPrepared(UNNAMED);
             String query = readString();
-            try (SQLParser parser = new SQLParser(query)){
+            try (SQLParser parser = new SQLParser(query)) {
                 Connection conn = getConnection();
                 while (true) {
                     Statement stat = null;
@@ -599,6 +620,22 @@ public class PgProcessor extends Processor {
         }
         
         return flush;
+    }
+    
+    protected void destroyPrepared(String name) {
+        Prepared p = prepared.remove(name);
+        if (p != null) {
+            server.trace(log, "Destroy the named '{}' prepared and it's any portal", name);
+            IoUtils.close(p.prep);
+            // Need to close all generated portals by this prepared
+            Iterator<Entry<String, Portal>> i;
+            for (i = portals.entrySet().iterator(); i.hasNext(); ) {
+                Portal po = i.next().getValue();
+                if (po.prep == p) {
+                    i.remove();
+                }
+            }
+        }
     }
     
     private boolean tryBegin(SQLStatement sql) throws SQLException {
