@@ -48,6 +48,14 @@ public class TestSQLParser extends TestBase {
         commentTest("/*sql--*/--", 1);
         commentTest("/*sql--*/  --", 1);
         commentTest("/*sql--*/\n--", 1);
+        commentTest("/*/**/*/", 1);
+        commentTest("/*b/**/*/", 1);
+        commentTest("/*b/*b*/*/", 1);
+        commentTest("/*b/*b*/b*/", 1);
+        commentTest("/*select 1;/*select 2;*/select 3*/", 1);
+        commentTest("/*select 1;/*select 2;*/select 3;*/", 1);
+        commentTest("/*select 1;/*select 2;*/select 3;*/--c", 1);
+        commentTest("/*select 1;/*select 2;*/select 3;*/ --c", 1);
         
         selectTest("select 1", 1);
         selectTest("select 1;", 1);

@@ -58,6 +58,7 @@ public class SQLReader implements Closeable {
             StringBuilder sb = new StringBuilder();
             boolean blk = false, qot = false;
             char q = 0;
+            int blkDeep = 0;
             
             for (String line = reader.readLine(); 
                     this.open = (line != null); 
@@ -96,10 +97,12 @@ public class SQLReader implements Closeable {
                         break;
                     case '/':
                         if (i < len - 1 && line.charAt(i + 1) == '*') {
-                            if (blk || qot) {
+                            if (qot) {
                                 continue;
                             }
                             blk = true;
+                            // feature: SQL-99 nested block comment
+                            ++blkDeep;
                             sb.append('*');
                             ++i;
                             continue;
@@ -110,7 +113,7 @@ public class SQLReader implements Closeable {
                             if (!blk) {
                                 continue;
                             }
-                            blk = false;
+                            blk = (--blkDeep > 0);
                             sb.append('/');
                             ++i;
                             continue;

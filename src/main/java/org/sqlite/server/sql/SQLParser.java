@@ -722,10 +722,18 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         String s = this.sql;
         int len = s.length();
         int i = this.ei;
+        int deep = 1;
         
         for (;i < len;) {
             char c = s.charAt(i++);
-            if ('*' == c && (i < len && '/' == s.charAt(i++))) {
+            // feature: SQL-99 nested block comment
+            if ('/' == c && (i < len && '*' == s.charAt(i++))) {
+                ++deep;
+                continue;
+            }
+            
+            if ('*' == c && (i < len && '/' == s.charAt(i++)) 
+                    && (--deep == 0)) {
                 break;
             }
         }

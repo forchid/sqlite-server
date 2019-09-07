@@ -62,6 +62,9 @@ public class TestSQLReader extends TestBase {
         sqlTest("/*sql*/\n--select 1;", "/*sql*/\n--select 1;");
         sqlTest("/*sql*/\n/*select 1;*/", "/*sql*/\n/*select 1;*/");
         sqlTest("/**/select /*test*/1", "/**/select /*test*/1");
+        sqlTest("/**/select /*test*/'/**/1'", "/**/select /*test*/'/**/1'");
+        sqlTest("/**/select /*test*/'/**/ 1'", "/**/select /*test*/'/**/ 1'");
+        sqlTest("/**/select /*test*/'/*/**/*/ 1'", "/**/select /*test*/'/*/**/*/ 1'");
         
         sqlTest("/**/select /*test*/1;select 2/*sql*/", 
                 "/**/select /*test*/1;", "select 2/*sql*/");
@@ -77,6 +80,15 @@ public class TestSQLReader extends TestBase {
                 "/**/select /*test*/1;", "select 2/*sql*/");
         sqlTest("/*s--q'l\"*/select /*test*/'/*1-\"';\nselect \"2/*;'-'--*/\"/*sql*/", 
                 "/*s--q'l\"*/select /*test*/'/*1-\"';", "select \"2/*;'-'--*/\"/*sql*/");
+        
+        sqlTest("/*/**/*/", "/*/**/*/");
+        sqlTest("/*b/**/*/", "/*b/**/*/");
+        sqlTest("/*b/*b*/*/", "/*b/*b*/*/");
+        sqlTest("/*b/*b*/b*/", "/*b/*b*/b*/");
+        sqlTest("/*select 1;/*select 2;*/select 3*/", "/*select 1;/*select 2;*/select 3*/");
+        sqlTest("/*select 1;/*select 2;*/select 3;*/", "/*select 1;/*select 2;*/select 3;*/");
+        sqlTest("/*select 1;/*select 2;*/select 3;*/ ", "/*select 1;/*select 2;*/select 3;*/ ");
+        sqlTest("/*select 1;/*select 2;*/select 3;*/ -- c", "/*select 1;/*select 2;*/select 3;*/ -- c");
     }
 
     protected void sqlTest(String sqls, String ... results) throws SQLException {
