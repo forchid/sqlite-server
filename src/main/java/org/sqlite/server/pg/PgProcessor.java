@@ -333,50 +333,70 @@ public class PgProcessor extends Processor {
         }
         case 'P': {
             server.trace(log, "Parse");
+            this.xQueryFailed = true;
             Prepared p = new Prepared();
             p.name = readString();
-            p.sql = getSQL(readString());
-            server.trace(log, "name {}, SQL {}", p.name, p.sql);
-            if (UNNAMED.equals(p.name)) {
-                destroyPrepared(UNNAMED);
-            }
-            int paramTypesCount = readShort();
-            int[] paramTypes = null;
-            if (paramTypesCount > 0) {
-                paramTypes = new int[paramTypesCount];
-                for (int i = 0; i < paramTypesCount; i++) {
-                    paramTypes[i] = readInt();
-                }
-            }
-            try {
-                p.prep = getConnection().prepareStatement(p.sql);
-                ParameterMetaData meta = p.prep.getParameterMetaData();
-                p.paramType = new int[meta.getParameterCount()];
-                for (int i = 0; i < p.paramType.length; i++) {
-                    int type;
-                    if (i < paramTypesCount && paramTypes[i] != 0) {
-                        type = paramTypes[i];
-                    } else {
-                        type = PgServer.convertType(meta.getParameterType(i + 1));
+            try (SQLParser parser = new SQLParser(readString())) {
+                SQLStatement sql = parser.next();
+                // check for single SQL prepared statement
+                for (; parser.hasNext(); ) {
+                    SQLStatement next = parser.next();
+                    if (sql.isEmpty()) {
+                        sql = next;
+                        continue;
                     }
-                    p.paramType[i] = type;
+                    
+                    if (!next.isEmpty()) {
+                        throw new SQLParseException(sql.getSQL()+"^");
+                    }
+                }
+                p.sql = sql;
+                server.trace(log, "name {}, SQL {}", p.name, p.sql);
+                if (UNNAMED.equals(p.name)) {
+                    destroyPrepared(UNNAMED);
+                }
+                int paramTypesCount = readShort();
+                int[] paramTypes = null;
+                if (paramTypesCount > 0) {
+                    paramTypes = new int[paramTypesCount];
+                    for (int i = 0; i < paramTypesCount; i++) {
+                        paramTypes[i] = readInt();
+                    }
+                }
+                
+                if (!p.sql.isEmpty()) {
+                    p.prep = getConnection().prepareStatement(p.sql.getSQL());
+                    ParameterMetaData meta = p.prep.getParameterMetaData();
+                    p.paramType = new int[meta.getParameterCount()];
+                    for (int i = 0; i < p.paramType.length; i++) {
+                        int type;
+                        if (i < paramTypesCount && paramTypes[i] != 0) {
+                            type = paramTypes[i];
+                        } else {
+                            type = PgServer.convertType(meta.getParameterType(i + 1));
+                        }
+                        p.paramType[i] = type;
+                    }  
                 }
                 prepared.put(p.name, p);
+                
                 sendParseComplete();
+                this.xQueryFailed = false;
+            } catch (SQLParseException e) {
+                sendErrorResponse(e);
             } catch (SQLException e) {
-                this.xQueryFailed = true;
                 sendErrorResponse(e);
             }
             break;
         }
         case 'B': {
             server.trace(log, "Bind");
+            this.xQueryFailed = true;
             Portal portal = new Portal();
             portal.name = readString();
             String prepName = readString();
             Prepared prep = prepared.get(prepName);
             if (prep == null) {
-                this.xQueryFailed = true;
                 sendErrorResponse("Prepared not found");
                 break;
             }
@@ -393,7 +413,6 @@ public class PgProcessor extends Processor {
                     setParameter(prep.prep, prep.paramType[i], i, formatCodes);
                 }
             } catch (SQLException e) {
-                this.xQueryFailed = true;
                 sendErrorResponse(e);
                 break;
             }
@@ -403,6 +422,7 @@ public class PgProcessor extends Processor {
                 portal.resultColumnFormat[i] = readShort();
             }
             sendBindComplete();
+            this.xQueryFailed = false;
             break;
         }
         case 'C': {
@@ -424,19 +444,25 @@ public class PgProcessor extends Processor {
         }
         case 'D': {
             server.trace(log, "Describe");
+            this.xQueryFailed = true;
             char type = (char) readByte();
             String name = readString();
             if (type == 'S') {
                 Prepared p = prepared.get(name);
                 if (p == null) {
-                    this.xQueryFailed = true;
                     sendErrorResponse("Prepared not found: " + name);
                 } else {
                     try {
-                        sendParameterDescription(p.prep.getParameterMetaData(), p.paramType);
-                        sendRowDescription(p.prep.getMetaData());
+                        ParameterMetaData paramMeta = null;
+                        ResultSetMetaData rsMeta = null;
+                        if (!p.sql.isEmpty()) {
+                            paramMeta = p.prep.getParameterMetaData();
+                            rsMeta = p.prep.getMetaData();
+                        }
+                        sendParameterDescription(paramMeta, p.paramType);
+                        sendRowDescription(rsMeta);
+                        this.xQueryFailed = false;
                     } catch (SQLException e) {
-                        this.xQueryFailed = true;
                         sendErrorResponse(e);
                     }
                 }
@@ -447,37 +473,46 @@ public class PgProcessor extends Processor {
                 } else {
                     PreparedStatement prep = p.prep.prep;
                     try {
-                        ResultSetMetaData meta = prep.getMetaData();
+                        ResultSetMetaData meta = null;
+                        if (!p.prep.sql.isEmpty()) {
+                            meta = prep.getMetaData();
+                        }
                         sendRowDescription(meta);
+                        this.xQueryFailed = false;
                     } catch (SQLException e) {
-                        this.xQueryFailed = true;
                         sendErrorResponse(e);
                     }
                 }
             } else {
                 server.trace(log, "expected S or P, got {}", type);
-                this.xQueryFailed = true;
                 sendErrorResponse("expected S or P");
             }
             break;
         }
         case 'E': {
             server.trace(log, "Execute");
+            this.xQueryFailed = true;
             String name = readString();
             Portal p = portals.get(name);
             if (p == null) {
-                this.xQueryFailed = true;
                 sendErrorResponse("Portal not found: " + name);
                 break;
             }
             int maxRows = readShort();
             Prepared prepared = p.prep;
-            PreparedStatement prep = prepared.prep;
-            server.trace(log, "execute SQL {}", prepared.sql);
-            try (SQLParser parser = new SQLParser(prepared.sql)) {
+            SQLStatement sql = prepared.sql;
+            server.trace(log, "execute SQL {}", sql);
+            
+            // check empty statement
+            if (sql.isEmpty()) {
+                sendEmptyQueryResponse();
+                this.xQueryFailed = false;
+                break;
+            }
+            
+            try {
+                PreparedStatement prep = prepared.prep;
                 prep.setMaxRows(maxRows);
-                SQLStatement sql = parser.next();
-                
                 // Set correct autoCommit for transaction status 
                 // in readyForQuery() response
                 boolean txBegin = tryBegin(sql);
@@ -506,19 +541,16 @@ public class PgProcessor extends Processor {
                             sendDataRow(rs, p.resultColumnFormat);
                         }
                         sendCommandComplete(sql, 0, result);
+                        this.xQueryFailed = false;
                     } catch (SQLException e) {
-                        this.xQueryFailed = true;
                         sendErrorResponse(e);
                     }
                 } else {
                     int n = prep.getUpdateCount();
                     sendCommandComplete(sql, n, result);
+                    this.xQueryFailed = false;
                 }
-            } catch (SQLParseException e) {
-                this.xQueryFailed = true;
-                sendErrorResponse(e);
             } catch (SQLException e) {
-                this.xQueryFailed = true;
                 if (isCanceled(e)) {
                     sendCancelQueryResponse();
                 } else {
@@ -539,70 +571,78 @@ public class PgProcessor extends Processor {
             flush = true;
             destroyPrepared(UNNAMED);
             String query = readString();
+            
             try (SQLParser parser = new SQLParser(query)) {
-                Connection conn = getConnection();
-                while (true) {
-                    Statement stat = null;
-                    SQLStatement sql = null;
-                    try {
-                        if (!parser.hasNext()) {
-                            break;
+                SQLStatement sql = null;
+                // check empty query string
+                for (; sql == null;) {
+                    if (parser.hasNext()) {
+                        SQLStatement s = parser.next();
+                        if (s.isEmpty()) {
+                            continue;
                         }
-                        sql = parser.next();
-                        if (sql == null || sql.isEmpty()) {
-                            break;
-                        }
-                        stat = conn.createStatement();
-                        server.trace(log, "execute SQL {}", sql);
-                        
-                        boolean txBegin = tryBegin(sql);
-                        boolean exeFail = true, result = false;
+                        sql = s;
+                    }
+                    break;
+                }
+                if (sql == null) {
+                    server.trace(log, "empty query string: {}", query);
+                    sendEmptyQueryResponse();
+                } else {
+                    Connection conn = getConnection();
+                    for (boolean next = true; next; ) {
+                        Statement stat = null;
                         try {
-                            result = stat.execute(sql.getSQL());
-                            if (!txBegin && sql.isTransaction()) {
-                                TransactionStatement txSql = (TransactionStatement)sql;
-                                if (txSql.isSavepoint()) {
-                                    this.savepointStack.push(txSql);
+                            // execute SQL
+                            server.trace(log, "execute SQL {}", sql);
+                            boolean txBegin = tryBegin(sql);
+                            boolean exeFail = true, result = false;
+                            try {
+                                stat = conn.createStatement();
+                                result = stat.execute(sql.getSQL());
+                                if (!txBegin && sql.isTransaction()) {
+                                    TransactionStatement txSql = (TransactionStatement)sql;
+                                    if (txSql.isSavepoint()) {
+                                        this.savepointStack.push(txSql);
+                                    }
+                                }
+                                exeFail= false;
+                            } finally {
+                                if (txBegin && exeFail) {
+                                    resetAutoCommit();
                                 }
                             }
-                            exeFail= false;
-                        } finally {
-                            if (txBegin && exeFail) {
-                                resetAutoCommit();
-                            }
-                        }
-                        tryFinish(sql);
-                        
-                        if (result) {
-                            ResultSet rs = stat.getResultSet();
-                            ResultSetMetaData meta = rs.getMetaData();
-                            try {
+                            tryFinish(sql);
+                            
+                            if (result) {
+                                ResultSet rs = stat.getResultSet();
+                                ResultSetMetaData meta = rs.getMetaData();
                                 sendRowDescription(meta);
-                                while (rs.next()) {
+                                for (; rs.next(); ) {
                                     sendDataRow(rs, null);
                                 }
                                 sendCommandComplete(sql, 0, result);
-                            } catch (SQLException e) {
-                                sendErrorResponse(e);
-                                break;
+                            } else {
+                                int n = stat.getUpdateCount();
+                                sendCommandComplete(sql, n, result);
                             }
-                        } else {
-                            int n = stat.getUpdateCount();
-                            sendCommandComplete(sql, n, result);
+                            
+                            // try next
+                            if (next=parser.hasNext()) {
+                                sql = parser.next();
+                            }
+                        } finally {
+                            IoUtils.close(stat);
                         }
-                    } catch (SQLParseException e) {
-                        sendErrorResponse(e);
-                        break;
-                    } catch (SQLException e) {
-                        if (stat != null && isCanceled(e)) {
-                            sendCancelQueryResponse();
-                        } else {
-                            sendErrorResponse(e);
-                        }
-                        break;
-                    } finally {
-                        IoUtils.close(stat);
-                    }
+                    } // For statements
+                }
+            } catch (SQLParseException e) {
+                sendErrorResponse(e);
+            } catch (SQLException e) {
+                if (isCanceled(e)) {
+                    sendCancelQueryResponse();
+                } else {
+                    sendErrorResponse(e);
                 }
             }
             sendReadyForQuery();
@@ -720,19 +760,6 @@ public class PgProcessor extends Processor {
             return false;
         }
         return true;
-    }
-    
-    private String getSQL(String s) {
-        server.trace(log, "sql {}", s);
-        
-        String lower = StringUtils.toLowerEnglish(s);
-        if (lower.startsWith("show max_identifier_length")) {
-            s = "select 63";
-        } else if (lower.startsWith("set client_encoding to")) {
-            s = "set DATESTYLE ISO";
-        }
-        
-        return s;
     }
     
     private static int getTypeSize(int pgType, int precision) {
@@ -854,6 +881,11 @@ public class PgProcessor extends Processor {
         sendMessage();
     }
     
+    private void sendEmptyQueryResponse() throws IOException {
+        startMessage('I');
+        sendMessage();
+    }
+    
     private void sendErrorAuth() throws IOException {
         SQLiteErrorCode error = SQLiteErrorCode.SQLITE_AUTH;
         sendErrorResponse(new SQLException(error.message, "28000", error.code));
@@ -868,7 +900,7 @@ public class PgProcessor extends Processor {
     }
     
     private void sendErrorResponse(SQLException e) throws IOException {
-        server.traceError(log, "send error", e);
+        server.traceError(log, "send error message", e);
         String sqlState = e.getSQLState();
         if (sqlState == null) {
             sqlState = "HY000";
@@ -916,7 +948,11 @@ public class PgProcessor extends Processor {
     
     private void sendParameterDescription(ParameterMetaData meta, int[] paramTypes) 
             throws IOException, SQLException {
-        int count = meta.getParameterCount();
+        int count = 0;
+        if (meta != null) {
+            count = meta.getParameterCount();
+        }
+        
         startMessage('t');
         writeShort(count);
         for (int i = 0; i < count; i++) {
@@ -1213,7 +1249,7 @@ public class PgProcessor extends Processor {
         /**
          * The SQL statement.
          */
-        String sql;
+        SQLStatement sql;
 
         /**
          * The prepared statement.

@@ -270,7 +270,7 @@ public class SQLiteServer {
     
     public SQLiteConnection newSQLiteConnection(String databaseName) throws SQLException {
         String url = "jdbc:sqlite::memory:";
-        if (!":memory:".equals(databaseName)) {
+        if (!":memory:".equals(databaseName) && !"".equals(databaseName)/* temporary */) {
             url = String.format("jdbc:sqlite:%s", getDbFile(databaseName));
         }
         trace(log, "SQLite connection {}", url);
