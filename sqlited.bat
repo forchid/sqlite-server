@@ -2,6 +2,6 @@
 
 setlocal
 
-call %~dp0\runit.bat org.sqlite.server.SQLiteServer %*
+call %~dp0\runit.bat org.sqlite.server.SQLiteServer boot %*
 
 endlocal

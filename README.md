@@ -9,7 +9,7 @@ A [SQLite](https://www.sqlite.org/index.html) server based on the client/server 
 
 Console 1 Start SQLite server
 ```shell
-$java -Xmx128m org.sqlite.server.SQLiteServer -p 123456
+$java -Xmx128m org.sqlite.server.SQLiteServer boot -p 123456
 2019-09-03 20:30:16.703 [SQLite server 0.3.27] INFO  SQLiteServer - Ready for connections on localhost:3272
 ```
 Console 2 Connect to SQLite server then execute query
@@ -44,5 +44,5 @@ test.db=>
 2. Embedded SQLite server
 ```java
 SQLiteServer server = new SQLiteServer();
-server.bootAsync("-p", "123456");
+server.bootAsync("boot", "-p", "123456");
 ```

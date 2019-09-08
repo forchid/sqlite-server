@@ -22,7 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.server.Processor;
 import org.sqlite.server.SQLiteServer;
-import org.sqlite.server.util.StringUtils;
 
 /**
  * This SQLite server implements a subset of the PostgreSQL protocol.
@@ -35,7 +34,11 @@ public class PgServer extends SQLiteServer {
     static final Logger log = LoggerFactory.getLogger(PgServer.class);
     
     public static final String PG_VERSION = "8.2.23";
-    public static final String AUTH_DEFAULT = "md5";
+    
+    public static final String AUTH_TRUST = "trust";
+    public static final String AUTH_MD5   = "md5";
+    public static final String AUTH_PASSWORD  = "password";
+    public static final String AUTH_DEFAULT   = AUTH_MD5;
     
     /**
      * The VARCHAR type.
@@ -60,16 +63,13 @@ public class PgServer extends SQLiteServer {
     public static final int PG_TYPE_NUMERIC = 1700;
     
     private String key, keyDatabase;
-    private String authMethod = AUTH_DEFAULT;
     
     public static void main(String args[]) {
-        SQLiteServer server = new PgServer();
-        try {
-            server.boot(args);
-        } catch (Exception e) {
-            System.err.println("ERROR: " + e.getMessage());
-            server.help(1);
-        }
+        main(new PgServer(), args);
+    }
+    
+    public PgServer() {
+        this.authMethod = AUTH_DEFAULT;
     }
     
     @Override
@@ -82,30 +82,29 @@ public class PgServer extends SQLiteServer {
                 if ("--key".equals(a) || "-K".equals(a)) {
                     this.key = args[++i];
                     this.keyDatabase = args[++i];
-                } else if ("--auth-method".equals(a) || "-A".equals(a)) {
-                    this.authMethod = StringUtils.toLowerEnglish(args[++i]);
                 }
             }
         }
         
-        // check auth method
+        // check authentication method
         switch (this.authMethod) {
-        case "md5":
+        case AUTH_MD5:
+        case AUTH_PASSWORD:
             if (getPassword() == null) {
-                throw new IllegalArgumentException("No password was provided");
+                help(1, this.command, "No password was provided");
             }
-        case "password":
+            break;
+        case AUTH_TRUST:
             break;
         default:
-            throw new IllegalArgumentException("Unsupported auth method: " + this.authMethod);
+            help(1, this.command, "Unsupported auth method: " + this.authMethod);
         }
     }
     
     @Override
-    public String getHelp() {
-        return super.getHelp() + "\n"
-                + "  --key|-K  <key> <keyDatabase> The database specified by arg key\n"
-                + "  --auth-method|-A <authMethod> Auth method(md5 | password), default "+AUTH_DEFAULT;
+    public String getBootHelp() {
+        return super.getBootHelp() + "\n"
+                + "  --key|-K  <key> <keyDatabase> The database specified by the arg key";
     }
 
     @Override
@@ -118,13 +117,19 @@ public class PgServer extends SQLiteServer {
         return PG_VERSION;
     }
     
-    public String getAuthMethod() {
-        return this.authMethod;
-    }
-    
     @Override
     protected Processor newProcessor(Socket s, int processId) {
         return new PgProcessor(s, processId, this);
+    }
+    
+    @Override
+    public String getAuthMethods() {
+        return AUTH_MD5 + "," + AUTH_PASSWORD + "," + AUTH_TRUST;
+    }
+    
+    @Override
+    public String getAuthDefault() {
+        return AUTH_DEFAULT;
     }
     
     /**

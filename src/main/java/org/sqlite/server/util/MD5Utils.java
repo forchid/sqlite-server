@@ -13,30 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server;
+package org.sqlite.server.util;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 /**
  * @author little-pan
- * @since 2019-09-05
+ * @since 2019-09-08
  *
  */
-public abstract class TestDbBase extends TestBase {
-    protected static String url = "jdbc:postgresql://localhost:"+SQLiteServer.PORT_DEFAULT+"/test.db";
-    protected static String user = "root";
-    protected static String password = "123456";
+public final class MD5Utils {
     
-    protected static final SQLiteServer server;
-    static {
-        server = new SQLiteServer();
-        server.bootAsync("boot", "-p", password);
+    private MD5Utils() {
+        
     }
     
-    protected Connection getConnection() throws SQLException {
-        return (DriverManager.getConnection(url, user, password));
+    public static String encode(String s) {
+        try {
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            byte[] data = md5.digest(s.getBytes("UTF-8"));
+            
+            return ConvertUtils.bytesToHex(data, 0, data.length);
+        } catch (NoSuchAlgorithmException | IOException e) {
+            throw new IllegalStateException("Unable to encode string with MD5", e);
+        }
+            
     }
 
 }

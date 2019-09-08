@@ -118,7 +118,7 @@ public class PgProcessor extends Processor {
             InputStream in = new BufferedInputStream(socket.getInputStream(), bufferSize << 2);
             out = new BufferedOutputStream(socket.getOutputStream(), bufferSize << 4);
             dataIn = new DataInputStream(in);
-            while (!isStopped()) {
+            for (; isRunning(); ) {
                 // Optimize flush()
                 if (process()) {
                     out.flush();
@@ -132,6 +132,10 @@ public class PgProcessor extends Processor {
             server.trace(log, "Disconnect");
             close();
         }
+    }
+    
+    protected boolean isRunning() throws SQLException {
+        return (!isStopped() || !getConnection().getAutoCommit() /* Ongoing tx */);
     }
     
     private void setParameter(PreparedStatement prep,

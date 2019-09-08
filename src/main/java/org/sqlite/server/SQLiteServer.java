@@ -21,6 +21,7 @@ import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -31,12 +32,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteConnection;
+import org.sqlite.SQLiteErrorCode;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.server.pg.PgServer;
 import org.sqlite.server.util.IoUtils;
-import org.sqlite.server.util.StringUtils;
+import static org.sqlite.server.util.StringUtils.*;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
  * and can be started and stopped.
@@ -45,19 +47,28 @@ import org.sqlite.server.util.StringUtils;
  * @since 2019-09-01
  *
  */
-public class SQLiteServer {
+public class SQLiteServer implements AutoCloseable {
     
     static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
     
     public static final String VERSION = "0.3.27";
     public static final String USER_DEFAULT = "root";
+    public static final String METADB_NAME  = "sqlite3.meta";
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 151;
     
+    // command list
+    public static final String CMD_INITDB = "initdb";
+    public static final String CMD_BOOT   = "boot";
+    public static final String CMD_HELP   = "help";
+    
+    protected SQLiteMetadb metadb;
     private SQLiteServer base;
+    protected String command;
     
     private String user = USER_DEFAULT;
     private String password;
+    protected String authMethod;
     
     protected String host = "localhost";
     protected int port = PORT_DEFAULT;
@@ -68,17 +79,87 @@ public class SQLiteServer {
     private final AtomicInteger processCount = new AtomicInteger(0);
     private int maxProcessId;
     
+    protected String protocol = "pg";
     protected ServerSocket serverSocket;
     final ConcurrentMap<Integer, Processor> processors = new ConcurrentHashMap<>();
     private volatile boolean stopped;
     
     public static void main(String args[]) {
-        SQLiteServer server = new SQLiteServer();
+        main(new SQLiteServer(), args);
+    }
+    
+    public static void main(SQLiteServer server, String ... args) {
         try {
+            if (args == null || args.length == 0) {
+                server.help(1);
+                return;
+            }
+            
+            String command = args[0];
+            if (CMD_INITDB.equals(command)) {
+                server.initdb(args);
+                return;
+            }
+            
             server.boot(args);
         } catch (Exception e) {
-            System.err.println("ERROR: " + e.getMessage());
+            System.err.println("[ERROR] " + e.getMessage());
             server.help(1);
+        } finally {
+            IoUtils.close(server);
+        }
+    }
+    
+    public void initdb(String ... args) {
+        init(args);
+        
+        String authMethod = getAuthMethod();
+        if (authMethod == null) {
+            help(1, this.command, "No auth method provided");
+        }
+        
+        // Create super user
+        try {
+            SQLiteUser sa = new SQLiteUser(this.user, this.password, SQLiteUser.SUPER);
+            sa.setAuthMethod(authMethod);
+            sa.setHost(this.host);
+            sa.setProtocol(this.protocol);
+            this.metadb.createUser(sa);
+        } catch (SQLException e) {
+            SQLiteErrorCode existError = SQLiteErrorCode.SQLITE_CONSTRAINT;
+            if (existError.code == e.getErrorCode()) {
+                throw new IllegalStateException("Data dir had been initialized");
+            }
+            throw new IllegalStateException("Initdb fatal: " + e.getMessage(), e);
+        }
+    }
+    
+    protected void initDataDir() {
+        Connection metaConn = null;
+        boolean failed = true;
+        try {
+            this.dataDir = this.dataDir.getCanonicalFile();
+            File baseDir = this.dataDir;
+            if (!baseDir.isDirectory() && !baseDir.mkdirs()) {
+                throw new IllegalStateException("Can't mkdirs data dir " + baseDir);
+            }
+            
+            // init metaDb
+            IoUtils.close(this.metadb);
+            SQLiteConfig config = new SQLiteConfig();
+            config.setJournalMode(JournalMode.DELETE);
+            config.setBusyTimeout(50000);
+            config.setEncoding(Encoding.UTF8);
+            File metaFile = new File(baseDir, METADB_NAME);
+            metaConn = config.createConnection("jdbc:sqlite:"+metaFile);
+            this.metadb = new SQLiteMetadb(metaFile, (SQLiteConnection)metaConn);
+            failed = false;
+        } catch (IOException | SQLException cause) {
+            throw new IllegalStateException(cause);
+        } finally {
+            if (failed) {
+                IoUtils.close(metaConn);
+            }
         }
     }
     
@@ -132,12 +213,19 @@ public class SQLiteServer {
     }
     
     public void init(String... args) {
-        if(args == null) {
-            return;
-        }
         boolean isSelf = (getClass() == SQLiteServer.class);
+        boolean help = false;
+        int i = 0;
         
-        for (int i = 0, argc = args.length; i < argc; i++) {
+        if(args == null || args.length < 1) {
+            help(1);
+        }
+        String command = this.command = args[i++];
+        if (CMD_HELP.equals(command)) {
+            help(0);
+        }
+        
+        for (int argc = args.length; i < argc; i++) {
             String a = args[i];
             if ("--trace".equals(a) || "-T".equals(a)) {
                 trace = true;
@@ -153,27 +241,15 @@ public class SQLiteServer {
                 dataDir = new File(args[++i]);
             } else if ("--max-conns".equals(a)) {
                 maxConns = Integer.decode(args[++i]);
+            } else if ("--auth-method".equals(a) || "-A".equals(a)) {
+                this.authMethod = toLowerEnglish(args[++i]);
             } else if ("--protocol".equals(a) && isSelf && this.base==null) {
-                String proto = StringUtils.toLowerEnglish(args[++i]);
-                if ("pg".equals(proto)) {
-                    this.base = new PgServer();
-                } else {
-                    help(1);
-                }
+                String proto = this.protocol = toLowerEnglish(args[++i]);
+                if ("pg".equals(proto)) this.base = new PgServer();
+                else help(1);
             } else if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
-                help(0);
-            } 
-        }
-        
-        // init dataDir
-        try {
-            this.dataDir = this.dataDir.getCanonicalFile();
-            File baseDir = this.dataDir;
-            if (!baseDir.isDirectory() && !baseDir.mkdirs()) {
-                throw new IllegalStateException("Can't mkdirs data dir " + baseDir);
+                help = true;
             }
-        } catch (IOException cause) {
-            throw new IllegalStateException(cause);
         }
         
         if (isSelf) {
@@ -182,8 +258,14 @@ public class SQLiteServer {
             }
             this.base.init(args);
         }
+        
+        if (help) {
+            help(0, this.command);
+        }
+        
+        initDataDir();
     }
-
+    
     public void start() throws NetworkException {
         if (isStopped()) {
             throw new IllegalStateException("Server has been stopped");
@@ -201,7 +283,7 @@ public class SQLiteServer {
         try {
             Thread.currentThread().setName(getName());
             
-            log.info("Ready for connections on {}:{}", getHost(), getPort());
+            log.info("Ready for connections on {}:{}, version {}", getHost(), getPort(), getVersion());
             while (!isStopped()) {
                 Socket s = this.serverSocket.accept();
                 try {
@@ -240,21 +322,36 @@ public class SQLiteServer {
             if (!this.serverSocket.isClosed()) {
                 log.error(getName()+" fatal", e);
             }
+        } finally {
+            doStop();
         }
     }
     
     public void stop() {
         if (!isStopped()) {
             this.stopped = true;
-            
-            // 1. Close this server
-            IoUtils.close(this.serverSocket);
-            
-            // 2. Stop all processors
-            for(Processor p : this.processors.values()) {
-                p.stop();
-            }
+            doStop();
         }
+    }
+    
+    protected void doStop() {
+        // 1. Close this server
+        IoUtils.close(this.serverSocket);
+        // 2. Stop all processors
+        for(Processor p : this.processors.values()) {
+            p.stop();
+        }
+        // 3. Close metaDb
+        IoUtils.close(this.metadb);
+    }
+    
+    @Override
+    public void close() {
+        this.stop();
+    }
+    
+    public boolean isOpen() {
+        return (!this.isStopped());
     }
     
     public Processor removeProcessor(Processor processor) {
@@ -269,7 +366,7 @@ public class SQLiteServer {
     }
     
     public SQLiteConnection newSQLiteConnection(String databaseName) throws SQLException {
-        String url = "jdbc:sqlite::memory:";
+        String url = "jdbc:sqlite:"+databaseName;
         if (!":memory:".equals(databaseName) && !"".equals(databaseName)/* temporary */) {
             url = String.format("jdbc:sqlite:%s", getDbFile(databaseName));
         }
@@ -298,7 +395,7 @@ public class SQLiteServer {
     }
     
     public String getName() {
-        return "SQLite server " + VERSION;
+        return "SQLite server";
     }
     
     public int getPort() {
@@ -307,6 +404,10 @@ public class SQLiteServer {
     
     public String getHost() {
         return this.host;
+    }
+    
+    public String getProtocol() {
+        return this.protocol;
     }
     
     public File getDataDir() {
@@ -331,6 +432,38 @@ public class SQLiteServer {
     
     public String getPassword() {
         return this.password;
+    }
+    
+    public String getAuthMethod() {
+        if (this.base == null) {
+            return this.authMethod;
+        }
+        
+        return this.base.getAuthMethod();
+    }
+    
+    /**
+     * Default authentication method
+     * @return the default authentication method, or "" if none
+     */
+    public String getAuthDefault() {
+        if (this.base == null) {
+            return "";
+        }
+        
+        return this.base.getAuthDefault();
+    }
+    
+    /**
+     * Authentication method list, separated by ','
+     * @return Authentication method list, or "" if none
+     */
+    public String getAuthMethods() {
+        if (this.base == null) {
+            return "";
+        }
+        
+        return this.base.getAuthMethods();
     }
     
     public void trace(Logger log, String message) {
@@ -382,16 +515,8 @@ public class SQLiteServer {
         return id;
     }
     
-    public void help(int status) {
+    protected void doHelp(int status, String message) {
         PrintStream out = System.out;
-        String message;
-        
-        if (this.base == null) {
-            message = getHelp();
-        } else {
-            message = this.base.getHelp();
-        }
-        
         if (status > 0) {
             out = System.err;
         }
@@ -400,18 +525,92 @@ public class SQLiteServer {
         System.exit(status);
     }
     
-    public String getHelp() {
-        return "Usage: java "+getClass().getName()+" [OPTIONS]\n"+
-                "OPTIONS: \n"+
-                "  --help|-h|-?                  Show this message\n" +
-                "  --data-dir|-D   <path>        Server data directory, default data in work dir\n"+
-                "  --user|-U       <user>        User's name, default "+USER_DEFAULT+"\n"+
-                "  --password|-p   <password>    User's password, must be provided in md5 auth\n"+
-                "  --host|-H       <host>        Server listen host or IP, default localhost\n"+
-                "  --port|-P       <number>      Server listen port, default "+PORT_DEFAULT+"\n"+
-                "  --max-conns     <number>      Max connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
-                "  --trace|-T                    Trace the server execution\n" +
-                "  --protocol      <pg>          The server protocol, default pg";
+    protected void help(int status, String command) {
+        help(status, command, null);
     }
     
+    protected void help(int status, String command, String message) {
+        if (message != null) {
+            PrintStream out;
+            if (status == 0) {
+                out = System.out;
+                message = "[INFO ] " + message;
+            } else {
+                out = System.err;
+                message = "[ERROR] " + message;
+            }
+            out.println(message);
+        }
+        switch (command) {
+        case CMD_INITDB:
+            helpInitDb(status);
+            break;
+        case CMD_BOOT:
+            helpBoot(status);
+            // continue boot
+            break;
+        default:
+            help(1);
+            break;
+        }
+    }
+    
+    protected void help(int status) {
+        doHelp(status, getHelp());
+    }
+    
+    protected void helpInitDb(int status) {
+        doHelp(status, getInitDbHelp());
+    }
+    
+    protected void helpBoot(int status) {
+        doHelp(status, getBootHelp());
+    }
+    
+    protected String getHelp() {
+        if (this.base != null) {
+            return this.base.getHelp();
+        }
+        
+        return getName() + " " + getVersion() + " since 2019\n" +
+                "Usage: java "+getClass().getName()+" <COMMAND> [OPTIONS]\n"+
+                "COMMAND: \n"+
+                "  initdb  Initialize SQLite server database\n" +
+                "  boot    Bootstap SQLite server\n" +
+                "  help    Show this help message";
+    }
+    
+    protected String getInitDbHelp() {
+        if (this.base != null) {
+            return this.base.getInitDbHelp();
+        }
+        
+        return getName() + " " + getVersion() + " since 2019\n" +
+                "Usage: java "+getClass().getName()+" "+CMD_INITDB+" [OPTIONS]\n" +
+                "  --help|-h|-?                  Show this message\n" +
+                "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
+                "  --user|-U       <user>        Superuser's name, default "+USER_DEFAULT+"\n"+
+                "  --password|-p   <password>    Superuser's password, must be provided in non-trust auth\n"+
+                "  --host|-H       <host>        Superuser's host, default localhost\n"+
+                "  --protocol      <pg>          SQLite server protocol, default pg\n"+
+                "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
+    }
+    
+    protected String getBootHelp() {
+        if (this.base != null) {
+            return this.base.getBootHelp();
+        }
+        
+        
+        return getName() + " " + getVersion() + " since 2019\n" +
+                "Usage: java "+getClass().getName()+" "+CMD_BOOT+" [OPTIONS]\n"+
+                "  --help|-h|-?                  Show this message\n" +
+                "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
+                "  --host|-H       <host>        SQLite server listen host or IP, default localhost\n"+
+                "  --port|-P       <number>      SQLite server listen port, default "+PORT_DEFAULT+"\n"+
+                "  --max-conns     <number>      Max client connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
+                "  --trace|-T                    Trace SQLite server execution\n" +
+                "  --protocol      <pg>          SQLite server protocol, default pg";
+    }
+
 }

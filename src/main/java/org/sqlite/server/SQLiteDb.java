@@ -15,28 +15,49 @@
  */
 package org.sqlite.server;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-
 /**
  * @author little-pan
- * @since 2019-09-05
+ * @since 2019-09-08
  *
  */
-public abstract class TestDbBase extends TestBase {
-    protected static String url = "jdbc:postgresql://localhost:"+SQLiteServer.PORT_DEFAULT+"/test.db";
-    protected static String user = "root";
-    protected static String password = "123456";
+public class SQLiteDb {
     
-    protected static final SQLiteServer server;
-    static {
-        server = new SQLiteServer();
-        server.bootAsync("boot", "-p", password);
+    private String user;
+    private String host;
+    private String db;
+    
+    public SQLiteDb() {
+        
     }
     
-    protected Connection getConnection() throws SQLException {
-        return (DriverManager.getConnection(url, user, password));
+    public SQLiteDb(String user, String host, String db) {
+        this.user = user;
+        this.host = host;
+        this.db = db;
+    }
+    
+    public String getUser() {
+        return user;
+    }
+
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    public String getHost() {
+        return host;
+    }
+
+    public void setHost(String host) {
+        this.host = host;
+    }
+
+    public String getDb() {
+        return db;
+    }
+
+    public void setDb(String db) {
+        this.db = db;
     }
 
 }
