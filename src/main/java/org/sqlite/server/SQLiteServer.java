@@ -217,14 +217,24 @@ public class SQLiteServer implements AutoCloseable {
         boolean help = false;
         int i = 0;
         
+        // Check command
         if(args == null || args.length < 1) {
             help(1);
         }
         String command = this.command = args[i++];
-        if (CMD_HELP.equals(command)) {
+        switch (command) {
+        case CMD_INITDB:
+        case CMD_BOOT:
+            break;
+        case CMD_HELP:
             help(0);
+            break;
+        default:
+            help(1);
+            break;
         }
         
+        // Parse args
         for (int argc = args.length; i < argc; i++) {
             String a = args[i];
             if ("--trace".equals(a) || "-T".equals(a)) {
