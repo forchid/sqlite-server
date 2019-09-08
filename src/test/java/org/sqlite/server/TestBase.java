@@ -15,6 +15,7 @@
  */
 package org.sqlite.server;
 
+import java.io.PrintStream;
 import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -29,17 +30,39 @@ import junit.framework.TestCase;
  */
 public abstract class TestBase extends TestCase {
     
+    static final String LINESEP = System.getProperty("line.separator");
+    protected static boolean disableINFO = false, disableERROR = true;
+    
     public abstract void test() throws SQLException;
     
-    protected static void printfln(String format, Object ...args) {
-        printf(format + System.getProperty("line.separator"), args);
+    protected static void println(String format, Object ...args) {
+        String f = format + LINESEP;
+        printf(System.out, "CONS", f, args);
     }
-
-    protected static void printf(String format, Object ...args) {
+    
+    protected static void info(String format, Object ...args) {
+        if (disableINFO || disableERROR) {
+            return;
+        }
+        
+        String f = format + LINESEP;
+        printf(System.out, "INFO", f, args);
+    }
+    
+    protected static void error(String format, Object ...args) {
+        if (disableERROR) {
+            return;
+        }
+        
+        String f = format + LINESEP;
+        printf(System.err, "ERROR", f, args);
+    }
+    
+    protected static void printf(PrintStream out, String tag, String format, Object ...args) {
         DateFormat df = new SimpleDateFormat("HH:mm:ss.SSS");
-        String prefix = String.format("%s[%s] ", 
-                df.format(new Date()), Thread.currentThread().getName());
-        System.out.printf(prefix +format, args);
+        String prefix = String.format("%s[%-5s][%s] ", df.format(new Date()), tag, 
+                Thread.currentThread().getName());
+        out.printf(prefix +format, args);
     }
     
 }

@@ -13,29 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.sql;
+package org.sqlite.sql;
 
-/**DETACH statement:
- * DETACH [DATABASE] schema-name
+/**SQL parse exception, a runtime exception.
  * 
  * @author little-pan
- * @since 2019-09-05
+ * @since 2019-09-04
  *
  */
-public class DetachStatement extends SQLStatement {
+public class SQLParseException extends RuntimeException {
     
-    protected String schemaName;
+    private static final long serialVersionUID = 1117254774204018644L;
+    
+    public SQLParseException(String message){
+        super(message);
+    }
+    
+    public SQLParseException(String message, Throwable cause){
+        super(message, cause);
+    }
 
-    public DetachStatement(String sql, String command) {
-        super(sql, command);
-    }
-    
-    public String getSchemaName() {
-        return schemaName;
-    }
-
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
-    }
-    
 }

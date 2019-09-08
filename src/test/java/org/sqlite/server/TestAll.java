@@ -21,8 +21,8 @@ import java.util.List;
 
 import org.sqlite.server.jdbc.TestDriver;
 import org.sqlite.server.jdbc.TestStatement;
-import org.sqlite.server.sql.TestSQLParser;
-import org.sqlite.server.sql.TestSQLReader;
+import org.sqlite.sql.TestSQLParser;
+import org.sqlite.sql.TestSQLReader;
 
 /**
  * @author little-pan
@@ -47,10 +47,10 @@ public class TestAll extends TestBase {
         for(TestBase test: tests) {
             String className = test.getClass().getName();
             long start = System.currentTimeMillis();
-            printfln("%s start", className);
+            println("%s start", className);
             test.test();
             long end = System.currentTimeMillis();
-            printfln("%s ok(%dms)", className, end - start);
+            println("%s ok(%dms)", className, end - start);
         }
         tests.clear();
     }

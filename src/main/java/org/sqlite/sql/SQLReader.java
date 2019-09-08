@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.sql;
+package org.sqlite.sql;
 
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -35,15 +35,25 @@ public class SQLReader implements Closeable {
     
     protected final Deque<String> buffer = new ArrayDeque<>();
     protected final BufferedReader reader;
+    protected final boolean ignoreNbc;
     private boolean open;
     
     public SQLReader(String sqls) {
-        this(new StringReader(sqls));
+        this(sqls, false);
+    }
+    
+    public SQLReader(String sqls, boolean ignoreNestedBlockComment) {
+        this(new StringReader(sqls), ignoreNestedBlockComment);
     }
     
     public SQLReader(Reader reader) {
+        this(reader, false);
+    }
+    
+    public SQLReader(Reader reader, boolean ignoreNestedBlockComment) {
         this.reader = new BufferedReader(reader);
         this.open = true;
+        this.ignoreNbc = ignoreNestedBlockComment;
     }
     
     public String readStatement() throws SQLParseException {
@@ -57,6 +67,7 @@ public class SQLReader implements Closeable {
         try {
             StringBuilder sb = new StringBuilder();
             boolean blk = false, qot = false;
+            boolean inbc = false;
             char q = 0;
             int blkDeep = 0;
             
@@ -71,7 +82,9 @@ public class SQLReader implements Closeable {
                 // Parse line ->
                 for (int i = 0, len = line.length(); i < len; ++i) {
                     char c = line.charAt(i);
-                    sb.append(c);
+                    if (!inbc) {
+                        sb.append(c);
+                    }
                     
                     // statements separated by ';'
                     switch (c) {
@@ -103,7 +116,14 @@ public class SQLReader implements Closeable {
                             blk = true;
                             // feature: SQL-99 nested block comment
                             ++blkDeep;
-                            sb.append('*');
+                            if (this.ignoreNbc && blkDeep == 2) {
+                                // ignore '/*' in nested block
+                                inbc = true;
+                                sb.setLength(sb.length() - 1);
+                            }
+                            if (!inbc) {
+                                sb.append('*');
+                            }
                             ++i;
                             continue;
                         }
@@ -114,7 +134,12 @@ public class SQLReader implements Closeable {
                                 continue;
                             }
                             blk = (--blkDeep > 0);
-                            sb.append('/');
+                            if (!inbc) {
+                                sb.append('/'); 
+                            }
+                            if (this.ignoreNbc && blkDeep == 1) {
+                                inbc = false;
+                            }
                             ++i;
                             continue;
                         }
@@ -165,6 +190,10 @@ public class SQLReader implements Closeable {
     
     public boolean isOpen() {
         return this.open;
+    }
+    
+    public boolean isIgnoreNestedBlockComment() {
+        return this.ignoreNbc;
     }
     
 }

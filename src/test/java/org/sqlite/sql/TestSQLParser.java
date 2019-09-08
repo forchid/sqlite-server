@@ -13,13 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.sql;
+package org.sqlite.sql;
 
 import java.sql.SQLException;
 import java.util.NoSuchElementException;
 
 import org.sqlite.server.TestBase;
 import org.sqlite.server.util.IoUtils;
+import org.sqlite.sql.AttachStatement;
+import org.sqlite.sql.DetachStatement;
+import org.sqlite.sql.PragmaStatement;
+import org.sqlite.sql.SQLParseException;
+import org.sqlite.sql.SQLParser;
+import org.sqlite.sql.SQLStatement;
+import org.sqlite.sql.TransactionStatement;
 
 /**
  * @author little-pan
@@ -68,6 +75,7 @@ public class TestSQLParser extends TestBase {
         selectTest("/*sql*/select/*;*/ 1/*'*/;", 1);
         selectTest("/*sql*/select/*;*/ 1-- sql", 1);
         selectTest("/*sql*/select/*;*/ 1;select/*\"*/ 2-- sql", 2);
+        selectTest("/*select 1;/*select 2;*/select 3;*/ select 1", 1);
         
         updateTest("update t set a = 1", 1);
         updateTest("Update t set a = 1", 1);
@@ -320,7 +328,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test SQL %s", stmt);
+            info("Test SQL %s", stmt);
             assertTrue(!stmt.isComment());
             assertTrue("".equals(stmt.getCommand()));
             assertTrue(stmt.isEmpty());
@@ -335,7 +343,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test SQL %s", stmt);
+            info("Test SQL %s", stmt);
             assertTrue(stmt.isComment());
             assertTrue("".equals(stmt.getCommand()));
             assertTrue(stmt.isEmpty());
@@ -350,7 +358,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test SELECT %s", stmt);
+            info("Test SELECT %s", stmt);
             assertTrue("SELECT".equals(stmt.getCommand()));
             assertTrue(stmt.isQuery());
             assertTrue(!stmt.isEmpty());
@@ -366,7 +374,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test UPDATE %s", stmt);
+            info("Test UPDATE %s", stmt);
             assertTrue("UPDATE".equals(stmt.getCommand()));
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isEmpty());
@@ -382,7 +390,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test INSERT %s", stmt);
+            info("Test INSERT %s", stmt);
             assertTrue("INSERT".equals(stmt.getCommand()));
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isEmpty());
@@ -398,7 +406,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test DELETE %s", stmt);
+            info("Test DELETE %s", stmt);
             assertTrue("DELETE".equals(stmt.getCommand()));
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isEmpty());
@@ -414,7 +422,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test BEGIN %s", stmt);
+            info("Test BEGIN %s", stmt);
             assertTrue("BEGIN".equals(stmt.getCommand()));
             assertTrue(stmt instanceof TransactionStatement);
             assertTrue(!stmt.isQuery());
@@ -438,7 +446,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test COMMIT %s", stmt);
+            info("Test COMMIT %s", stmt);
             assertTrue("COMMIT".equals(stmt.getCommand()));
             assertTrue(stmt instanceof TransactionStatement);
             assertTrue(!stmt.isQuery());
@@ -462,7 +470,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test END %s", stmt);
+            info("Test END %s", stmt);
             assertTrue("END".equals(stmt.getCommand()));
             assertTrue(stmt instanceof TransactionStatement);
             assertTrue(!stmt.isQuery());
@@ -486,7 +494,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test SAVEPOINT %s", stmt);
+            info("Test SAVEPOINT %s", stmt);
             assertTrue("SAVEPOINT".equals(stmt.getCommand()));
             assertTrue(stmt instanceof TransactionStatement);
             assertTrue(!stmt.isQuery());
@@ -510,7 +518,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test RELEASE %s", stmt);
+            info("Test RELEASE %s", stmt);
             assertTrue("RELEASE".equals(stmt.getCommand()));
             assertTrue(stmt instanceof TransactionStatement);
             assertTrue(!stmt.isQuery());
@@ -534,7 +542,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test ROLLBACK %s", stmt);
+            info("Test ROLLBACK %s", stmt);
             assertTrue("ROLLBACK".equals(stmt.getCommand()));
             assertTrue(stmt instanceof TransactionStatement);
             assertTrue(!stmt.isQuery());
@@ -558,7 +566,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test ATTACH %s", stmt);
+            info("Test ATTACH %s", stmt);
             assertTrue("ATTACH".equals(stmt.getCommand()));
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isEmpty());
@@ -578,7 +586,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test DETACH %s", stmt);
+            info("Test DETACH %s", stmt);
             assertTrue("DETACH".equals(stmt.getCommand()));
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isEmpty());
@@ -597,7 +605,7 @@ public class TestSQLParser extends TestBase {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
-            printfln("Test PRAGMA %s", stmt);
+            info("Test PRAGMA %s", stmt);
             assertTrue("PRAGMA".equals(stmt.getCommand()));
             assertTrue(stmt.isQuery() == !isSet);
             assertTrue(!stmt.isEmpty());

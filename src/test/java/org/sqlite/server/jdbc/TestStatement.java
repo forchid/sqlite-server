@@ -37,6 +37,7 @@ public class TestStatement extends TestDbBase {
     public void test() throws SQLException {
         simpleScalarQueryTest();
         createTableTest();
+        nestedBlockCommentTest();
     }
     
     private void simpleScalarQueryTest() throws SQLException {
@@ -59,6 +60,39 @@ public class TestStatement extends TestDbBase {
                     + "name varchar(50) not null,"
                     + "balance decimal(12,1) not null)");
             assertTrue(0 == n);
+            stmt.close();
+        }
+    }
+    
+    private void nestedBlockCommentTest() throws SQLException {
+        try (Connection conn = getConnection()) {
+            Statement stmt = conn.createStatement();
+            
+            assertFalse(stmt.execute("/*/**/*/"));
+            assertFalse(stmt.execute("/*b/**/*/"));
+            assertFalse(stmt.execute("/*b/*b*/*/"));
+            assertFalse(stmt.execute("/*b/*b*/b*/"));
+            assertFalse(stmt.execute("/*select 1;/*select 2;*/select 3*/"));
+            assertFalse(stmt.execute("/*select 1;/*select 2;*/select 3;*/"));
+            assertFalse(stmt.execute("/*select 1;/*select 2;*/select 3;*/ "));
+            assertFalse(stmt.execute("/*select 1;/*select 2;*/select 3;*/ -- c"));
+            
+            ResultSet rs;
+            assertTrue(stmt.execute("/*select 1;/*select 2;*/outmost block;*/ select 1"));
+            rs = stmt.getResultSet();
+            assertTrue(rs.next());
+            assertTrue(1 == rs.getInt(1));
+            
+            assertTrue(stmt.execute("/*select 1;/*select 2;*/select 3;*/ select 1"));
+            rs = stmt.getResultSet();
+            assertTrue(rs.next());
+            assertTrue(1 == rs.getInt(1));
+            
+            assertTrue(stmt.execute("/*select 1;/*/*select 4;*/select 2;*/ /*select 5;*/select 3;*/ select 1"));
+            rs = stmt.getResultSet();
+            assertTrue(rs.next());
+            assertTrue(1 == rs.getInt(1));
+            
             stmt.close();
         }
     }

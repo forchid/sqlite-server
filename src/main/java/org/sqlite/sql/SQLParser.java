@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.sql;
+package org.sqlite.sql;
 
 import static java.lang.Character.*;
 
@@ -38,11 +38,19 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     private boolean nextCalled;
     
     public SQLParser(String sqls) {
-        this.reader = new SQLReader(sqls);
+        this(sqls, false);
+    }
+    
+    public SQLParser(String sqls, boolean ignoreNestedBlockComment) {
+        this.reader = new SQLReader(sqls, ignoreNestedBlockComment);
     }
     
     public SQLParser(Reader reader) {
-        this.reader = new SQLReader(reader);
+        this(reader, false);
+    }
+    
+    public SQLParser(Reader reader, boolean ignoreNestedBlockComment) {
+        this.reader = new SQLReader(reader, ignoreNestedBlockComment);
     }
     
     @Override
@@ -81,6 +89,10 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     
     public boolean isOpen () {
         return this.reader.isOpen();
+    }
+    
+    public boolean isIgnoreNestedBlockComment() {
+        return this.reader.isIgnoreNestedBlockComment();
     }
     
     @Override

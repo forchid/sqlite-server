@@ -52,14 +52,14 @@ import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.Processor;
-import org.sqlite.server.sql.SQLParseException;
-import org.sqlite.server.sql.SQLParser;
-import org.sqlite.server.sql.SQLStatement;
-import org.sqlite.server.sql.TransactionStatement;
 import org.sqlite.server.util.DateTimeUtils;
 import org.sqlite.server.util.IoUtils;
 import org.sqlite.server.util.SecurityUtils;
 import org.sqlite.server.util.StringUtils;
+import org.sqlite.sql.SQLParseException;
+import org.sqlite.sql.SQLParser;
+import org.sqlite.sql.SQLStatement;
+import org.sqlite.sql.TransactionStatement;
 
 /**The PG protocol handler.
  * 
@@ -316,7 +316,7 @@ public class PgProcessor extends Processor {
             try {
                 conn = server.newSQLiteConnection(this.databaseName);
                 if (server.isTrace()) {
-                    server.trace(log, "SQLiteConn init: autocommit {}", conn.getAutoCommit());
+                    server.trace(log, "sqliteConn init: autocommit {}", conn.getAutoCommit());
                 }
                 setConnection(conn);
                 sendAuthenticationOk();
@@ -336,7 +336,7 @@ public class PgProcessor extends Processor {
             this.xQueryFailed = true;
             Prepared p = new Prepared();
             p.name = readString();
-            try (SQLParser parser = new SQLParser(readString())) {
+            try (SQLParser parser = newSQLParser(readString())) {
                 SQLStatement sql = parser.next();
                 // check for single SQL prepared statement
                 for (; parser.hasNext(); ) {
@@ -505,6 +505,7 @@ public class PgProcessor extends Processor {
             
             // check empty statement
             if (sql.isEmpty()) {
+                server.trace(log, "query string empty: {}", sql);
                 sendEmptyQueryResponse();
                 this.xQueryFailed = false;
                 break;
@@ -572,7 +573,7 @@ public class PgProcessor extends Processor {
             destroyPrepared(UNNAMED);
             String query = readString();
             
-            try (SQLParser parser = new SQLParser(query)) {
+            try (SQLParser parser = newSQLParser(query)) {
                 SQLStatement sql = null;
                 // check empty query string
                 for (; sql == null;) {
@@ -586,7 +587,7 @@ public class PgProcessor extends Processor {
                     break;
                 }
                 if (sql == null) {
-                    server.trace(log, "empty query string: {}", query);
+                    server.trace(log, "query string empty: {}", query);
                     sendEmptyQueryResponse();
                 } else {
                     Connection conn = getConnection();
@@ -662,6 +663,10 @@ public class PgProcessor extends Processor {
         return flush;
     }
     
+    protected SQLParser newSQLParser(String sqls) {
+        return new SQLParser(sqls, true);
+    }
+    
     protected void destroyPrepared(String name) {
         Prepared p = prepared.remove(name);
         if (p != null) {
@@ -692,7 +697,7 @@ public class PgProcessor extends Processor {
             } 
         }
         if (server.isTrace()) {
-            server.trace(log, "SQLiteConn execute: autocommit {} ->", conn.getAutoCommit());
+            server.trace(log, "sqliteConn execute: autocommit {} ->", conn.getAutoCommit());
         }
         
         return success;
@@ -738,7 +743,7 @@ public class PgProcessor extends Processor {
             }
         }
         if (server.isTrace()) {
-            server.trace(log, "SQLiteConn execute: autocommit {} <-", conn.getAutoCommit());
+            server.trace(log, "sqliteConn execute: autocommit {} <-", conn.getAutoCommit());
         }
     }
     
@@ -999,7 +1004,7 @@ public class PgProcessor extends Processor {
                 // in a transaction block
                 c = 'T';
             }
-            server.trace(log, "SQLiteConn ready: autocommit {}", autocommit);
+            server.trace(log, "sqliteConn ready: autocommit {}", autocommit);
         } catch (SQLException e) {
             // failed transaction block
             c = 'E';

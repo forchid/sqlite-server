@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.sql;
+package org.sqlite.sql;
 
 /**PRAGMA statement:
  * PRAGMA [schema-name.]pragma-name [=pragma-value | (pragma-value)]
