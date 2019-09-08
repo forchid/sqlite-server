@@ -27,7 +27,6 @@ public class SQLStatement {
     protected final String sql;
     
     protected boolean query;
-    protected boolean tx;
     protected boolean comment;
     protected boolean empty;
     
@@ -64,11 +63,7 @@ public class SQLStatement {
     }
     
     public boolean isTransaction() {
-        return this.tx;
-    }
-    
-    public void setTransaction(boolean tx) {
-        this.tx = tx;
+        return (this instanceof TransactionStatement);
     }
     
     public boolean isComment() {

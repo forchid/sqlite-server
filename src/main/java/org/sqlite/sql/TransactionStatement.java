@@ -28,7 +28,6 @@ public class TransactionStatement extends SQLStatement {
     
     public TransactionStatement(String sql, String command) {
         super(sql, command);
-        this.tx = true;
     }
     
     public TransactionStatement(String sql, String command, String savepointName) {
