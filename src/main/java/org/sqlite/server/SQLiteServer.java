@@ -19,9 +19,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -38,6 +38,7 @@ import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.server.pg.PgServer;
 import org.sqlite.server.util.IoUtils;
+
 import static org.sqlite.server.util.StringUtils.*;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
@@ -47,13 +48,15 @@ import static org.sqlite.server.util.StringUtils.*;
  * @since 2019-09-01
  *
  */
-public class SQLiteServer implements AutoCloseable {
+public abstract class SQLiteServer implements AutoCloseable {
     
     static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
     
+    public static final String NAME = "SQLite server";
     public static final String VERSION = "0.3.27";
     public static final String USER_DEFAULT = "root";
     public static final String METADB_NAME  = "sqlite3.meta";
+    public static final String HOST_DEFAULT = "127.0.0.1";
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 151;
     
@@ -63,14 +66,13 @@ public class SQLiteServer implements AutoCloseable {
     public static final String CMD_HELP   = "help";
     
     protected SQLiteMetadb metadb;
-    private SQLiteServer base;
     protected String command;
     
     private String user = USER_DEFAULT;
     private String password;
     protected String authMethod;
     
-    protected String host = "localhost";
+    protected String host = HOST_DEFAULT;
     protected int port = PORT_DEFAULT;
     protected int maxConns = MAX_CONNS_DEFAULT;
     protected File dataDir = new File(System.getProperty("user.home"), "sqlite3Data");
@@ -79,13 +81,13 @@ public class SQLiteServer implements AutoCloseable {
     private final AtomicInteger processCount = new AtomicInteger(0);
     private int maxProcessId;
     
-    protected String protocol = "pg";
+    protected final String protocol;
     protected ServerSocket serverSocket;
     final ConcurrentMap<Integer, Processor> processors = new ConcurrentHashMap<>();
     private volatile boolean stopped;
     
     public static void main(String args[]) {
-        main(new SQLiteServer(), args);
+        main(SQLiteServer.create(args), args);
     }
     
     public static void main(SQLiteServer server, String ... args) {
@@ -103,11 +105,47 @@ public class SQLiteServer implements AutoCloseable {
             
             server.boot(args);
         } catch (Exception e) {
+            e.printStackTrace();
             System.err.println("[ERROR] " + e.getMessage());
             server.help(1);
         } finally {
             IoUtils.close(server);
         }
+    }
+    
+    public static SQLiteServer create(String ... args) {
+        if (args == null || args.length == 0) {
+            doHelp(1, getHelp(SQLiteServer.class, NAME, VERSION));
+        }
+        
+        int i = 0;
+        String command = args[i++];
+        switch (command) {
+        case CMD_INITDB:
+        case CMD_BOOT:
+        case CMD_HELP:
+            break;
+        default:
+            doHelp(1, getHelp(SQLiteServer.class, NAME, VERSION));
+            break;
+        }
+        
+        for (int argc = args.length; i < argc; ++i) {
+            String arg = args[i];
+            if ("--protocol".equals(arg)) {
+                if ("pg".equals(arg)) {
+                    return new PgServer();
+                } else {
+                    doHelp(1, getHelp(SQLiteServer.class, NAME, VERSION));
+                }
+            }
+        }
+        
+        return new PgServer();
+    }
+    
+    protected SQLiteServer(String protocol) {
+        this.protocol = protocol;
     }
     
     public void initdb(String ... args) {
@@ -128,15 +166,13 @@ public class SQLiteServer implements AutoCloseable {
         } catch (SQLException e) {
             SQLiteErrorCode existError = SQLiteErrorCode.SQLITE_CONSTRAINT;
             if (existError.code == e.getErrorCode()) {
-                throw new IllegalStateException("Data dir had been initialized");
+                throw new IllegalStateException("Data dir has been initialized");
             }
             throw new IllegalStateException("Initdb fatal: " + e.getMessage(), e);
         }
     }
     
     protected void initDataDir() {
-        Connection metaConn = null;
-        boolean failed = true;
         try {
             this.dataDir = this.dataDir.getCanonicalFile();
             File baseDir = this.dataDir;
@@ -145,21 +181,13 @@ public class SQLiteServer implements AutoCloseable {
             }
             
             // init metaDb
-            IoUtils.close(this.metadb);
-            SQLiteConfig config = new SQLiteConfig();
-            config.setJournalMode(JournalMode.DELETE);
-            config.setBusyTimeout(50000);
-            config.setEncoding(Encoding.UTF8);
             File metaFile = new File(baseDir, METADB_NAME);
-            metaConn = config.createConnection("jdbc:sqlite:"+metaFile);
-            this.metadb = new SQLiteMetadb(metaFile, (SQLiteConnection)metaConn);
-            failed = false;
-        } catch (IOException | SQLException cause) {
-            throw new IllegalStateException(cause);
-        } finally {
-            if (failed) {
-                IoUtils.close(metaConn);
+            this.metadb = new SQLiteMetadb(metaFile);
+            if (CMD_BOOT.equals(this.command) && !this.metadb.isInitialized()) {
+                throw new IllegalStateException("Data dir hasn't been initialized: " + baseDir);
             }
+        } catch (IOException cause) {
+            throw new IllegalStateException(cause);
         }
     }
     
@@ -213,7 +241,6 @@ public class SQLiteServer implements AutoCloseable {
     }
     
     public void init(String... args) {
-        boolean isSelf = (getClass() == SQLiteServer.class);
         boolean help = false;
         int i = 0;
         
@@ -222,17 +249,6 @@ public class SQLiteServer implements AutoCloseable {
             help(1);
         }
         String command = this.command = args[i++];
-        switch (command) {
-        case CMD_INITDB:
-        case CMD_BOOT:
-            break;
-        case CMD_HELP:
-            help(0);
-            break;
-        default:
-            help(1);
-            break;
-        }
         
         // Parse args
         for (int argc = args.length; i < argc; i++) {
@@ -253,20 +269,22 @@ public class SQLiteServer implements AutoCloseable {
                 maxConns = Integer.decode(args[++i]);
             } else if ("--auth-method".equals(a) || "-A".equals(a)) {
                 this.authMethod = toLowerEnglish(args[++i]);
-            } else if ("--protocol".equals(a) && isSelf && this.base==null) {
-                String proto = this.protocol = toLowerEnglish(args[++i]);
-                if ("pg".equals(proto)) this.base = new PgServer();
-                else help(1);
             } else if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
                 help = true;
             }
         }
         
-        if (isSelf) {
-            if (this.base == null) {
-                this.base = new PgServer();
-            }
-            this.base.init(args);
+        trace(log, "command {}", command);
+        switch (command) {
+        case CMD_INITDB:
+        case CMD_BOOT:
+            break;
+        case CMD_HELP:
+            help(0);
+            break;
+        default:
+            help(1);
+            break;
         }
         
         if (help) {
@@ -355,6 +373,21 @@ public class SQLiteServer implements AutoCloseable {
         IoUtils.close(this.metadb);
     }
     
+    public boolean isAllowed(Socket socket) throws SQLException {
+        InetSocketAddress addr = (InetSocketAddress)socket.getRemoteSocketAddress();
+        String host = addr.getHostName();
+        String ip = addr.getAddress().getHostAddress();
+        int n = this.metadb.selectUserCount(host, ip, getProtocol());
+        return (n > 0);
+    }
+    
+    public SQLiteUser selectUser(Socket socket, String user, String db) throws SQLException {
+        InetSocketAddress addr = (InetSocketAddress)socket.getRemoteSocketAddress();
+        String host = addr.getHostName();
+        String ip = addr.getAddress().getHostAddress();
+        return (this.metadb.selectUser(host, ip, getProtocol(), user, db));
+    }
+    
     @Override
     public void close() {
         this.stop();
@@ -405,7 +438,7 @@ public class SQLiteServer implements AutoCloseable {
     }
     
     public String getName() {
-        return "SQLite server";
+        return NAME;
     }
     
     public int getPort() {
@@ -445,36 +478,20 @@ public class SQLiteServer implements AutoCloseable {
     }
     
     public String getAuthMethod() {
-        if (this.base == null) {
-            return this.authMethod;
-        }
-        
-        return this.base.getAuthMethod();
+        return this.authMethod;
     }
     
     /**
      * Default authentication method
-     * @return the default authentication method, or "" if none
+     * @return the default authentication method
      */
-    public String getAuthDefault() {
-        if (this.base == null) {
-            return "";
-        }
-        
-        return this.base.getAuthDefault();
-    }
+    public abstract String getAuthDefault();
     
     /**
      * Authentication method list, separated by ','
-     * @return Authentication method list, or "" if none
+     * @return Authentication method list
      */
-    public String getAuthMethods() {
-        if (this.base == null) {
-            return "";
-        }
-        
-        return this.base.getAuthMethods();
-    }
+    public abstract String getAuthMethods();
     
     public void trace(Logger log, String message) {
         if (isTrace()) {
@@ -500,13 +517,7 @@ public class SQLiteServer implements AutoCloseable {
         }
     }
     
-    protected Processor newProcessor(Socket s, int id) {
-        if (this.base == null) {
-            throw new UnsupportedOperationException("Not implemented");
-        }
-        
-        return this.base.newProcessor(s, id);
-    }
+    protected abstract Processor newProcessor(Socket s, int id);
     
     protected int incrProcessCount() {
         return this.processCount.incrementAndGet();
@@ -523,16 +534,6 @@ public class SQLiteServer implements AutoCloseable {
         }
         
         return id;
-    }
-    
-    protected void doHelp(int status, String message) {
-        PrintStream out = System.out;
-        if (status > 0) {
-            out = System.err;
-        }
-        
-        out.println(message);
-        System.exit(status);
     }
     
     protected void help(int status, String command) {
@@ -578,49 +579,50 @@ public class SQLiteServer implements AutoCloseable {
     }
     
     protected String getHelp() {
-        if (this.base != null) {
-            return this.base.getHelp();
-        }
-        
-        return getName() + " " + getVersion() + " since 2019\n" +
-                "Usage: java "+getClass().getName()+" <COMMAND> [OPTIONS]\n"+
-                "COMMAND: \n"+
-                "  initdb  Initialize SQLite server database\n" +
-                "  boot    Bootstap SQLite server\n" +
-                "  help    Show this help message";
+        return getHelp(getClass(), getName(), getVersion());
     }
     
     protected String getInitDbHelp() {
-        if (this.base != null) {
-            return this.base.getInitDbHelp();
-        }
-        
         return getName() + " " + getVersion() + " since 2019\n" +
                 "Usage: java "+getClass().getName()+" "+CMD_INITDB+" [OPTIONS]\n" +
                 "  --help|-h|-?                  Show this message\n" +
                 "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
                 "  --user|-U       <user>        Superuser's name, default "+USER_DEFAULT+"\n"+
                 "  --password|-p   <password>    Superuser's password, must be provided in non-trust auth\n"+
-                "  --host|-H       <host>        Superuser's host, default localhost\n"+
+                "  --host|-H       <host>        Superuser's host, default "+HOST_DEFAULT+"\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
                 "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
     }
     
     protected String getBootHelp() {
-        if (this.base != null) {
-            return this.base.getBootHelp();
-        }
-        
-        
         return getName() + " " + getVersion() + " since 2019\n" +
                 "Usage: java "+getClass().getName()+" "+CMD_BOOT+" [OPTIONS]\n"+
                 "  --help|-h|-?                  Show this message\n" +
                 "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
-                "  --host|-H       <host>        SQLite server listen host or IP, default localhost\n"+
+                "  --host|-H       <host>        SQLite server listen host or IP, default "+HOST_DEFAULT+"\n"+
                 "  --port|-P       <number>      SQLite server listen port, default "+PORT_DEFAULT+"\n"+
                 "  --max-conns     <number>      Max client connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
                 "  --trace|-T                    Trace SQLite server execution\n" +
                 "  --protocol      <pg>          SQLite server protocol, default pg";
     }
+    
+    protected static void doHelp(int status, String message) {
+        PrintStream out = System.out;
+        if (status > 0) {
+            out = System.err;
+        }
+        
+        out.println(message);
+        System.exit(status);
+    }
 
+    protected static String getHelp(Class<? extends SQLiteServer> serverClazz, String name, String version) {
+        return name + " " + version + " since 2019\n" +
+                "Usage: java "+serverClazz.getName()+" <COMMAND> [OPTIONS]\n"+
+                "COMMAND: \n"+
+                "  initdb  Initialize SQLite server database\n" +
+                "  boot    Bootstap SQLite server\n" +
+                "  help    Show this help message";
+    }
+    
 }

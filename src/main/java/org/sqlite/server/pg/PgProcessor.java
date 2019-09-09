@@ -27,6 +27,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -51,7 +52,9 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
+import org.sqlite.server.AuthMethod;
 import org.sqlite.server.Processor;
+import org.sqlite.server.SQLiteUser;
 import org.sqlite.server.util.DateTimeUtils;
 import org.sqlite.server.util.IoUtils;
 import org.sqlite.server.util.SecurityUtils;
@@ -81,6 +84,7 @@ public class PgProcessor extends Processor {
     
     private final int secret;
     private AuthMethod authMethod;
+    private SQLiteUser user;
     
     private DataInputStream dataIn, dataBuf;
     private OutputStream out;
@@ -113,6 +117,11 @@ public class PgProcessor extends Processor {
     public void run() {
         try {
             server.trace(log, "Connect");
+            if (!server.isAllowed(socket)) {
+                InetSocketAddress remoteAddr = (InetSocketAddress)socket.getRemoteSocketAddress();
+                server.trace(log, "Connection {} not allowed", remoteAddr.getHostName());
+                return;
+            }
             // buffer is very important for performance!
             int bufferSize = IoUtils.BUFFER_SIZE;
             InputStream in = new BufferedInputStream(socket.getInputStream(), bufferSize << 2);
@@ -135,7 +144,15 @@ public class PgProcessor extends Processor {
     }
     
     protected boolean isRunning() throws SQLException {
-        return (!isStopped() || !getConnection().getAutoCommit() /* Ongoing tx */);
+        if (!isStopped()) {
+            return true;
+        }
+        
+        SQLiteConnection conn = getConnection();
+        if (conn == null || conn.isClosed()) {
+            return false;
+        }
+        return (!conn.getAutoCommit() /* Ongoing tx */);
     }
     
     private void setParameter(PreparedStatement prep,
@@ -299,7 +316,27 @@ public class PgProcessor extends Processor {
                     // geqo on (Genetic Query Optimization)
                     server.trace(log, "param {} = {}", param, value);
                 }
-                sendAuthenticationMessage();
+                
+                // Check user and database
+                SQLiteUser user = null;
+                try {
+                    user = server.selectUser(socket, this.userName, this.databaseName);
+                } catch (SQLException e) {
+                    log.error("Can't query user information", e);
+                    user = null;
+                }
+                if (user == null) {
+                    stop();
+                    break;
+                }
+                this.user = user;
+                
+                // Request authentication
+                if ("trust".equals(user.getAuthMethod())) {
+                    authOk();
+                } else {
+                    sendAuthenticationMessage();
+                }
                 flush = true;
                 initDone = true;
             }
@@ -313,26 +350,7 @@ public class PgProcessor extends Processor {
                 sendErrorAuth();
                 break;
             }
-            this.authMethod = null;
-            
-            SQLiteConnection conn = null;
-            boolean failed = true;
-            try {
-                conn = server.newSQLiteConnection(this.databaseName);
-                if (server.isTrace()) {
-                    server.trace(log, "sqliteConn init: autocommit {}", conn.getAutoCommit());
-                }
-                setConnection(conn);
-                sendAuthenticationOk();
-                failed = false;
-            } catch (SQLException cause) {
-                stop();
-                server.traceError(log, "Can't init database", cause);
-            } finally {
-                if(failed) {
-                    IoUtils.close(conn);
-                }
-            }
+            authOk();
             break;
         }
         case 'P': {
@@ -667,6 +685,31 @@ public class PgProcessor extends Processor {
         return flush;
     }
     
+    protected boolean authOk() throws IOException {
+        SQLiteConnection conn = null;
+        boolean failed = true;
+        try {
+            this.authMethod = null;
+            
+            conn = server.newSQLiteConnection(this.databaseName);
+            if (server.isTrace()) {
+                server.trace(log, "sqliteConn init: autocommit {}", conn.getAutoCommit());
+            }
+            setConnection(conn);
+            sendAuthenticationOk();
+            failed = false;
+            return true;
+        } catch (SQLException cause) {
+            stop();
+            server.traceError(log, "Can't init database", cause);
+            return false;
+        } finally {
+            if(failed) {
+                IoUtils.close(conn);
+            }
+        }
+    }
+    
     protected SQLParser newSQLParser(String sqls) {
         return new SQLParser(sqls, true);
     }
@@ -783,7 +826,7 @@ public class PgProcessor extends Processor {
     }
     
     private void sendAuthenticationMessage() throws IOException {
-        switch (getServer().getAuthMethod()) {
+        switch (this.user.getAuthMethod()) {
         case "password":
             sendAuthenticationCleartextPassword();
             break;
@@ -791,12 +834,15 @@ public class PgProcessor extends Processor {
             sendAuthenticationMD5Password();
             break;
         }
-        getServer().trace(log, "authMethod {}", this.authMethod);
+        this.authMethod.init(this.user.getUser(), this.user.getPassword());
+        
+        PgServer server = getServer();
+        server.trace(log, "authMethod {}", this.authMethod);
     }
     
     private void sendAuthenticationCleartextPassword() throws IOException {
         PgServer server = getServer();
-        this.authMethod = new AuthPassword(server.getPassword());
+        this.authMethod = new CleartextPassword(server.getProtocol());
         
         startMessage('R');
         writeInt(AUTH_REQ_PASSWORD);
@@ -805,7 +851,7 @@ public class PgProcessor extends Processor {
     
     private void sendAuthenticationMD5Password() throws IOException {
         PgServer server = getServer();
-        MD5Password md5 = new MD5Password(server.getUser(), server.getPassword());
+        MD5Password md5 = new MD5Password(server.getProtocol());
         this.authMethod = md5;
         
         startMessage('R');

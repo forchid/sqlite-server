@@ -15,12 +15,12 @@
  */
 package org.sqlite.server.pg;
 
-import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
+import org.sqlite.server.AuthMethod;
 import org.sqlite.server.util.ConvertUtils;
 import org.sqlite.server.util.SecurityUtils;
 
@@ -31,26 +31,21 @@ import org.sqlite.server.util.SecurityUtils;
  * @since 2019-09-03
  *
  */
-public class MD5Password implements AuthMethod {
-    
-    static final String ENCODING = "UTF-8";
+public class MD5Password extends AuthMethod {
     
     private final byte[] salt;
-    private final String user;
-    private final String password;
     
-    public MD5Password(String user, String password) {
-        this(user, password, new byte[4]);
+    public MD5Password(String protocol) {
+        this(protocol, new byte[4]);
         initSalt();
     }
     
-    public MD5Password(String user, String password, byte[] salt) {
-        this.salt = salt;
-        this.user = user;
-        this.password = password;
-        if (password == null) {
-            throw new IllegalArgumentException("No password was provided");
+    public MD5Password(String protocol, byte[] salt) {
+        super(protocol);
+        if (salt == null) {
+            throw new IllegalArgumentException("No salt was provided");
         }
+        this.salt = salt;
     }
     
     private void initSalt() {
@@ -68,7 +63,6 @@ public class MD5Password implements AuthMethod {
      * @param password The connecting user's password
      * @return A 35-byte array, comprising the string "md5" and an MD5 digest
      */
-    @Override
     public byte[] encode() {
         MessageDigest md;
         byte[] tempDigest;
@@ -76,13 +70,10 @@ public class MD5Password implements AuthMethod {
         byte[] hexDigest = new byte[35];
 
         try {
+            tempDigest = this.storePassword.getBytes(ENCODING);
+            System.arraycopy(tempDigest, 0, hexDigest, 0, tempDigest.length);
+            
             md = MessageDigest.getInstance("MD5");
-
-            md.update(this.password.getBytes(ENCODING));
-            md.update(this.user.getBytes(ENCODING));
-            tempDigest = md.digest();
-
-            ConvertUtils.bytesToHex(tempDigest, hexDigest, 0);
             md.update(hexDigest, 0, 32);
             md.update(this.salt);
             passDigest = md.digest();
@@ -93,7 +84,7 @@ public class MD5Password implements AuthMethod {
             hexDigest[2] = (byte) '5';
             
             return hexDigest;
-        } catch (NoSuchAlgorithmException | IOException e) {
+        } catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
             throw new IllegalStateException("Unable to encode password with MD5", e);
         }
     }
@@ -110,8 +101,7 @@ public class MD5Password implements AuthMethod {
         
         if (o instanceof MD5Password) {
             MD5Password md5 = (MD5Password)o;
-            return (this.password.equals(md5.password) 
-                    && this.user.equals(md5.user) 
+            return (this.storePassword.equals(md5.storePassword)
                     && Arrays.equals(this.salt, md5.salt));
         }
         
@@ -130,7 +120,7 @@ public class MD5Password implements AuthMethod {
     
     @Override
     public int hashCode() {
-        return (this.user.hashCode() ^ this.password.hashCode() ^ this.salt.hashCode());
+        return (this.storePassword.hashCode() ^ this.salt.hashCode());
     }
 
     @Override

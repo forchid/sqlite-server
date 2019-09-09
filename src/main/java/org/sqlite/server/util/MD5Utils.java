@@ -15,7 +15,7 @@
  */
 package org.sqlite.server.util;
 
-import java.io.IOException;
+import java.io.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -30,16 +30,13 @@ public final class MD5Utils {
         
     }
     
-    public static String encode(String s) {
+    public static byte[] encode(String s) {
         try {
             MessageDigest md5 = MessageDigest.getInstance("MD5");
-            byte[] data = md5.digest(s.getBytes("UTF-8"));
-            
-            return ConvertUtils.bytesToHex(data, 0, data.length);
-        } catch (NoSuchAlgorithmException | IOException e) {
+            return md5.digest(s.getBytes("UTF-8"));
+        } catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
             throw new IllegalStateException("Unable to encode string with MD5", e);
         }
-            
     }
 
 }

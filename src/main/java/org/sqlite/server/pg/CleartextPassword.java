@@ -15,64 +15,53 @@
  */
 package org.sqlite.server.pg;
 
-import java.io.IOException;
 import java.util.Arrays;
 
-/**Simple authentication method based on password.
+import org.sqlite.server.AuthMethod;
+import org.sqlite.server.util.ConvertUtils;
+
+/**Clear-text password authentication method.
  * 
  * @author little-pan
  * @since 2019-09-03
  *
  */
-public class AuthPassword implements AuthMethod {
+public class CleartextPassword extends AuthMethod {
     
-    static final byte[] EMPTY_BYTEA = new byte[0];
-    static final String ENCODING = "UTF-8";
-    
-    private final String password;
-    
-    public AuthPassword(String password) {
-        this.password = password;
+    public CleartextPassword(String protocol) {
+        super(protocol);
     }
     
-    @Override
     public byte[] encode() {
-        try {
-            if (this.password == null) {
-                return EMPTY_BYTEA;
-            }
-            
-            return this.password.getBytes(ENCODING);
-        } catch (IOException e) {
-            throw new IllegalStateException("Unable to encode password with "+ENCODING, e);
-        }
+        return ConvertUtils.hexBytes(this.storePassword);
     }
     
     @Override
     public boolean equals(Object o) {
-        if (this == o || this.password == null) {
+        if (this == o) {
             return true;
         }
         
-        if (o instanceof AuthPassword) {
-            AuthPassword pa = (AuthPassword)o;
-            return (this.password.equals(pa.password));
+        if (o instanceof String) {
+            String password = genStorePassword(this.user, (String)o);
+            return (this.storePassword.equals(password));
+        }
+        
+        if (o instanceof CleartextPassword) {
+            CleartextPassword pa = (CleartextPassword)o;
+            return (this.storePassword.equals(pa.storePassword));
         }
         
         if (o instanceof byte[]) {
             return (Arrays.equals(encode(), (byte[])o));
         }
         
-        return (this.password.equals(o));
+        return false;
     }
     
     @Override
     public int hashCode() {
-        if (this.password == null) {
-            return EMPTY_BYTEA.hashCode();
-        }
-        
-        return (this.password.hashCode());
+        return (this.storePassword.hashCode());
     }
 
     @Override

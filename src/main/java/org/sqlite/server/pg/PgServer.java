@@ -69,6 +69,7 @@ public class PgServer extends SQLiteServer {
     }
     
     public PgServer() {
+        super("pg");
         this.authMethod = AUTH_DEFAULT;
     }
     
@@ -87,17 +88,19 @@ public class PgServer extends SQLiteServer {
         }
         
         // check authentication method
-        switch (this.authMethod) {
-        case AUTH_MD5:
-        case AUTH_PASSWORD:
-            if (getPassword() == null) {
-                help(1, this.command, "No password was provided");
+        if (CMD_INITDB.equals(this.command)) {
+            switch (this.authMethod) {
+            case AUTH_MD5:
+            case AUTH_PASSWORD:
+                if (getPassword() == null) {
+                    help(1, this.command, "No password was provided");
+                }
+                break;
+            case AUTH_TRUST:
+                break;
+            default:
+                help(1, this.command, "Unsupported auth method: " + this.authMethod);
             }
-            break;
-        case AUTH_TRUST:
-            break;
-        default:
-            help(1, this.command, "Unsupported auth method: " + this.authMethod);
         }
     }
     
@@ -190,5 +193,5 @@ public class PgServer extends SQLiteServer {
             return PG_TYPE_UNKNOWN;
         }
     }
-
+    
 }
