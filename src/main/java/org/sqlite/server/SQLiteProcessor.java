@@ -24,15 +24,15 @@ import org.sqlite.SQLiteConnection;
 import org.sqlite.server.util.IoUtils;
 
 /**
- * The server protocol handler.
+ * The SQLite server protocol handler.
  * 
  * @author little-pan
  * @since 2019-09-01
  *
  */
-public abstract class Processor implements Runnable, AutoCloseable {
+public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     
-    static final Logger log = LoggerFactory.getLogger(Processor.class);
+    static final Logger log = LoggerFactory.getLogger(SQLiteProcessor.class);
     
     protected Socket socket;
     protected final int id;
@@ -44,7 +44,7 @@ public abstract class Processor implements Runnable, AutoCloseable {
     protected Thread runner;
     protected SQLiteConnection connection;
     
-    protected Processor(Socket socket, int processId, SQLiteServer server) {
+    protected SQLiteProcessor(Socket socket, int processId, SQLiteServer server) {
         this.socket = socket;
         this.server = server;
         this.id = processId;

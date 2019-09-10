@@ -56,7 +56,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String VERSION = "0.3.27";
     public static final String USER_DEFAULT = "root";
     public static final String METADB_NAME  = "sqlite3.meta";
-    public static final String HOST_DEFAULT = "127.0.0.1";
+    public static final String HOST_DEFAULT = "localhost";
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 151;
     
@@ -83,7 +83,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     protected final String protocol;
     protected ServerSocket serverSocket;
-    final ConcurrentMap<Integer, Processor> processors = new ConcurrentHashMap<>();
+    final ConcurrentMap<Integer, SQLiteProcessor> processors = new ConcurrentHashMap<>();
     private volatile boolean stopped;
     
     public static void main(String args[]) {
@@ -105,9 +105,17 @@ public abstract class SQLiteServer implements AutoCloseable {
             
             server.boot(args);
         } catch (Exception e) {
-            e.printStackTrace();
-            System.err.println("[ERROR] " + e.getMessage());
-            server.help(1);
+            if (server.isTrace()) {
+                server.traceError(log, NAME + " fatal", e);
+            } else {
+                System.err.println("[ERROR] " + e.getMessage());
+            }
+            String command = server.command;
+            if (command == null) {
+                server.help(1);
+            } else {
+                server.help(1, command);
+            }
         } finally {
             IoUtils.close(server);
         }
@@ -148,16 +156,31 @@ public abstract class SQLiteServer implements AutoCloseable {
         this.protocol = protocol;
     }
     
+    protected String[] wrapArgs(String command, String ... args) {
+        if ((args.length == 0) || 
+                (!command.equals(args[0]) && !CMD_HELP.equals(args[0]))) {
+            String[] newArgs = new String[args.length + 1];
+            newArgs[0] = command;
+            System.arraycopy(args, 0, newArgs, 1, args.length);
+            args = newArgs;
+        }
+        
+        return args;
+    }
+    
     public void initdb(String ... args) {
+        args = wrapArgs(CMD_INITDB, args);
         init(args);
         
         String authMethod = getAuthMethod();
         if (authMethod == null) {
-            help(1, this.command, "No auth method provided");
+            throw new IllegalArgumentException("No auth method provided");
         }
         
         // Create super user
+        File dataDir = getDataDir();
         try {
+            trace(log, "initdb in {}", dataDir);
             SQLiteUser sa = new SQLiteUser(this.user, this.password, SQLiteUser.SUPER);
             sa.setAuthMethod(authMethod);
             sa.setHost(this.host);
@@ -166,7 +189,7 @@ public abstract class SQLiteServer implements AutoCloseable {
         } catch (SQLException e) {
             SQLiteErrorCode existError = SQLiteErrorCode.SQLITE_CONSTRAINT;
             if (existError.code == e.getErrorCode()) {
-                throw new IllegalStateException("Data dir has been initialized");
+                throw new IllegalStateException("Data dir has been initialized: " + dataDir);
             }
             throw new IllegalStateException("Initdb fatal: " + e.getMessage(), e);
         }
@@ -174,15 +197,15 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     protected void initDataDir() {
         try {
-            this.dataDir = this.dataDir.getCanonicalFile();
-            File baseDir = this.dataDir;
+            File baseDir = this.dataDir = this.dataDir.getCanonicalFile();
             if (!baseDir.isDirectory() && !baseDir.mkdirs()) {
-                throw new IllegalStateException("Can't mkdirs data dir " + baseDir);
+                throw new IllegalStateException("Can't mkdirs data dir: " + baseDir);
             }
             
             // init metaDb
+            IoUtils.close(this.metadb);
             File metaFile = new File(baseDir, METADB_NAME);
-            this.metadb = new SQLiteMetadb(metaFile);
+            this.metadb = new SQLiteMetadb(this, metaFile);
             if (CMD_BOOT.equals(this.command) && !this.metadb.isInitialized()) {
                 throw new IllegalStateException("Data dir hasn't been initialized: " + baseDir);
             }
@@ -193,6 +216,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public void boot(String... args) {
         try {
+            args = wrapArgs(CMD_BOOT, args);
             init(args);
             start();
             listen();
@@ -219,6 +243,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public SQLiteServer bootAsync(Executor executor, String... args) {
         boolean failed = true;
         try {
+            args = wrapArgs(CMD_BOOT, args);
             init(args);
             start();
             executor.execute(new Runnable(){
@@ -241,12 +266,16 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public void init(String... args) {
+        if (this.isStopped()) {
+            throw new IllegalStateException(NAME + " has been stopped");
+        }
+        
         boolean help = false;
         int i = 0;
         
         // Check command
         if(args == null || args.length < 1) {
-            help(1);
+            throw new IllegalArgumentException("No command specified");
         }
         String command = this.command = args[i++];
         
@@ -283,8 +312,8 @@ public abstract class SQLiteServer implements AutoCloseable {
             help(0);
             break;
         default:
-            help(1);
-            break;
+            this.command = null;
+            throw new IllegalArgumentException("Unknown command: " + command);
         }
         
         if (help) {
@@ -329,7 +358,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                     s.setKeepAlive(true);
                     
                     int processId = nextProcessId();
-                    Processor processor = newProcessor(s, processId);
+                    SQLiteProcessor processor = newProcessor(s, processId);
                     if (processors.putIfAbsent(processId, processor) != null) {
                         IoUtils.close(s);
                         decrProcessCount();
@@ -366,7 +395,7 @@ public abstract class SQLiteServer implements AutoCloseable {
         // 1. Close this server
         IoUtils.close(this.serverSocket);
         // 2. Stop all processors
-        for(Processor p : this.processors.values()) {
+        for(SQLiteProcessor p : this.processors.values()) {
             p.stop();
         }
         // 3. Close metaDb
@@ -374,18 +403,16 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public boolean isAllowed(Socket socket) throws SQLException {
-        InetSocketAddress addr = (InetSocketAddress)socket.getRemoteSocketAddress();
-        String host = addr.getHostName();
-        String ip = addr.getAddress().getHostAddress();
-        int n = this.metadb.selectUserCount(host, ip, getProtocol());
+        InetSocketAddress remoteAddr = (InetSocketAddress)socket.getRemoteSocketAddress();
+        String host = remoteAddr.getAddress().getHostAddress();
+        int n = this.metadb.selectHostCount(host, getProtocol());
         return (n > 0);
     }
     
     public SQLiteUser selectUser(Socket socket, String user, String db) throws SQLException {
-        InetSocketAddress addr = (InetSocketAddress)socket.getRemoteSocketAddress();
-        String host = addr.getHostName();
-        String ip = addr.getAddress().getHostAddress();
-        return (this.metadb.selectUser(host, ip, getProtocol(), user, db));
+        InetSocketAddress remoteAddr = (InetSocketAddress)socket.getRemoteSocketAddress();
+        String host = remoteAddr.getAddress().getHostAddress();
+        return (this.metadb.selectUser(host, getProtocol(), user, db));
     }
     
     @Override
@@ -397,11 +424,11 @@ public abstract class SQLiteServer implements AutoCloseable {
         return (!this.isStopped());
     }
     
-    public Processor removeProcessor(Processor processor) {
+    public SQLiteProcessor removeProcessor(SQLiteProcessor processor) {
         int id = processor.getId();
         
         if (getProcessor(id) == processor) {
-            Processor proc = this.processors.remove(id);
+            SQLiteProcessor proc = this.processors.remove(id);
             decrProcessCount();
             return proc;
         }
@@ -425,7 +452,7 @@ public abstract class SQLiteServer implements AutoCloseable {
         return (SQLiteConnection)config.createConnection(url);
     }
     
-    public Processor getProcessor(int id) {
+    public SQLiteProcessor getProcessor(int id) {
         return this.processors.get(id);
     }
     
@@ -469,11 +496,11 @@ public abstract class SQLiteServer implements AutoCloseable {
         return VERSION;
     }
     
-    public String getUser() {
+    protected String getUser() {
         return this.user;
     }
     
-    public String getPassword() {
+    protected String getPassword() {
         return this.password;
     }
     
@@ -517,7 +544,9 @@ public abstract class SQLiteServer implements AutoCloseable {
         }
     }
     
-    protected abstract Processor newProcessor(Socket s, int id);
+    protected abstract SQLiteProcessor newProcessor(Socket s, int id);
+    
+    public abstract SQLiteAuthMethod newAuthMethod(String authMethod);
     
     protected int incrProcessCount() {
         return this.processCount.incrementAndGet();
@@ -589,7 +618,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
                 "  --user|-U       <user>        Superuser's name, default "+USER_DEFAULT+"\n"+
                 "  --password|-p   <password>    Superuser's password, must be provided in non-trust auth\n"+
-                "  --host|-H       <host>        Superuser's host, default "+HOST_DEFAULT+"\n"+
+                "  --host|-H       <host>        Superuser's login host, IP, or '%' default "+HOST_DEFAULT+"\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
                 "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
     }

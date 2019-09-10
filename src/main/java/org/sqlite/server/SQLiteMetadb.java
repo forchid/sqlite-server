@@ -16,20 +16,30 @@
 package org.sqlite.server;
 
 import java.io.File;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
-import org.sqlite.server.util.ConvertUtils;
 import org.sqlite.server.util.IoUtils;
-import org.sqlite.server.util.MD5Utils;
 
 /**SQLite server meta database for user and database management.
  * 
@@ -38,6 +48,7 @@ import org.sqlite.server.util.MD5Utils;
  *
  */
 public class SQLiteMetadb implements AutoCloseable {
+    static final Logger log = LoggerFactory.getLogger(SQLiteMetadb.class);
     
     protected static final String CREATE_TABLE_USER = 
             "create table if not exists user("
@@ -47,7 +58,7 @@ public class SQLiteMetadb implements AutoCloseable {
             + "protocol varchar(50) not null,"
             + "auth_method varchar(50) not null,"
             + "sa integer not null,"
-            + "primary key(host, user, protocol))";
+            + "primary key(protocol, user, host))";
     
     protected static final String INSERT_USER =
             "insert into user(host, user, password, protocol, auth_method, sa)"
@@ -63,20 +74,30 @@ public class SQLiteMetadb implements AutoCloseable {
     protected static final String INSERT_DB =
             "insert into db(host, db, user) values(?, ?, ?)";
     
+    protected final SQLiteServer server;
+    
     protected final Deque<SQLiteConnection> connPool;
     protected final int maxPoolSize;
     protected int poolSize;
     
     protected final File file;
     
-    public SQLiteMetadb(File metaFile, int maxPoolSize) {
+    /** IP -> hosts cache */
+    protected final ConcurrentMap<String, Set<String>> hostsCache;
+    /** host -> resolved time */
+    protected final ConcurrentMap<String, Resolution> reslvCache;
+    
+    public SQLiteMetadb(SQLiteServer server, File metaFile, int maxPoolSize) {
+        this.server = server;
         this.file = metaFile;
         this.connPool = new ArrayDeque<>(maxPoolSize);
         this.maxPoolSize = maxPoolSize;
+        this.hostsCache = new ConcurrentHashMap<>();
+        this.reslvCache = new ConcurrentHashMap<>();
     }
     
-    public SQLiteMetadb(File metaFile) {
-        this(metaFile, 4);
+    public SQLiteMetadb(SQLiteServer server, File metaFile) {
+        this(server, metaFile, 8);
     }
     
     public boolean isInitialized() {
@@ -190,10 +211,12 @@ public class SQLiteMetadb implements AutoCloseable {
     }
     
     public SQLiteUser createUser(SQLiteUser user) throws SQLException {
-        String opass = user.getPassword();
+        final String opass = user.getPassword();
         if (opass != null) {
-            byte[] res = MD5Utils.encode(opass + user.getUser());
-            user.setPassword(ConvertUtils.bytesToHexString(res));
+            // Generate store password
+            SQLiteAuthMethod auth = this.server.newAuthMethod(user.getAuthMethod());
+            String storePassword = auth.genStorePassword(user.getUser(), opass);
+            user.setPassword(storePassword);
         }
         
         SQLiteConnection conn = getConnection();
@@ -291,86 +314,126 @@ public class SQLiteMetadb implements AutoCloseable {
                         n = rs.getInt(1);
                     }
                 }
-                
-                failed = false;
-                return n;
             }
+            
+            failed = false;
+            return n;
         } finally {
             release(conn, failed);
         }
     }
     
-    public int selectUserCount(String host, String ip, String protocol) throws SQLException {
-        SQLiteConnection conn = getConnection();
-        boolean failed = true;
-        try {
-            String sql = 
-                    "select count(*) from user u "
-                    + "where (? like u.host or ? like u.host) "
-                    + "and u.protocol = ?";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                int i = 0, n = 0;
-                ps.setString(++i, host);
-                ps.setString(++i, ip);
-                ps.setString(++i, protocol);
-                
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        n = rs.getInt(1);
-                    }
-                }
-                
-                failed = false;
-                return n;
-            }
-        } finally {
-            release(conn, failed);
-        }
-    }
-    
-    public SQLiteUser selectUser(String host, String ip, String protocol, String user, String db) 
+    public SQLiteUser selectUser(String host, String protocol, String user, String db) 
             throws SQLException {
+        List<SQLiteUser> users= new ArrayList<>();
         SQLiteUser sqliteUser = null;
+        
         SQLiteConnection conn = getConnection();
         boolean failed = true;
         try {
             String sql = 
                     "select host, user, password, protocol, auth_method, sa from user u "
-                    + "where (? like u.host or ? like u.host) "
-                    + "and u.protocol = ? and u.user = ?";
+                    + "where u.protocol = ? and u.user = ?";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 int i = 0;
-                ps.setString(++i, host);
-                ps.setString(++i, ip);
                 ps.setString(++i, protocol);
                 ps.setString(++i, user);
                 
                 try (ResultSet rs = ps.executeQuery()) {
-                    if (!rs.next()) {
-                        failed = false;
-                        return null;
+                    for (; rs.next(); ) {
+                        SQLiteUser u = new SQLiteUser();
+                        i = 0;
+                        u.setHost(rs.getString(++i));
+                        u.setUser(rs.getString(++i));
+                        u.setPassword(rs.getString(++i));
+                        u.setProtocol(rs.getString(++i));
+                        u.setAuthMethod(rs.getString(++i));
+                        u.setSa(rs.getInt(++i));
+                        users.add(u);
                     }
-                    i = 0;
-                    sqliteUser = new SQLiteUser();
-                    sqliteUser.setHost(rs.getString(++i));
-                    sqliteUser.setUser(rs.getString(++i));
-                    sqliteUser.setPassword(rs.getString(++i));
-                    sqliteUser.setProtocol(rs.getString(++i));
-                    sqliteUser.setAuthMethod(rs.getString(++i));
-                    sqliteUser.setSa(rs.getInt(++i));
                 }
             }
-            if (sqliteUser.getSa() == SQLiteUser.SUPER) {
-                failed = false;
-                return sqliteUser;
-            }
             
-            // check DB
-            sql = "select d.host, d.user, d.db from db d "
+            failed = false;
+        } finally {
+            release(conn, failed);
+        }
+        
+        // check hosts
+        // Case-1
+        for (SQLiteUser u: users) {
+            String h = u.getHost();
+            if (h.equals(host)) {
+                sqliteUser = u;
+                break;
+            }
+        }
+        // Case-2
+        if (sqliteUser == null) {
+            Set<String> cached = this.hostsCache.get(host);
+            List<SQLiteUser> candidates = new ArrayList<>();
+            for (SQLiteUser u: users) {
+                String h = u.getHost();
+                for (; ; ) {
+                    if (cached != null) {
+                        boolean contains;
+                        synchronized (cached) {
+                            contains = cached.contains(h);
+                        }
+                        if (contains) {
+                            candidates.add(u);
+                            break;
+                        }
+                    }
+                    
+                    if (resolveHost(h)) {
+                        cached = this.hostsCache.get(host);
+                        if (cached != null) {
+                            continue;
+                        }
+                    }
+                    
+                    break;
+                }
+            }
+            if (candidates.size() > 0) {
+                Collections.sort(candidates, new Comparator<SQLiteUser>() {
+                    @Override
+                    public int compare(SQLiteUser a, SQLiteUser b) {
+                        return a.getHost().compareTo(b.getHost());
+                    }
+                });
+                sqliteUser = candidates.get(0);
+            }
+        }
+        // Case-3
+        if (sqliteUser == null) {
+            for (SQLiteUser u: users) {
+                String h = u.getHost();
+                if ("%".equals(h)) {
+                    sqliteUser = u;
+                    break;
+                }
+            }
+        }
+        
+        // check DB
+        if (sqliteUser == null) {
+            return null;
+        }
+        sqliteUser.setDb(db);
+        if (sqliteUser.isSa()) {
+            return sqliteUser;
+        }
+        
+        conn = getConnection();
+        failed = true;
+        try {
+            String sql = "select d.host, d.user, d.db from db d "
                     + "where d.host = ? and d.user = ? and d.db = ?";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 int i = 0;
-                ps.setString(++i, host);
+                ps.setString(++i, sqliteUser.getHost());
                 ps.setString(++i, user);
                 ps.setString(++i, db);
                 
@@ -381,11 +444,134 @@ public class SQLiteMetadb implements AutoCloseable {
                     }
                 }
             }
-            sqliteUser.setDb(db);
             failed = false;
             return sqliteUser;
         } finally {
             release(conn, failed);
+        }
+    }
+    
+    public int selectHostCount(String host, String protocol) throws SQLException {
+        Set<String> hosts = new HashSet<>();
+        
+        SQLiteConnection conn = getConnection();
+        boolean failed = true;
+        try {
+            String sql = "select u.host from user u where u.protocol = ?";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                int i = 0;
+                ps.setString(++i, protocol);
+                try (ResultSet rs = ps.executeQuery()) {
+                    for (; rs.next(); ) {
+                        i = 0;
+                        String h = rs.getString(++i);
+                        hosts.add(h);
+                    }
+                }
+            }
+            failed = false;
+        } finally {
+            release(conn, failed);
+        }
+        
+        int n = 0;
+        if (hosts.contains(host)) {
+            // Case-1 exact matching
+            ++n;
+        }
+        Set<String> cached = this.hostsCache.get(host);
+        for (String h : hosts) {
+            if ("%".equals(h)) {
+                // Case-2 fuzzy matching
+                ++n;
+                continue;
+            }
+            
+            for (;;) {
+                if (cached != null) {
+                    boolean contains;
+                    synchronized(cached) {
+                        // Case-3.1 domain matching in resolved
+                        contains = cached.contains(h);
+                    }
+                    if (contains) {
+                        ++n;
+                        break;
+                    }
+                }
+                
+                if (resolveHost(h)) {
+                    cached = this.hostsCache.get(host);
+                    if (cached != null) {
+                        continue;
+                    }
+                }
+                
+                break;
+            }
+        }
+        
+        return n;
+    }
+    
+    protected boolean resolveHost(String h) {
+        Resolution reslv = this.reslvCache.get(h);
+        if (reslv != null && !reslv.isExpired()) {
+            return false;
+        }
+        
+        try {
+            for (InetAddress addr: InetAddress.getAllByName(h)) {
+                String ip = addr.getHostAddress();
+                Set<String> newCache = new HashSet<>();
+                Set<String> oldCache = this.hostsCache.putIfAbsent(ip, newCache);
+                if (oldCache != null) {
+                    newCache = oldCache;
+                }
+                synchronized(newCache) {
+                    newCache.add(h);
+                }
+            }
+            this.reslvCache.put(h, new Resolution(true));
+            return true;
+        } catch (UnknownHostException e) {
+            log.warn("Can't resolve the host " + h, e);
+            this.reslvCache.put(h, new Resolution(false));
+            return false;
+        }
+    }
+    
+    public void flushHosts() {
+        this.reslvCache.clear();
+        this.hostsCache.clear();
+    }
+    
+    /** Host resolution. */
+    static class Resolution {
+        private boolean success;
+        private long atime;
+        
+        Resolution (boolean success) {
+            this.success = success;
+            this.atime = System.currentTimeMillis();
+        }
+        
+        synchronized Resolution update(boolean success) {
+            this.success = success;
+            this.atime = System.currentTimeMillis();
+            return this;
+        }
+        
+        synchronized boolean isExpired() {
+            long interval = 180000L; // 3min when error
+            if (isSuccess()) {
+                interval *= 10L;     //30min when success
+            }
+            return (System.currentTimeMillis() - this.atime > interval);
+        }
+        
+        synchronized boolean isSuccess() {
+            return this.success;
         }
     }
     

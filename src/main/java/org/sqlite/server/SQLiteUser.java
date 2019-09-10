@@ -98,5 +98,9 @@ public class SQLiteUser {
     public void setSa(int sa) {
         this.sa = sa;
     }
+    
+    public boolean isSa() {
+        return (this.sa == SUPER);
+    }
 
 }

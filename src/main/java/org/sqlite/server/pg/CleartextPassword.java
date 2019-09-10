@@ -17,7 +17,7 @@ package org.sqlite.server.pg;
 
 import java.util.Arrays;
 
-import org.sqlite.server.AuthMethod;
+import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.server.util.ConvertUtils;
 
 /**Clear-text password authentication method.
@@ -26,7 +26,7 @@ import org.sqlite.server.util.ConvertUtils;
  * @since 2019-09-03
  *
  */
-public class CleartextPassword extends AuthMethod {
+public class CleartextPassword extends SQLiteAuthMethod {
     
     public CleartextPassword(String protocol) {
         super(protocol);

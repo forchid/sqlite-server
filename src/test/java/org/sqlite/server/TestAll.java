@@ -64,7 +64,8 @@ public class TestAll extends TestBase {
         add(new TestDriver()).
         add(new TestStatement()).
         add(new TestSQLReader()).
-        add(new TestSQLParser());
+        add(new TestSQLParser()).
+        add(new TestSQLiteServer());
     }
     
 }

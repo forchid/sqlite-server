@@ -20,7 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
-import org.sqlite.server.AuthMethod;
+import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.server.util.ConvertUtils;
 import org.sqlite.server.util.SecurityUtils;
 
@@ -31,7 +31,7 @@ import org.sqlite.server.util.SecurityUtils;
  * @since 2019-09-03
  *
  */
-public class MD5Password extends AuthMethod {
+public class MD5Password extends SQLiteAuthMethod {
     
     private final byte[] salt;
     

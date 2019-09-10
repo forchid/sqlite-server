@@ -52,8 +52,8 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
-import org.sqlite.server.AuthMethod;
-import org.sqlite.server.Processor;
+import org.sqlite.server.SQLiteAuthMethod;
+import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteUser;
 import org.sqlite.server.util.DateTimeUtils;
 import org.sqlite.server.util.IoUtils;
@@ -70,7 +70,7 @@ import org.sqlite.sql.TransactionStatement;
  * @since 2019-09-01
  *
  */
-public class PgProcessor extends Processor {
+public class PgProcessor extends SQLiteProcessor {
     
     static final Logger log = LoggerFactory.getLogger(PgProcessor.class);
     private static final boolean INTEGER_DATE_TYPES = false;
@@ -83,7 +83,7 @@ public class PgProcessor extends Processor {
     protected static final String UNNAMED  = "";
     
     private final int secret;
-    private AuthMethod authMethod;
+    private SQLiteAuthMethod authMethod;
     private SQLiteUser user;
     
     private DataInputStream dataIn, dataBuf;
@@ -296,11 +296,6 @@ public class PgProcessor extends Processor {
                     String value = readString();
                     if ("user".equals(param)) {
                         this.userName = value;
-                        if (!server.getUser().equals(this.userName)){
-                            sendErrorAuth();
-                            flush = true;
-                            break;
-                        }
                     } else if ("database".equals(param)) {
                         this.databaseName = server.checkKeyAndGetDatabaseName(value);
                     } else if ("client_encoding".equals(param)) {
@@ -326,7 +321,8 @@ public class PgProcessor extends Processor {
                     user = null;
                 }
                 if (user == null) {
-                    stop();
+                    sendErrorAuth();
+                    flush = true;
                     break;
                 }
                 this.user = user;
@@ -827,7 +823,7 @@ public class PgProcessor extends Processor {
     
     private void sendAuthenticationMessage() throws IOException {
         switch (this.user.getAuthMethod()) {
-        case "password":
+        case PgServer.AUTH_PASSWORD:
             sendAuthenticationCleartextPassword();
             break;
         default: // md5
@@ -842,7 +838,7 @@ public class PgProcessor extends Processor {
     
     private void sendAuthenticationCleartextPassword() throws IOException {
         PgServer server = getServer();
-        this.authMethod = new CleartextPassword(server.getProtocol());
+        this.authMethod = server.newAuthMethod(this.user.getAuthMethod());
         
         startMessage('R');
         writeInt(AUTH_REQ_PASSWORD);
@@ -851,7 +847,7 @@ public class PgProcessor extends Processor {
     
     private void sendAuthenticationMD5Password() throws IOException {
         PgServer server = getServer();
-        MD5Password md5 = new MD5Password(server.getProtocol());
+        MD5Password md5 = (MD5Password)server.newAuthMethod(this.user.getAuthMethod());
         this.authMethod = md5;
         
         startMessage('R');
@@ -942,8 +938,23 @@ public class PgProcessor extends Processor {
     }
     
     private void sendErrorAuth() throws IOException {
+        PgServer server = getServer();
+        String protocol = server.getProtocol();
+        
         SQLiteErrorCode error = SQLiteErrorCode.SQLITE_AUTH;
-        sendErrorResponse(new SQLException(error.message, "28000", error.code));
+        String message = error.message;
+        if (this.user == null) {
+            InetSocketAddress remoteAddr = (InetSocketAddress)this.socket.getRemoteSocketAddress();
+            String host = remoteAddr.getAddress().getHostAddress();
+            message = format("%s for '%s'@'%s' (using protocol: %s)", 
+                    message, this.userName, host, protocol);
+        } else {
+            String authMethod = this.user.getAuthMethod();
+            message = format("%s for '%s'@'%s' (using protocol: %s, auth method: %s)", 
+                    message, this.userName, this.user.getHost(), protocol, authMethod);
+        }
+        
+        sendErrorResponse(new SQLException(message, "28000", error.code));
         stop();
     }
     

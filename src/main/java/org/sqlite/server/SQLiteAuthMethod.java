@@ -18,13 +18,13 @@ package org.sqlite.server;
 import org.sqlite.server.util.ConvertUtils;
 import org.sqlite.server.util.MD5Utils;
 
-/**Authentication method.
+/**SQLite server authentication method.
  * 
  * @author little-pan
  * @since 2019-09-03
  *
  */
-public abstract class AuthMethod {
+public abstract class SQLiteAuthMethod {
     
     protected static final String ENCODING = "UTF-8";
     
@@ -32,7 +32,7 @@ public abstract class AuthMethod {
     protected String user;
     protected String storePassword;
     
-    public AuthMethod(String protocol) {
+    public SQLiteAuthMethod(String protocol) {
         this.protocol = protocol;
     }
     

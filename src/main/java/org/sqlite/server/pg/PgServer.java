@@ -20,7 +20,8 @@ import java.sql.Types;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sqlite.server.Processor;
+import org.sqlite.server.SQLiteAuthMethod;
+import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteServer;
 
 /**
@@ -93,13 +94,13 @@ public class PgServer extends SQLiteServer {
             case AUTH_MD5:
             case AUTH_PASSWORD:
                 if (getPassword() == null) {
-                    help(1, this.command, "No password was provided");
+                    throw new IllegalArgumentException("No password was provided");
                 }
                 break;
             case AUTH_TRUST:
                 break;
             default:
-                help(1, this.command, "Unsupported auth method: " + this.authMethod);
+                throw new IllegalArgumentException("Unknown auth method: " + this.authMethod);
             }
         }
     }
@@ -121,7 +122,7 @@ public class PgServer extends SQLiteServer {
     }
     
     @Override
-    protected Processor newProcessor(Socket s, int processId) {
+    protected SQLiteProcessor newProcessor(Socket s, int processId) {
         return new PgProcessor(s, processId, this);
     }
     
@@ -191,6 +192,21 @@ public class PgServer extends SQLiteServer {
             return PG_TYPE_TEXTARRAY;
         default:
             return PG_TYPE_UNKNOWN;
+        }
+    }
+
+    @Override
+    public SQLiteAuthMethod newAuthMethod(String authMethod) {
+        String procotol = getProtocol();
+        switch (authMethod) {
+        case AUTH_MD5:
+            return new MD5Password(procotol);
+        case AUTH_PASSWORD:
+            return new CleartextPassword(procotol);
+        case AUTH_TRUST:
+            return new TrustAuthMethod(procotol);
+        default:
+            throw new IllegalArgumentException("authMethod " + authMethod);
         }
     }
     

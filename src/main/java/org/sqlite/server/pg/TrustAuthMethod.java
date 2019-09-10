@@ -15,7 +15,7 @@
  */
 package org.sqlite.server.pg;
 
-import org.sqlite.server.AuthMethod;
+import org.sqlite.server.SQLiteAuthMethod;
 
 /**Trust authentication method.
  * 
@@ -23,7 +23,7 @@ import org.sqlite.server.AuthMethod;
  * @since 2019-09-09
  *
  */
-public class TrustAuthMethod extends AuthMethod {
+public class TrustAuthMethod extends SQLiteAuthMethod {
     
     public TrustAuthMethod(String protocol) {
         super(protocol);

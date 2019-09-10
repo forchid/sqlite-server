@@ -19,7 +19,9 @@ import java.io.File;
 import java.io.FilenameFilter;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 import org.sqlite.server.util.IoUtils;
 
@@ -35,7 +37,7 @@ public abstract class TestDbBase extends TestBase {
     
     protected static SQLiteServer server;
     static {
-        String dataDir= "data"+File.separator+"sqlite3Test";
+        String dataDir= getDataDir();
         
         deleteDataDir(new File(dataDir));
         String[] initArgs = {"initdb", "-D", dataDir, "-p", password};
@@ -43,31 +45,89 @@ public abstract class TestDbBase extends TestBase {
         server.initdb(initArgs);
         IoUtils.close(server);
         
-        String[] bootArgs = {"boot", "-D", dataDir, "-T"};
+        String[] bootArgs = {"boot", "-D", dataDir};
         server = SQLiteServer.create(bootArgs);
         server.bootAsync(bootArgs);
     }
     
-    protected Connection getConnection() throws SQLException {
+    protected static String getUrl(int port, String path) {
+        return ("jdbc:postgresql://localhost:"+port+"/"+path);
+    }
+    
+    protected Connection getConnection(String url, String user, String password) 
+            throws SQLException {
         return (DriverManager.getConnection(url, user, password));
     }
     
-    protected static void deleteDataDir(File dataDir) {
-        if (dataDir.isDirectory()) {
-            dataDir.list(new FilenameFilter() {
-                @Override
-                public boolean accept(File dir, String name) {
-                    File f = new File(dir, name);
-                    if (f.isFile()) {
-                        return f.delete();
-                    }
-                    
-                    return false;
-                }
-            });
-            
-            dataDir.delete();
+    protected Connection getConnection(int port, String path, String user, String password) 
+            throws SQLException {
+        String url = getUrl(port, path);
+        return (DriverManager.getConnection(url, user, password));
+    }
+    
+    protected Connection getConnection() throws SQLException {
+        return (getConnection(url, user, password));
+    }
+    
+    protected static String getDataDir() {
+        return getDataDir(null);
+    }
+    
+    protected static String getDataDir(String dataDir) {
+        if (dataDir == null || dataDir.length() == 0) {
+            dataDir = "sqlite3Test";
         }
+        return ("data"+File.separator+dataDir);
+    }
+    
+    protected static void deleteDataDir(String dataDir) {
+        File target = new File(dataDir);
+        deleteDataDir(target);
+    }
+    
+    protected static void deleteDataDir(File dataDir) {
+        assertTrue(!dataDir.exists() || dataDir.isDirectory());
+        
+        dataDir.list(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                File f = new File(dir, name);
+                if (f.isFile()) {
+                    boolean ok = f.delete();
+                    // wait for sqlite3 closing DB
+                    for (int i = 0;!ok && i < 5; ++i) {
+                        try {
+                            Thread.sleep(50L);
+                            ok = f.delete();
+                        } catch (InterruptedException e) {}
+                    }
+                    assertTrue(ok);
+                    return ok;
+                }
+                
+                return false;
+            }
+        });
+        
+        assertTrue(!dataDir.exists() || dataDir.delete());
     }
 
+    protected void connectionTest(Connection conn, String sql, String result)
+            throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            if (stmt.execute(sql)) {
+                try (ResultSet rs = stmt.getResultSet()) {
+                    if (result == null) {
+                        assertTrue(!rs.next());
+                    } else {
+                        assertTrue(rs.next());
+                        assertTrue(result.equals(rs.getString(1)));
+                    }
+                }
+            } else {
+                assertTrue(result.equals(stmt.getUpdateCount()+""));
+            }
+        }
+    }
+    
 }
