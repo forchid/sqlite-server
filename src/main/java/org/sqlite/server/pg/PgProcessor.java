@@ -687,7 +687,7 @@ public class PgProcessor extends SQLiteProcessor {
         try {
             this.authMethod = null;
             
-            conn = server.newSQLiteConnection(this.databaseName);
+            conn = server.newSQLiteConnection(this.user, this.databaseName, false);
             if (server.isTrace()) {
                 server.trace(log, "sqliteConn init: autocommit {}", conn.getAutoCommit());
             }
@@ -696,6 +696,7 @@ public class PgProcessor extends SQLiteProcessor {
             failed = false;
             return true;
         } catch (SQLException cause) {
+            sendErrorResponse(cause);
             stop();
             server.traceError(log, "Can't init database", cause);
             return false;

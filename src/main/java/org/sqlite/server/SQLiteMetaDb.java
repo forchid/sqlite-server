@@ -16,6 +16,7 @@
 package org.sqlite.server;
 
 import java.io.File;
+import static java.lang.String.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.sql.PreparedStatement;
@@ -67,9 +68,9 @@ public class SQLiteMetaDb implements AutoCloseable {
             + "values(?, ?, ?, ?, ?, ?)";
     
     protected static final String CREATE_TABLE_DB =
-            "create table if not exits db("
+            "create table if not exists db("
             + "host varchar(60) not null,"
-            + "db varchar(250) not null,"
+            + "db varchar(64) not null,"
             + "user varchara(32) not null,"
             + "primary key(host, db, user))";
     
@@ -252,7 +253,7 @@ public class SQLiteMetaDb implements AutoCloseable {
                 
                 if (user.getDb() != null) {
                     Db db = new Db(user.getUser(), user.getHost(), user.getDb());
-                    createDb(conn, stmt, db);
+                    createDb(conn, stmt, db, user.isSa());
                 }
                 
                 conn.commit();
@@ -270,13 +271,13 @@ public class SQLiteMetaDb implements AutoCloseable {
         }
     }
     
-    public Db createDb(Db db) throws SQLException {
+    public Db createDb(Db db, boolean createDbFile) throws SQLException {
         SQLiteConnection conn = getConnection();
         boolean failed = true;
         try {
             conn.setAutoCommit(false);
             try (Statement stmt = conn.createStatement()) {
-                createDb(conn, stmt, db);
+                createDb(conn, stmt, db, createDbFile);
                 conn.commit();
                 failed = false;
                 return db;
@@ -291,8 +292,17 @@ public class SQLiteMetaDb implements AutoCloseable {
         }
     }
     
-    protected Db createDb(SQLiteConnection conn, Statement stmt, Db db) 
+    protected Db createDb(SQLiteConnection conn, Statement stmt, Db db, boolean createDbFile) 
             throws SQLException {
+        if (createDbFile) {
+            File dbFile = new File(server.getDataDir(), db.getDb());
+            if (!server.inDataDir(db.getDb())) {
+                throw new SQLException("Database name isn't a relative file name");
+            }
+            stmt.executeUpdate(format("attach database '%s' as %s", dbFile, db.getDb()));
+            stmt.executeUpdate(format("detach database %s", db.getDb()));
+        }
+        
         stmt.executeUpdate(CREATE_TABLE_DB);
         try (PreparedStatement ps = conn.prepareStatement(INSERT_DB)) {
             int i = 0;

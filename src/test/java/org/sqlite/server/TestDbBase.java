@@ -31,8 +31,8 @@ import org.sqlite.util.IoUtils;
  *
  */
 public abstract class TestDbBase extends TestBase {
-    protected static String url = "jdbc:postgresql://localhost:"+SQLiteServer.PORT_DEFAULT+"/test.db";
     protected static String user = "root";
+    protected static String url = "jdbc:postgresql://localhost:"+SQLiteServer.PORT_DEFAULT+"/"+user;
     protected static String password = "123456";
     
     protected static SQLiteServer server;
@@ -40,12 +40,12 @@ public abstract class TestDbBase extends TestBase {
         String dataDir= getDataDir();
         
         deleteDataDir(new File(dataDir));
-        String[] initArgs = {"initdb", "-D", dataDir, "-p", password};
+        String[] initArgs = {"-D", dataDir, "-p", password};
         server = SQLiteServer.create(initArgs);
         server.initdb(initArgs);
         IoUtils.close(server);
         
-        String[] bootArgs = {"boot", "-D", dataDir};
+        String[] bootArgs = {"-D", dataDir};
         server = SQLiteServer.create(bootArgs);
         server.bootAsync(bootArgs);
     }

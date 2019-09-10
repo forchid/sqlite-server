@@ -70,8 +70,9 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected SQLiteMetaDb metaDb;
     protected String command;
     
-    private String user = USER_DEFAULT;
+    private String username = USER_DEFAULT;
     private String password;
+    private String dbName;
     protected String authMethod;
     
     protected String host = HOST_DEFAULT;
@@ -131,22 +132,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public static SQLiteServer create(String ... args) {
-        if (args == null || args.length == 0) {
-            throw new IllegalArgumentException("No command specified");
-        }
-        
-        int i = 0;
-        String command = args[i++];
-        switch (command) {
-        case CMD_INITDB:
-        case CMD_BOOT:
-        case CMD_HELP:
-            break;
-        default:
-            throw new IllegalArgumentException("Unknown command: " + command);
-        }
-        
-        for (int argc = args.length; i < argc; ++i) {
+        for (int i = 0, argc = args.length; i < argc; ++i) {
             String arg = args[i];
             if ("--protocol".equals(arg)) {
                 if ("pg".equals(arg)) {
@@ -189,10 +175,14 @@ public abstract class SQLiteServer implements AutoCloseable {
         File dataDir = getDataDir();
         try {
             trace(log, "initdb in {}", dataDir);
-            User sa = new User(this.user, this.password, User.SUPER);
+            if (!inDataDir(this.dbName)) {
+                throw new IllegalArgumentException("db must be a relative file name");
+            }
+            User sa = new User(this.username, this.password, User.SUPER);
             sa.setAuthMethod(authMethod);
             sa.setHost(this.host);
             sa.setProtocol(this.protocol);
+            sa.setDb(this.dbName);
             this.metaDb.createUser(sa);
         } catch (SQLException e) {
             SQLiteErrorCode existError = SQLiteErrorCode.SQLITE_CONSTRAINT;
@@ -297,24 +287,29 @@ public abstract class SQLiteServer implements AutoCloseable {
         for (int argc = args.length; i < argc; i++) {
             String a = args[i];
             if ("--trace".equals(a) || "-T".equals(a)) {
-                trace = true;
+                this.trace = true;
             } else if ("--user".equals(a) || "-U".equals(a)) {
-                user = args[++i];
+                this.username = args[++i];
             } else if ("--password".equals(a) || "-p".equals(a)) {
-                password = args[++i];
+                this.password = args[++i];
             } else if ("--host".equals(a) || "-H".equals(a)) {
-                host = args[++i];
+                this.host = args[++i];
+            } else if ("--db".equals(a) || "-d".equals(a)) {
+                this.dbName = args[++i];
             } else if ("--port".equals(a) || "-P".equals(a)) {
-                port = Integer.decode(args[++i]);
+                this.port = Integer.decode(args[++i]);
             } else if ("--data-dir".equals(a) || "-D".equals(a)) {
-                dataDir = new File(args[++i]);
+                this.dataDir = new File(args[++i]);
             } else if ("--max-conns".equals(a)) {
-                maxConns = Integer.decode(args[++i]);
+                this.maxConns = Integer.decode(args[++i]);
             } else if ("--auth-method".equals(a) || "-A".equals(a)) {
                 this.authMethod = toLowerEnglish(args[++i]);
             } else if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
                 help = true;
             }
+        }
+        if (this.dbName == null) {
+            this.dbName = this.username;
         }
         
         trace(log, "command {}", command);
@@ -455,9 +450,14 @@ public abstract class SQLiteServer implements AutoCloseable {
         return null;
     }
     
-    public SQLiteConnection newSQLiteConnection(String databaseName) throws SQLException {
+    public SQLiteConnection newSQLiteConnection(User user, String databaseName, boolean createDb)
+            throws SQLException {
         String url = "jdbc:sqlite:"+databaseName;
         if (!":memory:".equals(databaseName) && !"".equals(databaseName)/* temporary */) {
+            if (!createDb && !dbExists(databaseName)) {
+                SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
+                throw new SQLException(error.message, "08001", error.code);
+            }
             url = String.format("jdbc:sqlite:%s", getDbFile(databaseName));
         }
         trace(log, "SQLite connection {}", url);
@@ -516,12 +516,27 @@ public abstract class SQLiteServer implements AutoCloseable {
         return VERSION;
     }
     
-    protected String getUser() {
-        return this.user;
+    protected String getUsername() {
+        return this.username;
     }
     
     protected String getPassword() {
         return this.password;
+    }
+    
+    protected String getDbName() {
+        return this.dbName;
+    }
+    
+    public boolean inDataDir(String filename) {
+        File dbFile = new File(dataDir, filename);
+        return (dbFile.getParentFile().equals(dataDir) 
+                && dbFile.getName().equals(filename));
+    }
+    
+    public boolean dbExists(String filename) {
+        File dbFile = new File(dataDir, filename);
+        return (inDataDir(filename) && dbFile.isFile());
     }
     
     public String getAuthMethod() {
@@ -638,6 +653,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
                 "  --user|-U       <user>        Superuser's name, default "+USER_DEFAULT+"\n"+
                 "  --password|-p   <password>    Superuser's password, must be provided in non-trust auth\n"+
+                "  --db|-d         <dbName>      Initialized database, default as the user name\n"+
                 "  --host|-H       <host>        Superuser's login host, IP, or '%' default "+HOST_DEFAULT+"\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
                 "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
