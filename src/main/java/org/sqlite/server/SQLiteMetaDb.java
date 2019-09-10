@@ -37,9 +37,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteConnection;
+import org.sqlite.server.meta.Db;
+import org.sqlite.server.meta.User;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
-import org.sqlite.server.util.IoUtils;
+import org.sqlite.util.IoUtils;
 
 /**SQLite server meta database for user and database management.
  * 
@@ -47,8 +49,8 @@ import org.sqlite.server.util.IoUtils;
  * @since 2019-09-08
  *
  */
-public class SQLiteMetadb implements AutoCloseable {
-    static final Logger log = LoggerFactory.getLogger(SQLiteMetadb.class);
+public class SQLiteMetaDb implements AutoCloseable {
+    static final Logger log = LoggerFactory.getLogger(SQLiteMetaDb.class);
     
     protected static final String CREATE_TABLE_USER = 
             "create table if not exists user("
@@ -74,6 +76,7 @@ public class SQLiteMetadb implements AutoCloseable {
     protected static final String INSERT_DB =
             "insert into db(host, db, user) values(?, ?, ?)";
     
+    private volatile boolean open = true;
     protected final SQLiteServer server;
     
     protected final Deque<SQLiteConnection> connPool;
@@ -87,7 +90,7 @@ public class SQLiteMetadb implements AutoCloseable {
     /** host -> resolved time */
     protected final ConcurrentMap<String, Resolution> reslvCache;
     
-    public SQLiteMetadb(SQLiteServer server, File metaFile, int maxPoolSize) {
+    public SQLiteMetaDb(SQLiteServer server, File metaFile, int maxPoolSize) {
         this.server = server;
         this.file = metaFile;
         this.connPool = new ArrayDeque<>(maxPoolSize);
@@ -96,11 +99,11 @@ public class SQLiteMetadb implements AutoCloseable {
         this.reslvCache = new ConcurrentHashMap<>();
     }
     
-    public SQLiteMetadb(SQLiteServer server, File metaFile) {
+    public SQLiteMetaDb(SQLiteServer server, File metaFile) {
         this(server, metaFile, 8);
     }
     
-    public boolean isInitialized() {
+    public boolean isInited() {
         if (this.file.exists() && this.file.isFile()) {
             try {
                 int n = selectUserCount();
@@ -115,6 +118,10 @@ public class SQLiteMetadb implements AutoCloseable {
     }
     
     public SQLiteConnection getConnection() throws SQLException {
+        if (!isOpen()) {
+            throw new IllegalStateException("MetaDb has been closed");
+        }
+        
         synchronized(this.connPool) {
             for (;;) {
                 SQLiteConnection conn = this.connPool.poll();
@@ -152,7 +159,7 @@ public class SQLiteMetadb implements AutoCloseable {
         if (conn == null) {
             return;
         }
-        if (close) {
+        if (close || !this.isOpen()) {
             IoUtils.close(conn);
         }
         
@@ -195,9 +202,15 @@ public class SQLiteMetadb implements AutoCloseable {
     public int getMaxPoolSize() {
         return this.maxPoolSize;
     }
+    
+    public boolean isOpen() {
+        return (this.open);
+    }
 
     @Override
     public void close() {
+        this.open = true;
+        
         synchronized(this.connPool) {
             for (;;) {
                 SQLiteConnection conn = this.connPool.poll();
@@ -210,7 +223,7 @@ public class SQLiteMetadb implements AutoCloseable {
         }
     }
     
-    public SQLiteUser createUser(SQLiteUser user) throws SQLException {
+    public User createUser(User user) throws SQLException {
         final String opass = user.getPassword();
         if (opass != null) {
             // Generate store password
@@ -238,7 +251,7 @@ public class SQLiteMetadb implements AutoCloseable {
                 }
                 
                 if (user.getDb() != null) {
-                    SQLiteDb db = new SQLiteDb(user.getUser(), user.getHost(), user.getDb());
+                    Db db = new Db(user.getUser(), user.getHost(), user.getDb());
                     createDb(conn, stmt, db);
                 }
                 
@@ -257,7 +270,7 @@ public class SQLiteMetadb implements AutoCloseable {
         }
     }
     
-    public SQLiteDb createDb(SQLiteDb db) throws SQLException {
+    public Db createDb(Db db) throws SQLException {
         SQLiteConnection conn = getConnection();
         boolean failed = true;
         try {
@@ -278,7 +291,7 @@ public class SQLiteMetadb implements AutoCloseable {
         }
     }
     
-    protected SQLiteDb createDb(SQLiteConnection conn, Statement stmt, SQLiteDb db) 
+    protected Db createDb(SQLiteConnection conn, Statement stmt, Db db) 
             throws SQLException {
         stmt.executeUpdate(CREATE_TABLE_DB);
         try (PreparedStatement ps = conn.prepareStatement(INSERT_DB)) {
@@ -323,10 +336,10 @@ public class SQLiteMetadb implements AutoCloseable {
         }
     }
     
-    public SQLiteUser selectUser(String host, String protocol, String user, String db) 
+    public User selectUser(String host, String protocol, String user, String db) 
             throws SQLException {
-        List<SQLiteUser> users= new ArrayList<>();
-        SQLiteUser sqliteUser = null;
+        List<User> users= new ArrayList<>();
+        User sqliteUser = null;
         
         SQLiteConnection conn = getConnection();
         boolean failed = true;
@@ -341,7 +354,7 @@ public class SQLiteMetadb implements AutoCloseable {
                 
                 try (ResultSet rs = ps.executeQuery()) {
                     for (; rs.next(); ) {
-                        SQLiteUser u = new SQLiteUser();
+                        User u = new User();
                         i = 0;
                         u.setHost(rs.getString(++i));
                         u.setUser(rs.getString(++i));
@@ -361,7 +374,7 @@ public class SQLiteMetadb implements AutoCloseable {
         
         // check hosts
         // Case-1
-        for (SQLiteUser u: users) {
+        for (User u: users) {
             String h = u.getHost();
             if (h.equals(host)) {
                 sqliteUser = u;
@@ -371,8 +384,8 @@ public class SQLiteMetadb implements AutoCloseable {
         // Case-2
         if (sqliteUser == null) {
             Set<String> cached = this.hostsCache.get(host);
-            List<SQLiteUser> candidates = new ArrayList<>();
-            for (SQLiteUser u: users) {
+            List<User> candidates = new ArrayList<>();
+            for (User u: users) {
                 String h = u.getHost();
                 for (; ; ) {
                     if (cached != null) {
@@ -397,9 +410,9 @@ public class SQLiteMetadb implements AutoCloseable {
                 }
             }
             if (candidates.size() > 0) {
-                Collections.sort(candidates, new Comparator<SQLiteUser>() {
+                Collections.sort(candidates, new Comparator<User>() {
                     @Override
-                    public int compare(SQLiteUser a, SQLiteUser b) {
+                    public int compare(User a, User b) {
                         return a.getHost().compareTo(b.getHost());
                     }
                 });
@@ -408,7 +421,7 @@ public class SQLiteMetadb implements AutoCloseable {
         }
         // Case-3
         if (sqliteUser == null) {
-            for (SQLiteUser u: users) {
+            for (User u: users) {
                 String h = u.getHost();
                 if ("%".equals(h)) {
                     sqliteUser = u;

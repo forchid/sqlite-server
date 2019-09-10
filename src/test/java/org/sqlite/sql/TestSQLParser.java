@@ -19,7 +19,6 @@ import java.sql.SQLException;
 import java.util.NoSuchElementException;
 
 import org.sqlite.server.TestBase;
-import org.sqlite.server.util.IoUtils;
 import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.DetachStatement;
 import org.sqlite.sql.PragmaStatement;
@@ -27,6 +26,7 @@ import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
+import org.sqlite.util.IoUtils;
 
 /**
  * @author little-pan

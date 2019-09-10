@@ -13,24 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server;
+package org.sqlite.server.meta;
 
 /**
  * @author little-pan
  * @since 2019-09-08
  *
  */
-public class SQLiteDb {
+public class Db {
     
     private String user;
     private String host;
     private String db;
     
-    public SQLiteDb() {
+    public Db() {
         
     }
     
-    public SQLiteDb(String user, String host, String db) {
+    public Db(String user, String host, String db) {
         this.user = user;
         this.host = host;
         this.db = db;

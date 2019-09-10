@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.util;
+package org.sqlite.util;
 
 /**<p>
  * The common object or value convert utils.

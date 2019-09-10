@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server;
+package org.sqlite.server.meta;
 
 /**
  * @author little-pan
  * @since 2019-09-08
  *
  */
-public class SQLiteUser {
+public class User {
     
     public static final int SUPER = 1;
     public static final int USER  = 0;
@@ -33,11 +33,11 @@ public class SQLiteUser {
     private String authMethod;
     private int sa = USER;
     
-    public SQLiteUser() {
+    public User() {
         
     }
     
-    public SQLiteUser(String user, String password, int sa) {
+    public User(String user, String password, int sa) {
         this.user = user;
         this.password = password;
         this.sa = sa;

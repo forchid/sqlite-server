@@ -21,7 +21,7 @@ import java.io.Reader;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
-import org.sqlite.server.util.IoUtils;
+import org.sqlite.util.IoUtils;
 
 /**A simple SQL parser.
  * 

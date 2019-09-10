@@ -54,15 +54,15 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.server.SQLiteProcessor;
-import org.sqlite.server.SQLiteUser;
-import org.sqlite.server.util.DateTimeUtils;
-import org.sqlite.server.util.IoUtils;
-import org.sqlite.server.util.SecurityUtils;
-import org.sqlite.server.util.StringUtils;
+import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
+import org.sqlite.util.DateTimeUtils;
+import org.sqlite.util.IoUtils;
+import org.sqlite.util.SecurityUtils;
+import org.sqlite.util.StringUtils;
 
 /**The PG protocol handler.
  * 
@@ -84,7 +84,7 @@ public class PgProcessor extends SQLiteProcessor {
     
     private final int secret;
     private SQLiteAuthMethod authMethod;
-    private SQLiteUser user;
+    private User user;
     
     private DataInputStream dataIn, dataBuf;
     private OutputStream out;
@@ -313,7 +313,7 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 
                 // Check user and database
-                SQLiteUser user = null;
+                User user = null;
                 try {
                     user = server.selectUser(socket, this.userName, this.databaseName);
                 } catch (SQLException e) {

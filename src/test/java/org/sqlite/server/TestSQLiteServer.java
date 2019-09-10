@@ -18,7 +18,7 @@ package org.sqlite.server;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-import org.sqlite.server.util.IoUtils;
+import org.sqlite.util.IoUtils;
 
 /**SQLite server test case.
  * 
@@ -53,13 +53,16 @@ public class TestSQLiteServer extends TestDbBase {
         args = new String[]{"initdb", "-D", dataDir, "-A", authMethod, "-U", user};
         server = SQLiteServer.create(args);
         server.initdb(args);
+        assertTrue(server.isInited());
         try {
             server.initdb(args);
             fail("initdb again");
         } catch (IllegalStateException e){
             // OK
         }
-        args = new String[]{"-D", dataDir, "-P", port+""};
+        IoUtils.close(server);
+        args = new String[]{"boot", "-D", dataDir, "-P", port+""};
+        server = SQLiteServer.create(args);
         server.bootAsync(args);
         conn = getConnection(port, db, user, password);
         connectionTest(conn, sql, "1");
@@ -78,18 +81,24 @@ public class TestSQLiteServer extends TestDbBase {
         server = SQLiteServer.create(args);
         try {
             server.initdb(args);
+            fail("No password for auth method " + authMethod);
         } catch (IllegalArgumentException e){
             // OK
+            IoUtils.close(server);
         }
         args = new String[]{"initdb", "-D", dataDir, "-A", authMethod, "-U", user, "-p", password};
+        server = SQLiteServer.create(args);
         server.initdb(args);
+        assertTrue(server.isInited());
         try {
             server.initdb(args);
             fail("initdb again");
         } catch (IllegalStateException e){
             // OK
+            IoUtils.close(server);
         }
-        args = new String[]{"-D", dataDir, "-P", port+""};
+        args = new String[]{"boot", "-D", dataDir, "-P", port+""};
+        server = SQLiteServer.create(args);
         server.bootAsync(args);
         try {
             conn = getConnection(port, db, user, password+"X");
@@ -110,6 +119,7 @@ public class TestSQLiteServer extends TestDbBase {
             fail("Server has been closed");
         } catch (IllegalStateException e){
             // OK
+            IoUtils.close(server);
         }
         
         // test md5
@@ -120,17 +130,24 @@ public class TestSQLiteServer extends TestDbBase {
         server = SQLiteServer.create(args);
         try {
             server.initdb(args);
+            fail("No password for auth method " + authMethod);
         } catch (IllegalArgumentException e){
             // OK
+            IoUtils.close(server);
         }
         args = new String[]{"initdb", "-D", dataDir, "-A", authMethod, "-U", user, "-p", password};
+        server = SQLiteServer.create(args);
         server.initdb(args);
+        assertTrue(server.isInited());
         try {
             server.initdb(args);
             fail("initdb again");
         } catch (IllegalStateException e){
             // OK
+            IoUtils.close(server);
         }
+        args = new String[]{"boot", "-D", dataDir, "-P", port+""};
+        server = SQLiteServer.create(args);
         args = new String[]{"-D", dataDir, "-P", port+""};
         server.bootAsync(args);
         try {

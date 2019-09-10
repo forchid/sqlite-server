@@ -15,6 +15,8 @@
  */
 package org.sqlite.server;
 
+import static org.sqlite.util.StringUtils.*;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -26,6 +28,7 @@ import java.sql.SQLException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -36,10 +39,9 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
+import org.sqlite.server.meta.User;
 import org.sqlite.server.pg.PgServer;
-import org.sqlite.server.util.IoUtils;
-
-import static org.sqlite.server.util.StringUtils.*;
+import org.sqlite.util.IoUtils;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
  * and can be started and stopped.
@@ -65,7 +67,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String CMD_BOOT   = "boot";
     public static final String CMD_HELP   = "help";
     
-    protected SQLiteMetadb metadb;
+    protected SQLiteMetaDb metaDb;
     protected String command;
     
     private String user = USER_DEFAULT;
@@ -84,17 +86,24 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected final String protocol;
     protected ServerSocket serverSocket;
     final ConcurrentMap<Integer, SQLiteProcessor> processors = new ConcurrentHashMap<>();
+    
+    private final AtomicBoolean inited = new AtomicBoolean(false);
     private volatile boolean stopped;
     
     public static void main(String args[]) {
+        if (args.length == 0) {
+            String message = getHelp(SQLiteServer.class, NAME, VERSION);
+            doHelp(1, message);
+            return;
+        }
+        
         main(SQLiteServer.create(args), args);
     }
     
     public static void main(SQLiteServer server, String ... args) {
         try {
             if (args == null || args.length == 0) {
-                server.help(1);
-                return;
+                throw new IllegalArgumentException("No command specified");
             }
             
             String command = args[0];
@@ -123,7 +132,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public static SQLiteServer create(String ... args) {
         if (args == null || args.length == 0) {
-            doHelp(1, getHelp(SQLiteServer.class, NAME, VERSION));
+            throw new IllegalArgumentException("No command specified");
         }
         
         int i = 0;
@@ -134,8 +143,7 @@ public abstract class SQLiteServer implements AutoCloseable {
         case CMD_HELP:
             break;
         default:
-            doHelp(1, getHelp(SQLiteServer.class, NAME, VERSION));
-            break;
+            throw new IllegalArgumentException("Unknown command: " + command);
         }
         
         for (int argc = args.length; i < argc; ++i) {
@@ -144,7 +152,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 if ("pg".equals(arg)) {
                     return new PgServer();
                 } else {
-                    doHelp(1, getHelp(SQLiteServer.class, NAME, VERSION));
+                    throw new IllegalArgumentException("Unknown protocol: " + arg);
                 }
             }
         }
@@ -181,11 +189,11 @@ public abstract class SQLiteServer implements AutoCloseable {
         File dataDir = getDataDir();
         try {
             trace(log, "initdb in {}", dataDir);
-            SQLiteUser sa = new SQLiteUser(this.user, this.password, SQLiteUser.SUPER);
+            User sa = new User(this.user, this.password, User.SUPER);
             sa.setAuthMethod(authMethod);
             sa.setHost(this.host);
             sa.setProtocol(this.protocol);
-            this.metadb.createUser(sa);
+            this.metaDb.createUser(sa);
         } catch (SQLException e) {
             SQLiteErrorCode existError = SQLiteErrorCode.SQLITE_CONSTRAINT;
             if (existError.code == e.getErrorCode()) {
@@ -203,10 +211,9 @@ public abstract class SQLiteServer implements AutoCloseable {
             }
             
             // init metaDb
-            IoUtils.close(this.metadb);
             File metaFile = new File(baseDir, METADB_NAME);
-            this.metadb = new SQLiteMetadb(this, metaFile);
-            if (CMD_BOOT.equals(this.command) && !this.metadb.isInitialized()) {
+            this.metaDb = new SQLiteMetaDb(this, metaFile);
+            if (CMD_BOOT.equals(this.command) && !this.metaDb.isInited()) {
                 throw new IllegalStateException("Data dir hasn't been initialized: " + baseDir);
             }
         } catch (IOException cause) {
@@ -265,9 +272,16 @@ public abstract class SQLiteServer implements AutoCloseable {
         }
     }
     
+    public boolean isInited() {
+        return (this.inited.get());
+    }
+    
     public void init(String... args) {
+        if (!this.inited.compareAndSet(false, true)) {
+            throw new IllegalStateException(getName() + " has been initialized");
+        }
         if (this.isStopped()) {
-            throw new IllegalStateException(NAME + " has been stopped");
+            throw new IllegalStateException(getName() + " has been stopped");
         }
         
         boolean help = false;
@@ -324,8 +338,11 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public void start() throws NetworkException {
+        if (!isInited()) {
+            throw new IllegalStateException(getName() + " hasn't been initialized");
+        }
         if (isStopped()) {
-            throw new IllegalStateException("Server has been stopped");
+            throw new IllegalStateException(getName() + " has been stopped");
         }
         
         try {
@@ -337,9 +354,12 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public void listen() {
+        if (!isInited()) {
+            throw new IllegalStateException(getName() + " hasn't been initialized");
+        }
+        
         try {
             Thread.currentThread().setName(getName());
-            
             log.info("Ready for connections on {}:{}, version {}", getHost(), getPort(), getVersion());
             while (!isStopped()) {
                 Socket s = this.serverSocket.accept();
@@ -399,20 +419,20 @@ public abstract class SQLiteServer implements AutoCloseable {
             p.stop();
         }
         // 3. Close metaDb
-        IoUtils.close(this.metadb);
+        IoUtils.close(this.metaDb);
     }
     
     public boolean isAllowed(Socket socket) throws SQLException {
         InetSocketAddress remoteAddr = (InetSocketAddress)socket.getRemoteSocketAddress();
         String host = remoteAddr.getAddress().getHostAddress();
-        int n = this.metadb.selectHostCount(host, getProtocol());
+        int n = this.metaDb.selectHostCount(host, getProtocol());
         return (n > 0);
     }
     
-    public SQLiteUser selectUser(Socket socket, String user, String db) throws SQLException {
+    public User selectUser(Socket socket, String user, String db) throws SQLException {
         InetSocketAddress remoteAddr = (InetSocketAddress)socket.getRemoteSocketAddress();
         String host = remoteAddr.getAddress().getHostAddress();
-        return (this.metadb.selectUser(host, getProtocol(), user, db));
+        return (this.metaDb.selectUser(host, getProtocol(), user, db));
     }
     
     @Override

@@ -23,7 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import org.sqlite.server.util.IoUtils;
+import org.sqlite.util.IoUtils;
 
 /**
  * @author little-pan
