@@ -64,6 +64,105 @@ public class TestSQLParser extends TestBase {
         commentTest("/*select 1;/*select 2;*/select 3;*/--c", 1);
         commentTest("/*select 1;/*select 2;*/select 3;*/ --c", 1);
         
+        // simple "create user"
+        createUserTest("create user test@localhost identified by '123';", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost' IDENTIFIED BY '123' ", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' IDENTIFIED BY '123' ;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        try {
+            createUserTest("CREATE USER 'test'@'Localhost' IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+            fail("'Localhost' incorrect");
+        } catch (AssertionError e) {
+            // OK
+        }
+        createUserTest("CREATE USER/*U*/'test'@'localhost' IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+        try {
+            createUserTest("CREATE USER'test'@'localhost' IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+            fail("No space between USER keyword and user");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        createUserTest("CREATE USER 'test'@'localhost'/**/IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+        try {
+            createUserTest("CREATE USER 'test'@'localhost'IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+            fail("No space between host and IDENTIFIED");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        createUserTest("CREATE USER 'test'/**/@/**/'localhost' IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+        try {
+            createUserTest("CREATE USER 'test''localhost' IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+            fail("No '@' between user and host");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        try {
+            createUserTest("CREATE USER 'test'/*@*/'localhost' IDENTIFIED BY '123'", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+            fail("No '@' between user and host");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        // identified with in "create user"
+        createUserTest("create user test@localhost identified by '123' identified with pg md5", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+        try {
+            createUserTest("create user test@localhost identified with pg md5", 1, 
+                "test", "localhost", "123", false, "pg", "md5");
+            fail("No password with auth method md5");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        createUserTest("create user test@localhost identified with pg trust", 1, 
+                "test", "localhost", null, false, "pg", "trust");
+        createUserTest("create user test@localhost identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", false, "pg", "password");
+        try {
+            createUserTest("create user test@localhost identified with pg password", 1, 
+                "test", "localhost", null, false, "pg", "password");
+            fail("No password with auth method password");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        try {
+            createUserTest("create user test@localhost identified with pg passwd identified by '123'", 1, 
+                    "test", "localhost", "123", false, "pg", "password");
+            fail("Unknown passwd in pg protocol");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        // superuser or nosuperuser
+        createUserTest("create user test@localhost superuser identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", true, "pg", "password");
+        createUserTest("create user test@localhost Superuser identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", true, "pg", "password");
+        createUserTest("create user test@localhost superUser identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", true, "pg", "password");
+        createUserTest("create user test@localhost SUPERUSER identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", true, "pg", "password");
+        createUserTest("create user test@localhost nosuperuser identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", false, "pg", "password");
+        createUserTest("create user test@localhost NOsuperuser identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", false, "pg", "password");
+        createUserTest("create user test@localhost NOSUPERUSER identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", false, "pg", "password");
+        try {
+            createUserTest("create user test@localhost NOTSUPERUSER identified with pg password identified by '123'", 1, 
+                "test", "localhost", "123", false, "pg", "password");
+            fail("NOTsuperuser incorrect!");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        
         selectTest("select 1", 1);
         selectTest("select 1;", 1);
         selectTest("Select 1;", 1);
@@ -349,6 +448,29 @@ public class TestSQLParser extends TestBase {
             assertTrue(stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void createUserTest(String sqls, int stmts, String user, String host, String password,
+            boolean sa, String protocol, String authMethod) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            CreateUserStatement s = (CreateUserStatement)stmt;
+            assertTrue(!stmt.isComment());
+            assertTrue("CREATE USER".equals(stmt.getCommand()));
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(user.equalsIgnoreCase(s.getUser()));
+            assertTrue(host.equals(s.getHost()));
+            assertTrue(password == null || password.equals(s.getPassword()));
+            assertTrue(protocol.equalsIgnoreCase(s.getProtocol()));
+            assertTrue(authMethod.equalsIgnoreCase(s.getAuthMethod()));
+            assertTrue(sa == s.isSa());
             ++i;
         }
         overTest(parser, i, stmts);

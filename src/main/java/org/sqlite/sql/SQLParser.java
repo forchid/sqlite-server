@@ -389,7 +389,83 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
 
     protected SQLStatement parseCreate() {
         nextString("eate");
+        if (skipIgnorableIf() != -1) {
+            if (nextStringIf("user") != -1) {
+                skipIgnorable();
+                return parseCreateUser();
+            }
+        }
         return new SQLStatement(this.sql, "CREATE");
+    }
+    
+    protected SQLStatement parseCreateUser() {
+        CreateUserStatement stmt = new CreateUserStatement(this.sql);
+        stmt.setUser(nextString());
+        skipIgnorableIf();
+        nextChar('@');
+        skipIgnorableIf();
+        stmt.setHost(nextString());
+        
+        skipIgnorable();
+        if (nextStringIf("with") != -1) {
+            skipIgnorable();
+        }
+        for (;;) {
+            if (nextStringIf("superuser") != -1) {
+                skipIgnorableIf();
+                stmt.setSa(true);
+                continue;
+            }
+            if (nextStringIf("nosuperuser") != -1) {
+                skipIgnorableIf();
+                stmt.setSa(false);
+                continue;
+            }
+            if (nextStringIf("identified") != -1) {
+                skipIgnorable();
+                if (nextStringIf("by") != -1) {
+                    skipIgnorable();
+                    stmt.setPassword(nextString());
+                } else {
+                    nextString("with");
+                    skipIgnorable();
+                    nextString("pg");
+                    stmt.setProtocol("pg");
+                    skipIgnorable();
+                    // authentication method
+                    for (;;) {
+                        if (nextStringIf("md5") != -1) {
+                            stmt.setAuthMethod("md5");
+                            break;
+                        }
+                        if (nextStringIf("password") != -1) {
+                            stmt.setAuthMethod("password");
+                            break;
+                        }
+                        if (nextStringIf("trust") != -1) {
+                            stmt.setAuthMethod("trust");
+                            break;
+                        }
+                        throw syntaxError();
+                    }
+                }
+                skipIgnorableIf();
+                continue;
+            }
+            
+            if (nextEnd()) {
+                break;
+            }
+            throw syntaxError();
+        }
+        
+        // check
+        if (stmt.getPassword() == null && !"trust".equals(stmt.getAuthMethod())) {
+            String proto = stmt.getProtocol(), auth = stmt.getAuthMethod();
+            throw syntaxError("No password when identified with %s %s", proto, auth);
+        }
+        
+        return stmt;
     }
 
     protected SQLStatement parseCommit() {
@@ -456,6 +532,11 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     protected SQLStatement parseAlter() {
         nextString("ter");
         return new SQLStatement(this.sql, "ALTER");
+    }
+    
+    protected boolean nextEnd() {
+        skipIgnorableIf();
+        return (nextCharIf(';') != -1 || this.ei == this.sql.length());
     }
     
     protected String nextSignedNumber(char pfx) {
@@ -804,4 +885,8 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         return new SQLParseException(this.sql.substring(0, this.ei) + "^");
     }
 
+    protected SQLParseException syntaxError(String format, Object ... args) {
+        return new SQLParseException(String.format(format, args));
+    }
+    
 }
