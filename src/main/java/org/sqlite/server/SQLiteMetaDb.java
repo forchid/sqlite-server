@@ -15,19 +15,19 @@
  */
 package org.sqlite.server;
 
+import static java.lang.String.format;
+
 import java.io.File;
-import static java.lang.String.*;
+import java.io.FilenameFilter;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -37,12 +37,11 @@ import java.util.concurrent.ConcurrentMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
+import org.sqlite.SQLiteConfig.Encoding;
+import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.server.meta.Db;
 import org.sqlite.server.meta.User;
-import org.sqlite.SQLiteConfig.Encoding;
-import org.sqlite.SQLiteConfig.JournalMode;
-import org.sqlite.util.IoUtils;
 
 /**SQLite server meta database for user and database management.
  * 
@@ -79,11 +78,6 @@ public class SQLiteMetaDb implements AutoCloseable {
     
     private volatile boolean open = true;
     protected final SQLiteServer server;
-    
-    protected final Deque<SQLiteConnection> connPool;
-    protected final int maxPoolSize;
-    protected int poolSize;
-    
     protected final File file;
     
     /** IP -> hosts cache */
@@ -91,23 +85,59 @@ public class SQLiteMetaDb implements AutoCloseable {
     /** host -> resolved time */
     protected final ConcurrentMap<String, Resolution> reslvCache;
     
-    public SQLiteMetaDb(SQLiteServer server, File metaFile, int maxPoolSize) {
+    public SQLiteMetaDb(SQLiteServer server, File metaFile) {
         this.server = server;
         this.file = metaFile;
-        this.connPool = new ArrayDeque<>(maxPoolSize);
-        this.maxPoolSize = maxPoolSize;
         this.hostsCache = new ConcurrentHashMap<>();
         this.reslvCache = new ConcurrentHashMap<>();
+        cleanRemovedDbs();
     }
     
-    public SQLiteMetaDb(SQLiteServer server, File metaFile) {
-        this(server, metaFile, 8);
+    protected void cleanRemovedDbs() {
+        File dataDir = this.server.getDataDir();
+        final File metaFile = this.file;
+        String[] dbFiles = dataDir.list(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                File file = new File(dir, name);
+                return (file.isFile() && !file.equals(metaFile));
+            }
+        });
+        if (dbFiles == null) {
+            throw new IllegalStateException("Access data dir failed: " + dataDir);
+        }
+        
+        int size = dbFiles.length;
+        if (dbFiles.length > 0) {
+            try (SQLiteConnection conn = newConnection()) {
+                try (Statement stmt = conn.createStatement()) {
+                    if (!tableExists(stmt, "db")) {
+                        return;
+                    }
+                }
+                
+                StringBuilder sb = new StringBuilder("delete from db where `db` not in(");
+                for (int i = 0; i < size; ++i) {
+                    sb.append(i > 0? ',': "").append('?');
+                }
+                sb.append(')');
+                String sql = sb.toString();
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    for (int i = 0; i < size; ++i) {
+                        ps.setString(i + 1, dbFiles[i]);
+                    }
+                    ps.executeUpdate();
+                }
+            } catch (SQLException e) {
+                throw new IllegalStateException("Access metadb failed", e);
+            }
+        }
     }
     
     public boolean isInited() {
         if (this.file.exists() && this.file.isFile()) {
-            try {
-                int n = selectUserCount();
+            try (SQLiteConnection conn = newConnection()) {
+                int n = selectUserCount(conn);
                 return (n > 0);
             } catch (SQLException e) {
                 String error = "Access " + this.file.getName() + " fatal";
@@ -118,90 +148,16 @@ public class SQLiteMetaDb implements AutoCloseable {
         return false;
     }
     
-    public SQLiteConnection getConnection() throws SQLException {
+    public SQLiteConnection newConnection() throws SQLException {
         if (!isOpen()) {
             throw new IllegalStateException("MetaDb has been closed");
         }
         
-        synchronized(this.connPool) {
-            for (;;) {
-                SQLiteConnection conn = this.connPool.poll();
-                if (conn != null) {
-                    return conn;
-                }
-                if (this.poolSize >= this.maxPoolSize) {
-                    try {
-                        this.connPool.wait();
-                    } catch (InterruptedException e) {}
-                    continue;
-                }
-                
-                // Do connect
-                boolean success = false;
-                try {
-                    SQLiteConfig config = new SQLiteConfig();
-                    config.setJournalMode(JournalMode.DELETE);
-                    config.setBusyTimeout(50000);
-                    config.setEncoding(Encoding.UTF8);
-                    conn = (SQLiteConnection)config.createConnection("jdbc:sqlite:"+this.file);
-                    success = true;
-                    return conn;
-                } finally {
-                    if (success) {
-                        ++this.poolSize;
-                    }
-                }
-                
-            }
-        }
-    }
-    
-    public void release(SQLiteConnection conn, boolean close) {
-        if (conn == null) {
-            return;
-        }
-        if (close || !this.isOpen()) {
-            IoUtils.close(conn);
-        }
-        
-        synchronized(this.connPool) {
-            try {
-                boolean closed = conn.isClosed();
-                if (closed) {
-                    --this.poolSize;
-                    return;
-                }
-            } catch (SQLException e) {
-                IoUtils.close(conn);
-                --this.poolSize;
-                return;
-            }
-            
-            if (this.connPool.offer(conn)) {
-                this.connPool.notifyAll();
-                return;
-            }
-            // full? close it
-        }
-        
-        IoUtils.close(conn);
-        throw new IllegalStateException("Connection pool full");
-    }
-    
-    public int getPoolSize() {
-        synchronized(this.connPool) {
-            return this.poolSize;
-        }
-    }
-    
-    public int getActiveCount() {
-        synchronized(this.connPool) {
-            return (this.poolSize - this.connPool.size());
-        }
-    }
-    
-    public int getMaxPoolSize() {
-        return this.maxPoolSize;
+        SQLiteConfig config = new SQLiteConfig();
+        config.setJournalMode(JournalMode.DELETE);
+        config.setBusyTimeout(50000);
+        config.setEncoding(Encoding.UTF8);
+        return (SQLiteConnection)config.createConnection("jdbc:sqlite:"+this.file);
     }
     
     public boolean isOpen() {
@@ -211,17 +167,6 @@ public class SQLiteMetaDb implements AutoCloseable {
     @Override
     public void close() {
         this.open = true;
-        
-        synchronized(this.connPool) {
-            for (;;) {
-                SQLiteConnection conn = this.connPool.poll();
-                if (conn == null) {
-                    break;
-                }
-                IoUtils.close(conn);
-                --this.poolSize;
-            }
-        }
     }
     
     public User createUser(User user) throws SQLException {
@@ -233,9 +178,8 @@ public class SQLiteMetaDb implements AutoCloseable {
             user.setPassword(storePassword);
         }
         
-        SQLiteConnection conn = getConnection();
-        boolean failed = true;
-        try {
+        try (SQLiteConnection conn = newConnection()) {
+            boolean failed = true;
             conn.setAutoCommit(false);
             try (Statement stmt = conn.createStatement()) {
                 stmt.executeUpdate(CREATE_TABLE_USER);
@@ -266,29 +210,22 @@ public class SQLiteMetaDb implements AutoCloseable {
                     failed = false;
                 }
             }
-        } finally {
-            release(conn, failed);
         }
     }
     
-    public Db createDb(Db db, boolean createDbFile) throws SQLException {
-        SQLiteConnection conn = getConnection();
+    public Db createDb(SQLiteConnection conn, Db db, boolean createDbFile) throws SQLException {
         boolean failed = true;
-        try {
-            conn.setAutoCommit(false);
-            try (Statement stmt = conn.createStatement()) {
-                createDb(conn, stmt, db, createDbFile);
-                conn.commit();
-                failed = false;
-                return db;
-            } finally {
-                if (failed) {
-                    conn.rollback();
-                    failed = false;
-                }
-            }
+        conn.setAutoCommit(false);
+        try (Statement stmt = conn.createStatement()) {
+            createDb(conn, stmt, db, createDbFile);
+            conn.commit();
+            failed = false;
+            return db;
         } finally {
-            release(conn, failed);
+            if (failed) {
+                conn.rollback();
+                failed = false;
+            }
         }
     }
     
@@ -315,35 +252,22 @@ public class SQLiteMetaDb implements AutoCloseable {
         return db;
     }
     
-    public int selectUserCount() throws SQLException {
-        SQLiteConnection conn = getConnection();
-        boolean failed = true;
-        try {
-            int n = 0;
-            try (Statement stmt = conn.createStatement()) {
-                String sql = 
-                        "select * from sqlite_master "
-                        + "where type = 'table' and name = 'user'";
-                try (ResultSet rs = stmt.executeQuery(sql)) {
-                    if (!rs.next()) {
-                        failed = false;
-                        return 0;
-                    }
-                }
-                
-                sql = "select count(*) from user";
-                try (ResultSet rs = stmt.executeQuery(sql)) {
-                    if (rs.next()) {
-                        n = rs.getInt(1);
-                    }
-                }
+    public int selectUserCount(SQLiteConnection conn) throws SQLException {
+        int n = 0;
+        try (Statement stmt = conn.createStatement()) {
+            if (!tableExists(stmt, "user")) {
+                return 0;
             }
             
-            failed = false;
-            return n;
-        } finally {
-            release(conn, failed);
+            String sql = "select count(*) from user";
+            try (ResultSet rs = stmt.executeQuery(sql)) {
+                if (rs.next()) {
+                    n = rs.getInt(1);
+                }
+            }
         }
+        
+        return n;
     }
     
     public User selectUser(String host, String protocol, String user, String db) 
@@ -351,9 +275,7 @@ public class SQLiteMetaDb implements AutoCloseable {
         List<User> users= new ArrayList<>();
         User sqliteUser = null;
         
-        SQLiteConnection conn = getConnection();
-        boolean failed = true;
-        try {
+        try (SQLiteConnection conn = newConnection()) {
             String sql = 
                     "select host, user, password, protocol, auth_method, sa from user u "
                     + "where u.protocol = ? and u.user = ?";
@@ -376,10 +298,6 @@ public class SQLiteMetaDb implements AutoCloseable {
                     }
                 }
             }
-            
-            failed = false;
-        } finally {
-            release(conn, failed);
         }
         
         // check hosts
@@ -449,9 +367,7 @@ public class SQLiteMetaDb implements AutoCloseable {
             return sqliteUser;
         }
         
-        conn = getConnection();
-        failed = true;
-        try {
+        try (SQLiteConnection conn = newConnection()) {
             String sql = "select d.host, d.user, d.db from db d "
                     + "where d.host = ? and d.user = ? and d.db = ?";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -462,24 +378,19 @@ public class SQLiteMetaDb implements AutoCloseable {
                 
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) {
-                        failed = false;
                         return null;
                     }
                 }
             }
-            failed = false;
-            return sqliteUser;
-        } finally {
-            release(conn, failed);
         }
+        
+        return sqliteUser;
     }
     
     public int selectHostCount(String host, String protocol) throws SQLException {
         Set<String> hosts = new HashSet<>();
         
-        SQLiteConnection conn = getConnection();
-        boolean failed = true;
-        try {
+        try (SQLiteConnection conn = newConnection()) {
             String sql = "select u.host from user u where u.protocol = ?";
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 int i = 0;
@@ -492,9 +403,6 @@ public class SQLiteMetaDb implements AutoCloseable {
                     }
                 }
             }
-            failed = false;
-        } finally {
-            release(conn, failed);
         }
         
         int n = 0;
@@ -567,6 +475,18 @@ public class SQLiteMetaDb implements AutoCloseable {
     public void flushHosts() {
         this.reslvCache.clear();
         this.hostsCache.clear();
+    }
+    
+    protected boolean tableExists(Statement stmt, String name) throws SQLException {
+        String sql = tableInfoSQL(name);
+        try (ResultSet rs = stmt.executeQuery(sql)) {
+            return (rs.next());
+        }
+    }
+    
+    protected String tableInfoSQL(String name) {
+        return (format("select * from sqlite_master "
+                + "where type = 'table' and name = '%s'", name));
     }
     
     /** Host resolution. */

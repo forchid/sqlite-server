@@ -608,7 +608,7 @@ public class PgProcessor extends SQLiteProcessor {
                     server.trace(log, "query string empty: {}", query);
                     sendEmptyQueryResponse();
                 } else {
-                    Connection conn = getConnection(sql);
+                    Connection conn = getConnection();
                     for (boolean next = true; next; ) {
                         Statement stat = null;
                         try {

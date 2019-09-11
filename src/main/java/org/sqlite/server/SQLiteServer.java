@@ -437,15 +437,6 @@ public abstract class SQLiteServer implements AutoCloseable {
         return (this.metaDb.selectUser(host, getProtocol(), user, db));
     }
     
-    protected SQLiteConnection getMetaConnection() throws SQLException {
-        return this.metaDb.getConnection();
-    }
-    
-    protected void releaseMetaConnection(SQLiteConnection conn, boolean close) 
-            throws SQLException {
-        this.metaDb.release(conn, close);
-    }
-    
     @Override
     public void close() {
         this.stop();

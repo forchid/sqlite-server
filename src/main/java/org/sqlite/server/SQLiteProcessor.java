@@ -21,7 +21,6 @@ import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
-import org.sqlite.sql.SQLStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -43,6 +42,8 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     private volatile boolean open = true;
     private volatile boolean stopped;
     protected Thread runner;
+    
+    protected SQLiteConnection metaConnection;
     protected SQLiteConnection connection;
     
     protected SQLiteProcessor(Socket socket, int processId, SQLiteServer server) {
@@ -84,20 +85,13 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
         return this.connection;
     }
     
-    protected SQLiteConnection getConnection(SQLStatement stmt) throws SQLException {
-        if (stmt.isMetaStatement()) {
-            return this.server.getMetaConnection();
+    protected SQLiteConnection getMetaConnection() throws SQLException {
+        SQLiteConnection metaConn = this.metaConnection;
+        if (metaConn == null) {
+            SQLiteMetaDb metaDb = this.server.metaDb;
+            metaConn = this.metaConnection = metaDb.newConnection();
         }
-        
-        return this.connection;
-    }
-    
-    protected void release(SQLiteConnection conn) throws SQLException {
-        if (this.connection == conn) {
-            return;
-        }
-        
-        this.server.releaseMetaConnection(conn, false);
+        return metaConn;
     }
     
     public void cancelRequest() throws SQLException {
@@ -141,6 +135,7 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
         
         stop();
         IoUtils.close(this.socket);
+        IoUtils.close(this.metaConnection);
         IoUtils.close(this.connection);
         this.server.removeProcessor(this);
         this.server.trace(log, "Close");
