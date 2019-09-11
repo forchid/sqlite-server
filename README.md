@@ -1,5 +1,5 @@
 # SQLite Server
-A high performance [SQLite](https://www.sqlite.org/index.html) server based on the client/server architecture and org.xerial [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) project.
+A high performance [SQLite](https://www.sqlite.org/index.html) server engine based on the client/server architecture and org.xerial [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) project.
 + Inherit all characteristics of SQLite that is small, fast, self-contained, high-reliability, full-featured, and ACID complete SQL database engine
 + Implement a subset(PgServer) of [postgreSQL frontend/backend protocol](https://www.postgresql.org/docs/8.2/protocol.html) for supporting [pgjdbc](https://github.com/pgjdbc/pgjdbc) , psql, or ODBC
 + Support md5(default), password and trust authentication methods in PgServer
