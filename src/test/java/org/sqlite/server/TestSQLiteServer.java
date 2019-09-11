@@ -50,7 +50,7 @@ public class TestSQLiteServer extends TestDbBase {
         // test trust
         deleteDataDir(dataDir);
         authMethod = "trust";
-        args = new String[]{"initdb", "-D", dataDir, "-A", authMethod, "-U", user, "-d", db};
+        args = new String[]{"-D", dataDir, "-A", authMethod, "-U", user, "-d", db};
         server = SQLiteServer.create(args);
         server.initdb(args);
         assertTrue(server.isInited());
@@ -61,7 +61,7 @@ public class TestSQLiteServer extends TestDbBase {
             // OK
         }
         IoUtils.close(server);
-        args = new String[]{"boot", "-D", dataDir, "-P", port+""};
+        args = new String[]{"-D", dataDir, "-P", port+""};
         server = SQLiteServer.create(args);
         server.bootAsync(args);
         conn = getConnection(port, db, user, password);
@@ -77,7 +77,7 @@ public class TestSQLiteServer extends TestDbBase {
         deleteDataDir(dataDir);
         authMethod = "password";
         password = "abc123";
-        args = new String[]{"initdb", "-D", dataDir, "-A", authMethod, "-U", user, "-d", db};
+        args = new String[]{"-D", dataDir, "-A", authMethod, "-U", user, "-d", db};
         server = SQLiteServer.create(args);
         try {
             server.initdb(args);
@@ -126,7 +126,7 @@ public class TestSQLiteServer extends TestDbBase {
         deleteDataDir(dataDir);
         authMethod = "md5";
         password = "aaa111";
-        args = new String[]{"initdb", "-D", dataDir, "-A", authMethod, "-U", user, "-d", db};
+        args = new String[]{"-D", dataDir, "-A", authMethod, "-U", user, "-d", db};
         server = SQLiteServer.create(args);
         try {
             server.initdb(args);
@@ -135,7 +135,7 @@ public class TestSQLiteServer extends TestDbBase {
             // OK
             IoUtils.close(server);
         }
-        args = new String[]{"initdb", "-D", dataDir, "-A", authMethod, "-U", user, "-p", password, "-d", db};
+        args = new String[]{"-D", dataDir, "-A", authMethod, "-U", user, "-p", password, "-d", db};
         server = SQLiteServer.create(args);
         server.initdb(args);
         assertTrue(server.isInited());
@@ -146,7 +146,7 @@ public class TestSQLiteServer extends TestDbBase {
             // OK
             IoUtils.close(server);
         }
-        args = new String[]{"boot", "-D", dataDir, "-P", port+""};
+        args = new String[]{"-D", dataDir, "-P", port+""};
         server = SQLiteServer.create(args);
         args = new String[]{"-D", dataDir, "-P", port+""};
         server.bootAsync(args);

@@ -44,12 +44,11 @@ test.db=>
 
 2. Embedded SQLite server
 ```java
-String[] args = new String[]{"-p", "123456", "-d", "test"};
+String[] args = {"-p", "123456", "-d", "test"};
 SQLiteServer server = SQLiteServer.create(args);
 server.initdb(args);
 server.close();
 
-args = new String[]{};
-server = SQLiteServer.create(args);
-server.bootAsync(args);
+server = SQLiteServer.create();
+server.bootAsync();
 ```

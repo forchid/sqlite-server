@@ -103,17 +103,24 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public static void main(SQLiteServer server, String ... args) {
         try {
-            if (args == null || args.length == 0) {
+            if (args.length == 0) {
                 throw new IllegalArgumentException("No command specified");
             }
             
             String command = args[0];
-            if (CMD_INITDB.equals(command)) {
+            switch (command) {
+            case CMD_INITDB:
                 server.initdb(args);
-                return;
+                break;
+            case CMD_BOOT:
+                server.boot(args);
+                break;
+            case CMD_HELP:
+                server.help(0);
+                break;
+            default:
+                throw new IllegalArgumentException("Unknown command: " + command);
             }
-            
-            server.boot(args);
         } catch (Exception e) {
             if (server.isTrace()) {
                 server.traceError(log, NAME + " fatal", e);
