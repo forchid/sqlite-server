@@ -4,7 +4,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Implement a subset(PgServer) of [postgreSQL frontend/backend protocol](https://www.postgresql.org/docs/8.2/protocol.html) for supporting [pgjdbc](https://github.com/pgjdbc/pgjdbc) , psql, or ODBC
 + Support md5(default), password and trust authentication methods in PgServer
 + High performance(insert 50,000 ~ 100,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
-+ Add a feature of user, privilege and database management for SQLite
++ Add a feature of user, privilege and database management for SQLite server engine
 
 # Examples
 1. Standalone SQLite server
