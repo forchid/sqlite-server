@@ -71,6 +71,21 @@ public class TestSQLParser extends TestBase {
                 "test", "localhost", "123", false, "pg", "md5");
         createUserTest("CREATE USER 'test'@'localhost.org' IDENTIFIED BY '123' ;", 1, 
                 "test", "localhost.org", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' with IDENTIFIED BY '123' ;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' WITH IDENTIFIED BY '123' ;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' With IDENTIFIED BY '123' ;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' with/*I*/IDENTIFIED BY '123' ;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        try {
+            createUserTest("CREATE USER 'test'@'localhost.org' withIDENTIFIED BY '123' ;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+            fail("No space between with and IDENTIFIED");
+        } catch (SQLParseException e) {
+            // OK
+        }
         try {
             createUserTest("CREATE USER 'test'@'Localhost' IDENTIFIED BY '123'", 1, 
                 "test", "localhost", "123", false, "pg", "md5");
@@ -465,6 +480,7 @@ public class TestSQLParser extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
+            assertTrue(stmt.isMetaStatement());
             assertTrue(user.equalsIgnoreCase(s.getUser()));
             assertTrue(host.equals(s.getHost()));
             assertTrue(password == null || password.equals(s.getPassword()));

@@ -82,6 +82,10 @@ public class SQLStatement {
         this.empty = empty;
     }
     
+    public boolean isMetaStatement() {
+        return (this instanceof MetaStatement);
+    }
+    
     @Override
     public String toString() {
         return this.sql;

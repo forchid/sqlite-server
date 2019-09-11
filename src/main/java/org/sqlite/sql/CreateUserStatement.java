@@ -25,7 +25,7 @@ package org.sqlite.sql;
  * @since 2019-09-11
  *
  */
-public class CreateUserStatement extends SQLStatement {
+public class CreateUserStatement extends SQLStatement implements MetaStatement {
     
     protected String user;
     protected String host;
