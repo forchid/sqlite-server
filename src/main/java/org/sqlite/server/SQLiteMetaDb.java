@@ -18,7 +18,6 @@ package org.sqlite.server;
 import static java.lang.String.format;
 
 import java.io.File;
-import java.io.FilenameFilter;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.sql.PreparedStatement;
@@ -42,6 +41,7 @@ import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.server.meta.Db;
 import org.sqlite.server.meta.User;
+import org.sqlite.util.SecurityUtils;
 
 /**SQLite server meta database for user and database management.
  * 
@@ -90,48 +90,6 @@ public class SQLiteMetaDb implements AutoCloseable {
         this.file = metaFile;
         this.hostsCache = new ConcurrentHashMap<>();
         this.reslvCache = new ConcurrentHashMap<>();
-        cleanRemovedDbs();
-    }
-    
-    protected void cleanRemovedDbs() {
-        File dataDir = this.server.getDataDir();
-        final File metaFile = this.file;
-        String[] dbFiles = dataDir.list(new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                File file = new File(dir, name);
-                return (file.isFile() && !file.equals(metaFile));
-            }
-        });
-        if (dbFiles == null) {
-            throw new IllegalStateException("Access data dir failed: " + dataDir);
-        }
-        
-        int size = dbFiles.length;
-        if (dbFiles.length > 0) {
-            try (SQLiteConnection conn = newConnection()) {
-                try (Statement stmt = conn.createStatement()) {
-                    if (!tableExists(stmt, "db")) {
-                        return;
-                    }
-                }
-                
-                StringBuilder sb = new StringBuilder("delete from db where `db` not in(");
-                for (int i = 0; i < size; ++i) {
-                    sb.append(i > 0? ',': "").append('?');
-                }
-                sb.append(')');
-                String sql = sb.toString();
-                try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    for (int i = 0; i < size; ++i) {
-                        ps.setString(i + 1, dbFiles[i]);
-                    }
-                    ps.executeUpdate();
-                }
-            } catch (SQLException e) {
-                throw new IllegalStateException("Access metadb failed", e);
-            }
-        }
     }
     
     public boolean isInited() {
@@ -158,6 +116,22 @@ public class SQLiteMetaDb implements AutoCloseable {
         config.setBusyTimeout(50000);
         config.setEncoding(Encoding.UTF8);
         return (SQLiteConnection)config.createConnection("jdbc:sqlite:"+this.file);
+    }
+    
+    public String attachTo(SQLiteConnection conn) throws SQLException {
+        String schema = "meta_"+SecurityUtils.nextHexs(10);
+        String sql = format("attach database '%s' as %s", this.file, schema);
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+        }
+        return schema;
+    }
+    
+    public void detachFrom(SQLiteConnection conn, String schema) throws SQLException {
+        String sql = format("detach database %s", schema);
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+        }
     }
     
     public boolean isOpen() {

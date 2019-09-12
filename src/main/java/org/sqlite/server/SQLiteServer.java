@@ -515,6 +515,10 @@ public abstract class SQLiteServer implements AutoCloseable {
         return new File(getDataDir(), dbName);
     }
     
+    protected SQLiteMetaDb getMetaDb() {
+        return this.metaDb;
+    }
+    
     public int getMaxConns() {
         return this.maxConns;
     }

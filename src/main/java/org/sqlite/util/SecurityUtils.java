@@ -170,4 +170,15 @@ public final class SecurityUtils {
         return getSecureRandom().nextLong();
     }
     
+    public static String nextHexs(int n) {
+        byte[] a = nextBytes(n);
+        return (ConvertUtils.bytesToHexString(a));
+    }
+    
+    public static byte[] nextBytes(int n) {
+        byte[] a = new byte[n];
+        getSecureRandom().nextBytes(a);
+        return a;
+    }
+    
 }

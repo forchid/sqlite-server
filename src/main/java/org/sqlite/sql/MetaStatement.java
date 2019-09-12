@@ -23,4 +23,6 @@ package org.sqlite.sql;
  */
 public interface MetaStatement {
 
+    String getSQL(String metaSchema);
+    
 }

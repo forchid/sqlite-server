@@ -43,7 +43,8 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     private volatile boolean stopped;
     protected Thread runner;
     
-    protected SQLiteConnection metaConnection;
+    protected SQLiteMetaDb metaDb = null;
+    private String metaSchema = null;
     protected SQLiteConnection connection;
     
     protected SQLiteProcessor(Socket socket, int processId, SQLiteServer server) {
@@ -65,6 +66,24 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
         return this.server;
     }
     
+    protected SQLiteMetaDb getMetaDb() {
+        return getServer().getMetaDb();
+    }
+    
+    protected void attachMetaDb(SQLiteConnection conn) throws SQLException {
+        if (this.metaSchema == null) {
+            this.metaSchema = this.metaDb.attachTo(conn);
+        }
+    }
+    
+    protected void detachMetaDb(SQLiteConnection conn) throws SQLException {
+        if (this.metaSchema == null) {
+            return;
+        }
+        this.metaDb.detachFrom(conn, this.metaSchema);
+        this.metaSchema = null;
+    }
+    
     public void setConnection(SQLiteConnection connection) {
         if (!isOpen()) {
             throw new IllegalStateException("Processor has been closed");
@@ -83,15 +102,6 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     
     public SQLiteConnection getConnection() {
         return this.connection;
-    }
-    
-    protected SQLiteConnection getMetaConnection() throws SQLException {
-        SQLiteConnection metaConn = this.metaConnection;
-        if (metaConn == null) {
-            SQLiteMetaDb metaDb = this.server.metaDb;
-            metaConn = this.metaConnection = metaDb.newConnection();
-        }
-        return metaConn;
     }
     
     public void cancelRequest() throws SQLException {
@@ -135,7 +145,6 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
         
         stop();
         IoUtils.close(this.socket);
-        IoUtils.close(this.metaConnection);
         IoUtils.close(this.connection);
         this.server.removeProcessor(this);
         this.server.trace(log, "Close");

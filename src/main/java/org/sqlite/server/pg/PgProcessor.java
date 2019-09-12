@@ -31,7 +31,6 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -608,52 +607,59 @@ public class PgProcessor extends SQLiteProcessor {
                     server.trace(log, "query string empty: {}", query);
                     sendEmptyQueryResponse();
                 } else {
-                    Connection conn = getConnection();
-                    for (boolean next = true; next; ) {
-                        Statement stat = null;
-                        try {
-                            // execute SQL
-                            server.trace(log, "execute SQL {}", sql);
-                            boolean txBegin = tryBegin(sql);
-                            boolean exeFail = true, result = false;
+                    SQLiteConnection conn = getConnection();
+                    try {
+                        for (boolean next = true; next; ) {
+                            Statement stat = null;
                             try {
-                                stat = conn.createStatement();
-                                result = stat.execute(sql.getSQL());
-                                if (!txBegin && sql.isTransaction()) {
-                                    TransactionStatement txSql = (TransactionStatement)sql;
-                                    if (txSql.isSavepoint()) {
-                                        this.savepointStack.push(txSql);
+                                if (sql.isMetaStatement()) {
+                                    attachMetaDb(conn);
+                                }
+                                // execute SQL
+                                server.trace(log, "execute SQL {}", sql);
+                                boolean txBegin = tryBegin(sql);
+                                boolean exeFail = true, result = false;
+                                try {
+                                    stat = conn.createStatement();
+                                    result = stat.execute(sql.getSQL());
+                                    if (!txBegin && sql.isTransaction()) {
+                                        TransactionStatement txSql = (TransactionStatement)sql;
+                                        if (txSql.isSavepoint()) {
+                                            this.savepointStack.push(txSql);
+                                        }
+                                    }
+                                    exeFail= false;
+                                } finally {
+                                    if (txBegin && exeFail) {
+                                        resetAutoCommit();
                                     }
                                 }
-                                exeFail= false;
+                                tryFinish(sql);
+                                
+                                if (result) {
+                                    ResultSet rs = stat.getResultSet();
+                                    ResultSetMetaData meta = rs.getMetaData();
+                                    sendRowDescription(meta);
+                                    for (; rs.next(); ) {
+                                        sendDataRow(rs, null);
+                                    }
+                                    sendCommandComplete(sql, 0, result);
+                                } else {
+                                    int n = stat.getUpdateCount();
+                                    sendCommandComplete(sql, n, result);
+                                }
+                                
+                                // try next
+                                if (next=parser.hasNext()) {
+                                    sql = parser.next();
+                                }
                             } finally {
-                                if (txBegin && exeFail) {
-                                    resetAutoCommit();
-                                }
+                                IoUtils.close(stat);
                             }
-                            tryFinish(sql);
-                            
-                            if (result) {
-                                ResultSet rs = stat.getResultSet();
-                                ResultSetMetaData meta = rs.getMetaData();
-                                sendRowDescription(meta);
-                                for (; rs.next(); ) {
-                                    sendDataRow(rs, null);
-                                }
-                                sendCommandComplete(sql, 0, result);
-                            } else {
-                                int n = stat.getUpdateCount();
-                                sendCommandComplete(sql, n, result);
-                            }
-                            
-                            // try next
-                            if (next=parser.hasNext()) {
-                                sql = parser.next();
-                            }
-                        } finally {
-                            IoUtils.close(stat);
-                        }
-                    } // For statements
+                        } // For statements
+                    } finally {
+                        detachMetaDb(conn);
+                    }
                 }
             } catch (SQLParseException e) {
                 sendErrorResponse(e);

@@ -85,5 +85,10 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     public void setAuthMethod(String authMethod) {
         this.authMethod = authMethod;
     }
+
+    @Override
+    public String getSQL(String metaSchema) {
+        throw new UnsupportedOperationException("unused");
+    }
     
 }

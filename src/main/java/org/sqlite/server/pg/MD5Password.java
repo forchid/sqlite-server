@@ -36,8 +36,7 @@ public class MD5Password extends SQLiteAuthMethod {
     private final byte[] salt;
     
     public MD5Password(String protocol) {
-        this(protocol, new byte[4]);
-        initSalt();
+        this(protocol, SecurityUtils.nextBytes(4));
     }
     
     public MD5Password(String protocol, byte[] salt) {
@@ -46,10 +45,6 @@ public class MD5Password extends SQLiteAuthMethod {
             throw new IllegalArgumentException("No salt was provided");
         }
         this.salt = salt;
-    }
-    
-    private void initSalt() {
-        SecurityUtils.getSecureRandom().nextBytes(this.salt);
     }
     
     public byte[] getSalt() {
