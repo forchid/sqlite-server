@@ -196,17 +196,23 @@ public class PgServer extends SQLiteServer {
     }
 
     @Override
-    public SQLiteAuthMethod newAuthMethod(String authMethod) {
-        String procotol = getProtocol();
+    public SQLiteAuthMethod newAuthMethod(String protocol, String authMethod) {
+        if (!getProtocol().equals(protocol)) {
+            throw new IllegalArgumentException("Unknown protocol: " + protocol);
+        }
+        if (authMethod == null) {
+            return new MD5Password(protocol);
+        }
+        
         switch (authMethod) {
         case AUTH_MD5:
-            return new MD5Password(procotol);
+            return new MD5Password(protocol);
         case AUTH_PASSWORD:
-            return new CleartextPassword(procotol);
+            return new CleartextPassword(protocol);
         case AUTH_TRUST:
-            return new TrustAuthMethod(procotol);
+            return new TrustAuthMethod(protocol);
         default:
-            throw new IllegalArgumentException("authMethod " + authMethod);
+            throw new IllegalArgumentException("Unknown auth method " + authMethod);
         }
     }
     

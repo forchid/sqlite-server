@@ -41,7 +41,7 @@ import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.server.meta.User;
 import org.sqlite.server.pg.PgServer;
-import org.sqlite.sql.CreateUserStatement;
+import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.util.IoUtils;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
@@ -593,7 +593,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     protected abstract SQLiteProcessor newProcessor(Socket s, int id);
     
-    public abstract SQLiteAuthMethod newAuthMethod(String authMethod);
+    public abstract SQLiteAuthMethod newAuthMethod(String protocol, String authMethod);
     
     protected int incrProcessCount() {
         return this.processCount.incrementAndGet();

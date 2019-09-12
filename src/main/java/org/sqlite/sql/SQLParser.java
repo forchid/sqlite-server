@@ -18,9 +18,14 @@ package org.sqlite.sql;
 import static java.lang.Character.*;
 
 import java.io.Reader;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
+import org.sqlite.sql.meta.AlterUserStatement;
+import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.util.IoUtils;
 
 /**A simple SQL parser.
@@ -30,6 +35,15 @@ import org.sqlite.util.IoUtils;
  *
  */
 public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>, AutoCloseable {
+    
+    // Protocol -> authentication method list
+    static final Map<String, String[]> authMethods;
+    
+    static {
+        Map<String, String[]> methods = new HashMap<>();
+        methods.put("pg", new String[]{"md5", "password", "trust"});
+        authMethods = Collections.unmodifiableMap(methods);
+    }
     
     protected final SQLReader reader;
     protected int bi, ei;
@@ -244,6 +258,128 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
     }
     
+    protected SQLStatement parseAlter() {
+        nextString("ter");
+        skipIgnorable();
+        if (nextStringIf("user") != -1) {
+            skipIgnorable();
+            return parseAlterUser();
+        }
+        return new SQLStatement(this.sql, "ALTER");
+    }
+    
+    protected SQLStatement parseAlterUser() {
+        AlterUserStatement stmt = new AlterUserStatement(this.sql);
+        
+        stmt.setUser(nextString());
+        skipIgnorableIf();
+        nextChar('@');
+        skipIgnorableIf();
+        stmt.setHost(nextString());
+        
+        skipIgnorable();
+        if (nextStringIf("with") != -1) {
+            skipIgnorable();
+        }
+        
+        for (;;) {
+            if (nextStringIf("superuser") != -1) {
+                stmt.setSa(true);
+                if (skipIgnorableIf() != -1) {
+                    continue;
+                }
+                if (nextEnd()) {
+                    break;
+                }
+                throw syntaxError();
+            }
+            if (nextStringIf("nosuperuser") != -1) {
+                stmt.setSa(false);
+                if (skipIgnorableIf() != -1) {
+                    continue;
+                }
+                if (nextEnd()) {
+                    break;
+                }
+                throw syntaxError();
+            }
+            if (nextStringIf("identified") != -1) {
+                skipIgnorable();
+                if (nextStringIf("by") != -1) {
+                    skipIgnorable();
+                    stmt.setPassword(nextString());
+                    if (skipIgnorableIf() != -1) {
+                        continue;
+                    }
+                    if (nextEnd()) {
+                        break;
+                    }
+                    throw syntaxError();
+                } else {
+                    nextString("with");
+                    skipIgnorable();
+                    String proto = "pg";
+                    nextString(proto);
+                    stmt.setProtocol(proto);
+                    if (skipIgnorableIf() == -1 || nextEnd()) {
+                        break;
+                    }
+                    for (String auth: authMethods.get(proto)) {
+                        if (nextStringIf(auth) != -1) {
+                            stmt.setAuthMethod(auth);
+                            if (skipIgnorableIf() != -1 || nextEnd()) {
+                                break;
+                            }
+                            throw syntaxError();
+                        }
+                    }
+                    continue;
+                }
+            }
+            
+            if (nextEnd()) {
+                break;
+            }
+            
+            throw syntaxError();
+        }
+        
+        if (stmt.getPassword() != null && !"pg".equals(stmt.getProtocol())) {
+            throw syntaxError("Unknown auth protocol: " + stmt.getProtocol());
+        }
+        
+        return stmt;
+    }
+    
+    protected SQLStatement parseAnalyze() {
+        nextString("alyze");
+        return new SQLStatement(this.sql, "ANALYZE");
+    }
+
+    protected SQLStatement parseAttach() {
+        String dbName, schemaName;
+        
+        nextString("tach");
+        
+        skipIgnorable();
+        if (nextStringIf("database") != -1) {
+            skipIgnorable();
+        }
+        dbName = nextString();
+        
+        skipIgnorable();
+        nextString("as");
+        
+        skipIgnorable();
+        schemaName = nextString();
+        
+        AttachStatement stmt = new AttachStatement(this.sql);
+        stmt.setDbName(dbName);
+        stmt.setSchemaName(schemaName);
+        
+        return stmt;
+    }
+    
     protected SQLStatement parseSavepoint() {
         nextString("vepoint");
         skipIgnorable();
@@ -429,28 +565,30 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                 } else {
                     nextString("with");
                     skipIgnorable();
-                    nextString("pg");
-                    stmt.setProtocol("pg");
+                    String proto = "pg";
+                    nextString(proto);
+                    stmt.setProtocol(proto);
                     skipIgnorable();
                     // authentication method
-                    for (;;) {
-                        if (nextStringIf("md5") != -1) {
-                            stmt.setAuthMethod("md5");
+                    boolean hasAuth = false;
+                    for (String auth: authMethods.get(proto)) {
+                        if (nextStringIf(auth) != -1) {
+                            stmt.setAuthMethod(auth);
+                            hasAuth = true;
                             break;
                         }
-                        if (nextStringIf("password") != -1) {
-                            stmt.setAuthMethod("password");
-                            break;
-                        }
-                        if (nextStringIf("trust") != -1) {
-                            stmt.setAuthMethod("trust");
-                            break;
-                        }
+                    }
+                    if (!hasAuth) {
                         throw syntaxError();
                     }
                 }
-                skipIgnorableIf();
-                continue;
+                if (skipIgnorableIf() != -1) {
+                    continue;
+                }
+                if (nextEnd()) {
+                    break;
+                }
+                throw syntaxError();
             }
             
             if (nextEnd()) {
@@ -498,40 +636,6 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     protected SQLStatement parseBegin() {
         nextString("egin");
         return new TransactionStatement(this.sql, "BEGIN");
-    }
-
-    protected SQLStatement parseAttach() {
-        String dbName, schemaName;
-        
-        nextString("tach");
-        
-        skipIgnorable();
-        if (nextStringIf("database") != -1) {
-            skipIgnorable();
-        }
-        dbName = nextString();
-        
-        skipIgnorable();
-        nextString("as");
-        
-        skipIgnorable();
-        schemaName = nextString();
-        
-        AttachStatement stmt = new AttachStatement(this.sql);
-        stmt.setDbName(dbName);
-        stmt.setSchemaName(schemaName);
-        
-        return stmt;
-    }
-    
-    protected SQLStatement parseAnalyze() {
-        nextString("alyze");
-        return new SQLStatement(this.sql, "ANALYZE");
-    }
-
-    protected SQLStatement parseAlter() {
-        nextString("ter");
-        return new SQLStatement(this.sql, "ALTER");
     }
     
     protected boolean nextEnd() {

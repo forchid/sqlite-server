@@ -26,6 +26,8 @@ import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
+import org.sqlite.sql.meta.AlterUserStatement;
+import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -41,14 +43,92 @@ public class TestSQLParser extends TestBase {
 
     @Override
     public void test() throws SQLException {
-        closeTest("select 1;");
+        // superuser or nosuperuser
+        alterUserTest("alter user test@localhost superuser", 1,
+                "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, true, null, null);
+        alterUserTest("alter user test@localhost superuser ", 1,
+                "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, true, null, null);
+        alterUserTest("alter user test@localhost superuser--", 1, 
+                "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, true, null, null);
+        alterUserTest("alter user test@localhost superuser /*a*/", 1,
+                "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, true, null, null);
+        alterUserTest("alter user test@localhost nosuperuser", 1,
+                "tests", "update 'tests'.user set sa = 0 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, false, null, null);
+        alterUserTest("alter user test@localhost superuser nosuperuser", 1,
+                "tests", "update 'tests'.user set sa = 0 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, false, null, null);
+        alterUserTest("alter user test@localhost nosuperuser superuser", 1, 
+                "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, true, null, null);
+        alterUserTest("alter user test @ localhost nosuperuser superuser", 1, 
+                "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, true, null, null);
+        alterUserTest("alter user test @/*@*/localhost nosuperuser superuser", 1, 
+                "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", null, true, null, null);
+        try {
+            alterUserTest("alter user test /*@*/localhost nosuperuser superuser", 1, 
+                    "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                    "test", "localhost", null, true, null, null);
+            fail("No '@' between user and host");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        try {
+            alterUserTest("alter user test@localhost nosuperusersuperuser", 1, 
+                    "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                    "test", "localhost", null, true, null, null);
+            fail("nosuperusersuperuser illegal");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        // identified by 'password'
+        alterUserTest("alter user test@localhost identified by a123", 1,
+                "tests", "update 'tests'.user set password = 'a123' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "a123", null, null, null);
+        alterUserTest("alter user test@localhost identified by a123 ", 1, 
+                "tests", "update 'tests'.user set password = 'a123' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "a123", null, null, null);
+        alterUserTest("alter user test@localhost identified by '123'", 1, 
+                "tests", "update 'tests'.user set password = '123' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        alterUserTest("alter user test@localhost identified by '123' ;", 1, 
+                "tests", "update 'tests'.user set password = '123' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        // identified with PROTOCOL [AUTH_METHOD]
+        alterUserTest("alter user test@localhost identified with pg identified by '123'", 1,
+                "tests", "update 'tests'.user set password = '123' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        alterUserTest("alter user test@localhost identified by '123' identified with pg ", 1,
+                "tests", "update 'tests'.user set password = '123' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        alterUserTest("alter user test@localhost identified by '123' identified with pg md5", 1,
+                "tests", "update 'tests'.user set password = '123', auth_method = 'md5' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        alterUserTest("alter user test@localhost identified by '123' identified with pg md5 ", 1,
+                "tests", "update 'tests'.user set password = '123', auth_method = 'md5' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        alterUserTest("alter user test@localhost identified by '123' identified with pg password", 1,
+                "tests", "update 'tests'.user set password = '123', auth_method = 'password' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        alterUserTest("alter user test@localhost identified by '123' identified with pg trust", 1,
+                "tests", "update 'tests'.user set password = '123', auth_method = 'trust' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                "test", "localhost", "123", null, null, null);
+        try {
+            alterUserTest("alter user test@localhost identified by '123' identified with pg trustmd5", 1,
+                    "tests", "update 'tests'.user set password = '123', auth_method = 'trust' where host = 'localhost' and user = 'test' and protocol = 'pg'",
+                    "test", "localhost", "123", null, null, null);
+            fail("trustmd5 illegal");
+        } catch (SQLParseException e) {
+            // ok
+        }
         
-        emptyTest(";", 1);
-        emptyTest(" ;", 1);
-        emptyTest("; ", 2);
-        emptyTest(" ; ", 2);
-        emptyTest("/*;*/;", 1);
-        emptyTest("/*;*/; ;", 2);
+        closeTest("select 1;");
         
         commentTest("-- sql/*sql*/", 1);
         commentTest("/*sql--*/", 1);
@@ -79,6 +159,33 @@ public class TestSQLParser extends TestBase {
                 "test", "localhost.org", "123", false, "pg", "md5");
         createUserTest("CREATE USER 'test'@'localhost.org' with/*I*/IDENTIFIED BY '123' ;", 1, 
                 "test", "localhost.org", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' with/*I*/IDENTIFIED BY '123' "
+                + "identified with pg md5", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' with/*I*/IDENTIFIED BY '123' "
+                + "identified with pg md5 ", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        createUserTest("CREATE USER 'test'@'localhost.org' with/*I*/IDENTIFIED BY '123' "
+                + "identified with pg md5;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+        
+        try {
+            createUserTest("CREATE USER 'test'@'localhost.org' with/*I*/IDENTIFIED BY '123' "
+                + "identified with pg md5 trust;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+            fail("auth method only select one");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        try {
+            createUserTest("CREATE USER 'test'@'localhost.org' with/*I*/IDENTIFIED BY '123' "
+                + "identified with pg md5trust;", 1, 
+                "test", "localhost.org", "123", false, "pg", "md5");
+            fail("md5trust illegal");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        
         try {
             createUserTest("CREATE USER 'test'@'localhost.org' withIDENTIFIED BY '123' ;", 1, 
                 "test", "localhost.org", "123", false, "pg", "md5");
@@ -177,6 +284,13 @@ public class TestSQLParser extends TestBase {
         } catch (SQLParseException e) {
             // OK
         }
+        
+        emptyTest(";", 1);
+        emptyTest(" ;", 1);
+        emptyTest("; ", 2);
+        emptyTest(" ; ", 2);
+        emptyTest("/*;*/;", 1);
+        emptyTest("/*;*/; ;", 2);
         
         selectTest("select 1", 1);
         selectTest("select 1;", 1);
@@ -463,6 +577,31 @@ public class TestSQLParser extends TestBase {
             assertTrue(stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void alterUserTest(String sqls, int stmts, String metaSchema, String metaSQL,
+            String user, String host, String password, Boolean sa, String protocol, String authMethod) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            AlterUserStatement s = (AlterUserStatement)stmt;
+            assertTrue(!stmt.isComment());
+            assertTrue("ALTER USER".equals(stmt.getCommand()));
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(stmt.isMetaStatement());
+            assertTrue(metaSQL.equals(s.getMetaSQL(metaSchema)));
+            assertTrue(user.equalsIgnoreCase(s.getUser()));
+            assertTrue(host.equals(s.getHost()));
+            assertTrue(password == null || password.equals(s.getPassword()));
+            assertTrue(protocol == null || protocol.equalsIgnoreCase(s.getProtocol()));
+            assertTrue(authMethod == null || authMethod.equalsIgnoreCase(s.getAuthMethod()));
+            assertTrue(sa == null || sa == s.isSa());
             ++i;
         }
         overTest(parser, i, stmts);

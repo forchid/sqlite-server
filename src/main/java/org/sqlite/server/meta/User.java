@@ -15,7 +15,7 @@
  */
 package org.sqlite.server.meta;
 
-import org.sqlite.sql.CreateUserStatement;
+import org.sqlite.sql.meta.CreateUserStatement;
 
 /**
  * @author little-pan

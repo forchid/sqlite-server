@@ -15,6 +15,8 @@
  */
 package org.sqlite.sql;
 
+import org.sqlite.sql.meta.MetaStatement;
+
 /**SQL statement.
  * 
  * @author little-pan

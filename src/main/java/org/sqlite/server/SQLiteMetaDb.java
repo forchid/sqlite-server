@@ -148,7 +148,8 @@ public class SQLiteMetaDb implements AutoCloseable {
         final String opass = user.getPassword();
         if (opass != null) {
             // Generate store password
-            SQLiteAuthMethod auth = this.server.newAuthMethod(user.getAuthMethod());
+            String proto = user.getProtocol();
+            SQLiteAuthMethod auth = this.server.newAuthMethod(proto, user.getAuthMethod());
             String storePassword = auth.genStorePassword(user.getUser(), opass);
             user.setPassword(storePassword);
         }

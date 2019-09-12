@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql;
+package org.sqlite.sql.meta;
 
 /**The SQLite meta database operation statement.
  * 

@@ -13,15 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql;
+package org.sqlite.sql.meta;
 
 import static java.lang.String.*;
 
+import org.sqlite.sql.SQLParseException;
+import org.sqlite.sql.SQLParser;
+import org.sqlite.sql.SQLStatement;
+
 /** A statement that represents:
- * CREATE USER 'user'@'host' [[WITH] 
+ * CREATE USER 'user'@'host' [WITH] 
  *   SUPERUSER|NOSUPERUSER 
  * | IDENTIFIED BY 'password' 
- * | IDENTIFIED WITH PG {MD5|PASSWORD|TRUST}]
+ * | IDENTIFIED WITH PG {MD5|PASSWORD|TRUST}
  * 
  * @author little-pan
  * @since 2019-09-11
@@ -38,6 +42,8 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     protected String password;
     protected String protocol = "pg";
     protected String authMethod = "md5";
+    
+    private boolean passwordSet;
     
     public CreateUserStatement(String sql) {
         super(sql, "CREATE USER");
@@ -90,6 +96,14 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     public void setAuthMethod(String authMethod) {
         this.authMethod = authMethod;
     }
+    
+    public boolean isPasswordSet() {
+        return passwordSet;
+    }
+
+    public void setPasswordSet(boolean passwordSet) {
+        this.passwordSet = passwordSet;
+    }
 
     @Override
     public String getMetaSQL(String metaSchema) {
@@ -117,6 +131,10 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     @Override
     public boolean needSa() {
         return true;
+    }
+    
+    public static int convertSa(boolean sa) {
+        return (sa? SUPER: USER);
     }
     
 }

@@ -851,7 +851,8 @@ public class PgProcessor extends SQLiteProcessor {
     
     private void sendAuthenticationCleartextPassword() throws IOException {
         PgServer server = getServer();
-        this.authMethod = server.newAuthMethod(this.user.getAuthMethod());
+        String proto = server.getProtocol();
+        this.authMethod = server.newAuthMethod(proto, this.user.getAuthMethod());
         
         startMessage('R');
         writeInt(AUTH_REQ_PASSWORD);
@@ -860,7 +861,8 @@ public class PgProcessor extends SQLiteProcessor {
     
     private void sendAuthenticationMD5Password() throws IOException {
         PgServer server = getServer();
-        MD5Password md5 = (MD5Password)server.newAuthMethod(this.user.getAuthMethod());
+        String proto = server.getProtocol();
+        MD5Password md5 = (MD5Password)server.newAuthMethod(proto, this.user.getAuthMethod());
         this.authMethod = md5;
         
         startMessage('R');

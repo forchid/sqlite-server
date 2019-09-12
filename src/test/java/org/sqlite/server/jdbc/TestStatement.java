@@ -35,6 +35,7 @@ public class TestStatement extends TestDbBase {
 
     @Override
     public void test() throws SQLException {
+        alterUserTest();
         createTableTest();
         createUserTest();
         nestedBlockCommentTest();
@@ -62,6 +63,122 @@ public class TestStatement extends TestDbBase {
                     + "balance decimal(12,1) not null)");
             assertTrue(0 == n);
             stmt.close();
+        }
+    }
+    
+    private void alterUserTest() throws SQLException {
+        doAlterUserTest(true, false, false);
+        try {
+            try (Connection c = getConnection("test02", "0123")) {}
+            fail("tx hasn't been committed");
+        } catch (SQLException e) {
+            // OK
+        }
+        
+        doAlterUserTest(true, true, false);
+        try (Connection c = getConnection("test02", "0123")) {}
+        
+        doAlterUserTest(false, false, true);
+        try (Connection c = getConnection("test02", "0123")) {}
+    }
+    
+    private void doAlterUserTest(boolean useTx, boolean commitTx, boolean created) throws SQLException {
+        try (Connection conn = getConnection()) {
+            if (useTx) conn.setAutoCommit(false);
+            Statement stmt = conn.createStatement();
+            int n;
+            try {
+                n = stmt.executeUpdate("create user test0@localhost identified by '123'");
+                assertTrue(1 == n);
+                assertTrue(!created);
+            } catch (SQLException e) {
+                if (!created) throw e;
+            }
+            n = stmt.executeUpdate("alter user test0@localhost identified by '0123'");
+            assertTrue(1 == n);
+            try {
+                getConnection("test0", "0123");
+                fail("User test@localhost hasn't been granted or tx not committed");
+            } catch (SQLException e) {
+                // OK
+            }
+            
+            try {
+                n = stmt.executeUpdate("create user test01@'127.0.0.1' identified by '123'");
+                assertTrue(1 == n);
+                n = stmt.executeUpdate("alter user test01@'127.0.0.1' identified by '0123'");
+                assertTrue(1 == n);
+            } catch (SQLException e) {
+                if (!created) throw e;
+            }
+            
+            try {
+                n = stmt.executeUpdate("create user test02@'localhost' identified by '123' nosuperuser");
+                assertTrue(1 == n);
+                n = stmt.executeUpdate("alter user test02@'localhost' identified by '0123' superuser");
+                assertTrue(1 == n);
+                assertTrue(!created);
+            } catch (SQLException e) {
+                if (!created) throw e;
+            }
+            
+            try {
+                try (Connection c = getConnection("test02", "0123")) {}
+                if (useTx) fail("tx hasn't been committed");
+            } catch (SQLException e) {
+                // OK
+                if (!useTx) throw e;
+            }
+            try {
+                n = stmt.executeUpdate("create user test03@'localhost' identified by '0123' nosuperuser");
+                assertTrue(1 == n);
+                assertTrue(!created);
+            } catch (SQLException e) {
+                if (!created) throw e;
+            }
+            try {
+                getConnection("test03", "0123");
+                fail("User test03@'localhost' hasn't been granted");
+            } catch (SQLException e) {
+                // OK
+            }
+            
+            try {
+                n = stmt.executeUpdate("create user test04@'localhost' identified by '123' nosuperuser "
+                        + "identified with pg password");
+                assertTrue(1 == n);
+                assertTrue(!created);
+            } catch (SQLException e) {
+                if (!created) throw e;
+            }
+            try {
+                getConnection("test04", "0123");
+                fail("User test04@'localhost' hasn't been granted");
+            } catch (SQLException e) {
+                // OK
+            }
+            
+            try {
+                n = stmt.executeUpdate("create user test05@'localhost' identified by '123' nosuperuser");
+                assertTrue(1 == n);
+                n = stmt.executeUpdate("alter user test05@'localhost' identified by '0123' superuser "
+                        + "identified with pg trust");
+                assertTrue(1 == n);
+                assertTrue(!created);
+            } catch (SQLException e) {
+                if (!created) throw e;
+            }
+            try {
+                getConnection("test05", "");
+                if (useTx) fail("User test5@'localhost' hasn't been granted");
+            } catch (SQLException e) {
+                // OK
+                if (!useTx) throw e;
+            }
+            
+            if (useTx && commitTx) {
+                conn.commit();
+            }
         }
     }
     

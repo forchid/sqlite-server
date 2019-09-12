@@ -23,9 +23,10 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.meta.User;
-import org.sqlite.sql.CreateUserStatement;
-import org.sqlite.sql.MetaStatement;
 import org.sqlite.sql.SQLStatement;
+import org.sqlite.sql.meta.AlterUserStatement;
+import org.sqlite.sql.meta.CreateUserStatement;
+import org.sqlite.sql.meta.MetaStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -102,13 +103,24 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
             String schema = getMetaSchema();
             MetaStatement metaStmt = (MetaStatement)stmt;
             switch (stmt.getCommand()) {
+            case "ALTER USER":
+                AlterUserStatement auStmt = (AlterUserStatement)stmt;
+                if (auStmt.getPassword() != null && !auStmt.isPasswordSet()) {
+                    String proto = auStmt.getProtocol(), method = auStmt.getAuthMethod();
+                    SQLiteAuthMethod authMethod = this.server.newAuthMethod(proto, method);
+                    String p = authMethod.genStorePassword(auStmt.getUser(), auStmt.getPassword());
+                    auStmt.setPassword(p);
+                    auStmt.setPasswordSet(true);
+                }
+                break;
             case "CREATE USER":
                 CreateUserStatement cuStmt = (CreateUserStatement)stmt;
-                String password = cuStmt.getPassword();
-                if (password != null) {
-                    SQLiteAuthMethod authMethod= this.server.newAuthMethod(cuStmt.getAuthMethod());
+                if (cuStmt.getPassword() != null && !cuStmt.isPasswordSet()) {
+                    String proto = cuStmt.getProtocol(), method = cuStmt.getAuthMethod();
+                    SQLiteAuthMethod authMethod = this.server.newAuthMethod(proto, method);
                     String p = authMethod.genStorePassword(cuStmt.getUser(), cuStmt.getPassword());
                     cuStmt.setPassword(p);
+                    cuStmt.setPasswordSet(true);
                 }
                 break;
             }
