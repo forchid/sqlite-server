@@ -41,6 +41,7 @@ import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.server.meta.Db;
 import org.sqlite.server.meta.User;
+import org.sqlite.util.IoUtils;
 import org.sqlite.util.SecurityUtils;
 
 /**SQLite server meta database for user and database management.
@@ -341,24 +342,39 @@ public class SQLiteMetaDb implements AutoCloseable {
             return sqliteUser;
         }
         
-        try (SQLiteConnection conn = newConnection()) {
-            String sql = "select d.host, d.user, d.db from db d "
-                    + "where d.host = ? and d.user = ? and d.db = ?";
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                int i = 0;
-                ps.setString(++i, sqliteUser.getHost());
-                ps.setString(++i, user);
-                ps.setString(++i, db);
-                
-                try (ResultSet rs = ps.executeQuery()) {
+        boolean failed = true;
+        SQLiteConnection conn = newConnection();
+        try {
+            try {
+                conn.setAutoCommit(false);
+                Statement stmt = conn.createStatement();
+                if (!tableExists(stmt, "db")) {
+                    sqliteUser = null;
+                } else {
+                    String sql = "select d.host, d.user, d.db from db d "
+                            + "where d.host = ? and d.user = ? and d.db = ?";
+                    PreparedStatement ps = conn.prepareStatement(sql);
+                    int i = 0;
+                    ps.setString(++i, sqliteUser.getHost());
+                    ps.setString(++i, user);
+                    ps.setString(++i, db);
+                    ResultSet rs = ps.executeQuery();
                     if (!rs.next()) {
-                        return null;
+                        sqliteUser = null;
                     }
                 }
+                
+                conn.commit();
+                failed = false;
+                return sqliteUser;
+            } finally {
+                if (failed) {
+                    conn.rollback();
+                }
             }
+        } finally {
+            IoUtils.close(conn);
         }
-        
-        return sqliteUser;
     }
     
     public int selectHostCount(String host, String protocol) throws SQLException {

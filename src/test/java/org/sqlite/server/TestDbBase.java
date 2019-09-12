@@ -32,7 +32,7 @@ import org.sqlite.util.IoUtils;
  */
 public abstract class TestDbBase extends TestBase {
     protected static String user = "root";
-    protected static String url = "jdbc:postgresql://localhost:"+SQLiteServer.PORT_DEFAULT+"/"+user;
+    protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault();
     protected static String password = "123456";
     
     protected static SQLiteServer server;
@@ -59,6 +59,11 @@ public abstract class TestDbBase extends TestBase {
         return (DriverManager.getConnection(url, user, password));
     }
     
+    protected Connection getConnection(String user, String password) throws SQLException {
+        String url = getUrl(getPortDefault(), getDbDefault());
+        return (DriverManager.getConnection(url, user, password));
+    }
+    
     protected Connection getConnection(int port, String path, String user, String password) 
             throws SQLException {
         String url = getUrl(port, path);
@@ -67,6 +72,18 @@ public abstract class TestDbBase extends TestBase {
     
     protected Connection getConnection() throws SQLException {
         return (getConnection(url, user, password));
+    }
+    
+    protected static String getUserDefault() {
+        return user;
+    }
+    
+    protected static String getDbDefault() {
+        return getUserDefault();
+    }
+    
+    protected static int getPortDefault() {
+        return SQLiteServer.PORT_DEFAULT;
     }
     
     protected static String getDataDir() {

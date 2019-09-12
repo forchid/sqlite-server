@@ -15,6 +15,8 @@
  */
 package org.sqlite.sql;
 
+import static java.lang.String.*;
+
 /** A statement that represents:
  * CREATE USER 'user'@'host' [[WITH] 
  *   SUPERUSER|NOSUPERUSER 
@@ -26,6 +28,9 @@ package org.sqlite.sql;
  *
  */
 public class CreateUserStatement extends SQLStatement implements MetaStatement {
+    
+    public static final int SUPER = 1;
+    public static final int USER  = 0;
     
     protected String user;
     protected String host;
@@ -87,8 +92,31 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     }
 
     @Override
-    public String getSQL(String metaSchema) {
-        throw new UnsupportedOperationException("unused");
+    public String getMetaSQL(String metaSchema) {
+        String password = this.password==null? "NULL": "'"+this.password+"'" ;
+        int sa = isSa()? SUPER: USER;
+        String f = "insert into '%s'.user(host, user, password, protocol, auth_method, sa)"
+                + "values('%s', '%s', %s, '%s', '%s', %d)";
+        String sql = format(f, metaSchema, 
+                this.host, this.user, password, this.protocol, this.authMethod, sa);
+        // Check
+        try (SQLParser parser = new SQLParser(sql, true)) {
+            try {
+                SQLStatement stmt = parser.next();
+                if ("INSERT".equals(stmt.getCommand()) && !parser.hasNext()) {
+                    return stmt.getSQL();
+                }
+            } catch (SQLParseException e) {
+                // re-throw: hide metaSchema name
+                throw new SQLParseException(getSQL());
+            }
+            throw new SQLParseException(getSQL());
+        }
+    }
+
+    @Override
+    public boolean needSa() {
+        return true;
     }
     
 }

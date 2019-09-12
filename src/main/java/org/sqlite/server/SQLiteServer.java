@@ -41,6 +41,7 @@ import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.server.meta.User;
 import org.sqlite.server.pg.PgServer;
+import org.sqlite.sql.CreateUserStatement;
 import org.sqlite.util.IoUtils;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
@@ -185,7 +186,7 @@ public abstract class SQLiteServer implements AutoCloseable {
             if (!inDataDir(this.dbName)) {
                 throw new IllegalArgumentException("db must be a relative file name");
             }
-            User sa = new User(this.username, this.password, User.SUPER);
+            User sa = new User(this.username, this.password, CreateUserStatement.SUPER);
             sa.setAuthMethod(authMethod);
             sa.setHost(this.host);
             sa.setProtocol(this.protocol);

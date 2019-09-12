@@ -51,7 +51,6 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
-import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLParseException;
@@ -82,9 +81,6 @@ public class PgProcessor extends SQLiteProcessor {
     protected static final String UNNAMED  = "";
     
     private final int secret;
-    private SQLiteAuthMethod authMethod;
-    private User user;
-    
     private DataInputStream dataIn, dataBuf;
     private OutputStream out;
     
@@ -354,20 +350,20 @@ public class PgProcessor extends SQLiteProcessor {
             Prepared p = new Prepared();
             p.name = readString();
             try (SQLParser parser = newSQLParser(readString())) {
-                SQLStatement sql = parser.next();
+                SQLStatement sqlStmt = parser.next();
                 // check for single SQL prepared statement
                 for (; parser.hasNext(); ) {
                     SQLStatement next = parser.next();
-                    if (sql.isEmpty()) {
-                        sql = next;
+                    if (sqlStmt.isEmpty()) {
+                        sqlStmt = next;
                         continue;
                     }
                     
                     if (!next.isEmpty()) {
-                        throw new SQLParseException(sql.getSQL()+"^");
+                        throw new SQLParseException(sqlStmt.getSQL()+"^");
                     }
                 }
-                p.sql = sql;
+                p.sql = sqlStmt;
                 server.trace(log, "name {}, SQL {}", p.name, p.sql);
                 if (UNNAMED.equals(p.name)) {
                     destroyPrepared(UNNAMED);
@@ -375,25 +371,32 @@ public class PgProcessor extends SQLiteProcessor {
                 int paramTypesCount = readShort();
                 int[] paramTypes = null;
                 if (paramTypesCount > 0) {
+                    if (sqlStmt.isMetaStatement()) {
+                        throw convertError(SQLiteErrorCode.SQLITE_PERM, "Meta statement can't be parameterized");
+                    }
                     paramTypes = new int[paramTypesCount];
                     for (int i = 0; i < paramTypesCount; i++) {
                         paramTypes[i] = readInt();
                     }
                 }
                 
-                if (!p.sql.isEmpty()) {
-                    p.prep = getConnection().prepareStatement(p.sql.getSQL());
-                    ParameterMetaData meta = p.prep.getParameterMetaData();
-                    p.paramType = new int[meta.getParameterCount()];
-                    for (int i = 0; i < p.paramType.length; i++) {
-                        int type;
-                        if (i < paramTypesCount && paramTypes[i] != 0) {
-                            type = paramTypes[i];
-                        } else {
-                            type = PgServer.convertType(meta.getParameterType(i + 1));
+                if (!sqlStmt.isEmpty()) {
+                    checkPerm(sqlStmt);
+                    String sql = getSQL(sqlStmt);
+                    p.prep = getConnection().prepareStatement(sql);
+                    if (!sqlStmt.isMetaStatement()) {
+                        ParameterMetaData meta = p.prep.getParameterMetaData();
+                        p.paramType = new int[meta.getParameterCount()];
+                        for (int i = 0; i < p.paramType.length; i++) {
+                            int type;
+                            if (i < paramTypesCount && paramTypes[i] != 0) {
+                                type = paramTypes[i];
+                            } else {
+                                type = PgServer.convertType(meta.getParameterType(i + 1));
+                            }
+                            p.paramType[i] = type;
                         }
-                        p.paramType[i] = type;
-                    }  
+                    }
                 }
                 prepared.put(p.name, p);
                 
@@ -473,7 +476,9 @@ public class PgProcessor extends SQLiteProcessor {
                         ParameterMetaData paramMeta = null;
                         ResultSetMetaData rsMeta = null;
                         if (!p.sql.isEmpty()) {
-                            paramMeta = p.prep.getParameterMetaData();
+                            if (!p.sql.isMetaStatement()) {
+                                paramMeta = p.prep.getParameterMetaData();
+                            }
                             rsMeta = p.prep.getMetaData();
                         }
                         sendParameterDescription(paramMeta, p.paramType);
@@ -591,75 +596,70 @@ public class PgProcessor extends SQLiteProcessor {
             String query = readString();
             
             try (SQLParser parser = newSQLParser(query)) {
-                SQLStatement sql = null;
+                SQLStatement sqlStmt = null;
                 // check empty query string
-                for (; sql == null;) {
+                for (; sqlStmt == null;) {
                     if (parser.hasNext()) {
                         SQLStatement s = parser.next();
                         if (s.isEmpty()) {
                             continue;
                         }
-                        sql = s;
+                        sqlStmt = s;
                     }
                     break;
                 }
-                if (sql == null) {
+                if (sqlStmt == null) {
                     server.trace(log, "query string empty: {}", query);
                     sendEmptyQueryResponse();
                 } else {
                     SQLiteConnection conn = getConnection();
-                    try {
-                        for (boolean next = true; next; ) {
-                            Statement stat = null;
+                    for (boolean next = true; next; ) {
+                        Statement stat = null;
+                        try {
+                            checkPerm(sqlStmt);
+                            // execute SQL
+                            String sql = getSQL(sqlStmt);
+                            server.trace(log, "execute SQL {}", sql);
+                            boolean txBegin = tryBegin(sqlStmt);
+                            boolean exeFail = true, result = false;
                             try {
-                                if (sql.isMetaStatement()) {
-                                    attachMetaDb(conn);
-                                }
-                                // execute SQL
-                                server.trace(log, "execute SQL {}", sql);
-                                boolean txBegin = tryBegin(sql);
-                                boolean exeFail = true, result = false;
-                                try {
-                                    stat = conn.createStatement();
-                                    result = stat.execute(sql.getSQL());
-                                    if (!txBegin && sql.isTransaction()) {
-                                        TransactionStatement txSql = (TransactionStatement)sql;
-                                        if (txSql.isSavepoint()) {
-                                            this.savepointStack.push(txSql);
-                                        }
-                                    }
-                                    exeFail= false;
-                                } finally {
-                                    if (txBegin && exeFail) {
-                                        resetAutoCommit();
+                                stat = conn.createStatement();
+                                result = stat.execute(sql);
+                                if (!txBegin && sqlStmt.isTransaction()) {
+                                    TransactionStatement txSql = (TransactionStatement)sqlStmt;
+                                    if (txSql.isSavepoint()) {
+                                        this.savepointStack.push(txSql);
                                     }
                                 }
-                                tryFinish(sql);
-                                
-                                if (result) {
-                                    ResultSet rs = stat.getResultSet();
-                                    ResultSetMetaData meta = rs.getMetaData();
-                                    sendRowDescription(meta);
-                                    for (; rs.next(); ) {
-                                        sendDataRow(rs, null);
-                                    }
-                                    sendCommandComplete(sql, 0, result);
-                                } else {
-                                    int n = stat.getUpdateCount();
-                                    sendCommandComplete(sql, n, result);
-                                }
-                                
-                                // try next
-                                if (next=parser.hasNext()) {
-                                    sql = parser.next();
-                                }
+                                exeFail= false;
                             } finally {
-                                IoUtils.close(stat);
+                                if (txBegin && exeFail) {
+                                    resetAutoCommit();
+                                }
                             }
-                        } // For statements
-                    } finally {
-                        detachMetaDb(conn);
-                    }
+                            tryFinish(sqlStmt);
+                            
+                            if (result) {
+                                ResultSet rs = stat.getResultSet();
+                                ResultSetMetaData meta = rs.getMetaData();
+                                sendRowDescription(meta);
+                                for (; rs.next(); ) {
+                                    sendDataRow(rs, null);
+                                }
+                                sendCommandComplete(sqlStmt, 0, result);
+                            } else {
+                                int n = stat.getUpdateCount();
+                                sendCommandComplete(sqlStmt, n, result);
+                            }
+                            
+                            // try next
+                            if (next=parser.hasNext()) {
+                                sqlStmt = parser.next();
+                            }
+                        } finally {
+                            IoUtils.close(stat);
+                        }
+                    } // For statements
                 }
             } catch (SQLParseException e) {
                 sendErrorResponse(e);
@@ -792,8 +792,14 @@ public class PgProcessor extends SQLiteProcessor {
                 break;
             }
         }
+        
+        boolean autoCommit = conn.getAutoCommit();
+        if (autoCommit) {
+            detachMetaDb(conn);
+        }
+        
         if (server.isTrace()) {
-            server.trace(log, "sqliteConn execute: autocommit {} <-", conn.getAutoCommit());
+            server.trace(log, "sqliteConn execute: autocommit {} <-", autoCommit);
         }
     }
     

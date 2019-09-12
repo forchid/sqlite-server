@@ -23,6 +23,8 @@ package org.sqlite.sql;
  */
 public interface MetaStatement {
 
-    String getSQL(String metaSchema);
+    String getMetaSQL(String metaSchema);
+    
+    boolean needSa();
     
 }

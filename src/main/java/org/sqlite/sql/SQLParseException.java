@@ -25,6 +25,10 @@ public class SQLParseException extends RuntimeException {
     
     private static final long serialVersionUID = 1117254774204018644L;
     
+    public SQLParseException() {
+        
+    }
+    
     public SQLParseException(String message){
         super(message);
     }

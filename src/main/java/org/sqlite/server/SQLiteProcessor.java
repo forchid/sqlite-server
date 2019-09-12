@@ -21,6 +21,11 @@ import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.meta.User;
+import org.sqlite.sql.CreateUserStatement;
+import org.sqlite.sql.MetaStatement;
+import org.sqlite.sql.SQLStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -38,14 +43,15 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     protected final int id;
     protected final String name;
     protected final SQLiteServer server;
+    protected SQLiteAuthMethod authMethod;
+    protected User user;
     
     private volatile boolean open = true;
     private volatile boolean stopped;
     protected Thread runner;
     
-    protected SQLiteMetaDb metaDb = null;
-    private String metaSchema = null;
     protected SQLiteConnection connection;
+    private String metaSchema = null;
     
     protected SQLiteProcessor(Socket socket, int processId, SQLiteServer server) {
         this.socket = socket;
@@ -70,18 +76,46 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
         return getServer().getMetaDb();
     }
     
+    protected String getMetaSchema() {
+        return this.metaSchema;
+    }
+    
     protected void attachMetaDb(SQLiteConnection conn) throws SQLException {
         if (this.metaSchema == null) {
-            this.metaSchema = this.metaDb.attachTo(conn);
+            this.metaSchema = getMetaDb().attachTo(conn);
+            this.server.trace(log, "attach {}", this.metaSchema);
         }
     }
     
     protected void detachMetaDb(SQLiteConnection conn) throws SQLException {
-        if (this.metaSchema == null) {
+        if (this.metaSchema == null || !conn.getAutoCommit()) {
             return;
         }
-        this.metaDb.detachFrom(conn, this.metaSchema);
+        getMetaDb().detachFrom(conn, this.metaSchema);
+        this.server.trace(log, "detach {}", this.metaSchema);
         this.metaSchema = null;
+    }
+    
+    protected String getSQL(SQLStatement stmt) throws SQLException {
+        if (stmt.isMetaStatement()) {
+            attachMetaDb(getConnection());
+            String schema = getMetaSchema();
+            MetaStatement metaStmt = (MetaStatement)stmt;
+            switch (stmt.getCommand()) {
+            case "CREATE USER":
+                CreateUserStatement cuStmt = (CreateUserStatement)stmt;
+                String password = cuStmt.getPassword();
+                if (password != null) {
+                    SQLiteAuthMethod authMethod= this.server.newAuthMethod(cuStmt.getAuthMethod());
+                    String p = authMethod.genStorePassword(cuStmt.getUser(), cuStmt.getPassword());
+                    cuStmt.setPassword(p);
+                }
+                break;
+            }
+            return metaStmt.getMetaSQL(schema);
+        }
+        
+        return stmt.getSQL();
     }
     
     public void setConnection(SQLiteConnection connection) {
@@ -109,6 +143,32 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
         if (conn != null && isOpen()) {
             conn.getDatabase().interrupt();
         }
+    }
+    
+    protected void checkPerm(SQLStatement stmt) throws SQLException {
+        if (stmt.isMetaStatement()) {
+            MetaStatement metaStmt = (MetaStatement)stmt;
+            if (metaStmt.needSa() && !this.user.isSa()) {
+                throw convertError(SQLiteErrorCode.SQLITE_PERM);
+            }
+        }
+    }
+    
+    protected SQLException convertError(SQLiteErrorCode error) {
+        return convertError(error, null);
+    }
+    
+    protected SQLException convertError(SQLiteErrorCode error, String message) {
+        String sqlState = "HY000";
+        if (SQLiteErrorCode.SQLITE_ERROR.code == error.code) {
+            sqlState = "42000";
+        } else if (SQLiteErrorCode.SQLITE_PERM.code == error.code){
+            sqlState = "42501";
+        }
+        if (message == null) {
+            message = error.message;
+        }
+        return new SQLException(message, sqlState, error.code);
     }
 
     public void start() {

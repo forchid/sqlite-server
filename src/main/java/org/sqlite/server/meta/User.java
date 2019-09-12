@@ -15,6 +15,8 @@
  */
 package org.sqlite.server.meta;
 
+import org.sqlite.sql.CreateUserStatement;
+
 /**
  * @author little-pan
  * @since 2019-09-08
@@ -22,16 +24,13 @@ package org.sqlite.server.meta;
  */
 public class User {
     
-    public static final int SUPER = 1;
-    public static final int USER  = 0;
-    
     private String user;
     private String password;
     private String host;
     private String db;
     private String protocol;
     private String authMethod;
-    private int sa = USER;
+    private int sa = CreateUserStatement.USER;
     
     public User() {
         
@@ -100,7 +99,7 @@ public class User {
     }
     
     public boolean isSa() {
-        return (this.sa == SUPER);
+        return (this.sa == CreateUserStatement.SUPER);
     }
 
 }
