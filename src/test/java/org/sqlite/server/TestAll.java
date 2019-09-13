@@ -19,10 +19,10 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.sqlite.server.jdbc.TestDriver;
-import org.sqlite.server.jdbc.TestStatement;
-import org.sqlite.sql.TestSQLParser;
-import org.sqlite.sql.TestSQLReader;
+import org.sqlite.server.jdbc.ConnectionTest;
+import org.sqlite.server.jdbc.StatementTest;
+import org.sqlite.sql.SQLParserTest;
+import org.sqlite.sql.SQLReaderTest;
 
 /**
  * @author little-pan
@@ -39,8 +39,12 @@ public class TestAll extends TestBase {
 
     @Override
     public void test() throws SQLException {
-        addAll();
-        doTest();
+        try {
+            addAll();
+            doTest();
+        } finally {
+            cleanup();
+        }
     }
     
     protected void doTest() throws SQLException {
@@ -61,11 +65,11 @@ public class TestAll extends TestBase {
     }
     
     protected void addAll() {
-        add(new TestDriver()).
-        add(new TestStatement()).
-        add(new TestSQLReader()).
-        add(new TestSQLParser()).
-        add(new TestSQLiteServer());
+        add(new ConnectionTest()).
+        add(new StatementTest()).
+        add(new SQLReaderTest()).
+        add(new SQLParserTest()).
+        add(new SQLiteServerTest());
     }
     
 }

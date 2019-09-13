@@ -35,6 +35,10 @@ public abstract class TestBase extends TestCase {
     
     public abstract void test() throws SQLException;
     
+    protected void cleanup() {
+        // NOOP
+    }
+    
     protected static void println(String format, Object ...args) {
         String f = format + LINESEP;
         printf(System.out, "CONS", f, args);

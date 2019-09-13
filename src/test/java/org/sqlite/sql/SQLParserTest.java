@@ -35,10 +35,10 @@ import org.sqlite.util.IoUtils;
  * @since 2019-09-05
  *
  */
-public class TestSQLParser extends TestBase {
+public class SQLParserTest extends TestBase {
     
     public static void main(String args[]) throws SQLException {
-        new TestSQLParser().test();
+        new SQLParserTest().test();
     }
 
     @Override

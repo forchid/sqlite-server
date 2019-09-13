@@ -26,12 +26,12 @@ import org.sqlite.sql.SQLReader;
  * @since 2019-09-04
  *
  */
-public class TestSQLReader extends TestBase {
+public class SQLReaderTest extends TestBase {
     
     protected boolean ignoreNbc;
     
     public static void main(String args[]) throws SQLException {
-        new TestSQLReader().test();
+        new SQLReaderTest().test();
     }
     
     @Override

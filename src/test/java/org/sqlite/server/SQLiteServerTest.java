@@ -26,10 +26,10 @@ import org.sqlite.util.IoUtils;
  * @since 2019-09-10
  *
  */
-public class TestSQLiteServer extends TestDbBase {
+public class SQLiteServerTest extends TestDbBase {
     
     public static void main(String[] args) throws SQLException {
-        new TestSQLiteServer().test();
+        new SQLiteServerTest().test();
     }
 
     @Override

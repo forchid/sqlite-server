@@ -31,6 +31,8 @@ import org.sqlite.util.IoUtils;
  *
  */
 public abstract class TestDbBase extends TestBase {
+    protected static final int maxConns = SQLiteServer.MAX_CONNS_DEFAULT;
+    
     protected static String user = "root";
     protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault();
     protected static String password = "123456";
@@ -127,6 +129,10 @@ public abstract class TestDbBase extends TestBase {
         });
         
         assertTrue(!dataDir.exists() || dataDir.delete());
+    }
+    
+    protected void cleanup() {
+        server.close();
     }
 
     protected void connectionTest(Connection conn, String sql, String result)

@@ -134,7 +134,7 @@ public class PgProcessor extends SQLiteProcessor {
             server.traceError(log, getName(), "fatal", e);
         } finally {
             server.trace(log, "Disconnect");
-            close();
+            stop();
         }
     }
     
@@ -243,7 +243,7 @@ public class PgProcessor extends SQLiteProcessor {
         
         int len = this.dataIn.readInt();
         len -= 4;
-        server.trace(log, "x {}(c) {}, len {}", (char)x, x, len);
+        server.trace(log, ">> message: type {}(c) {}, len {}", (char)x, x, len);
         
         byte[] data = new byte[len];
         this.dataIn.readFully(data, 0, len);
@@ -275,7 +275,7 @@ public class PgProcessor extends SQLiteProcessor {
                     // exception should be sent back to the client.
                     server.trace(log, "Invalid CancelRequest: pid={}, key={}", pid, key);
                 }
-                close();
+                stop();
             } else if (version == 80877103) {
                 server.trace(log, "SSLRequest");
                 out.write('N');
@@ -364,7 +364,7 @@ public class PgProcessor extends SQLiteProcessor {
                     }
                 }
                 p.sql = sqlStmt;
-                server.trace(log, "name {}, SQL {}", p.name, p.sql);
+                server.trace(log, "named '{}' SQL: {}", p.name, p.sql);
                 if (UNNAMED.equals(p.name)) {
                     destroyPrepared(UNNAMED);
                 }
@@ -523,7 +523,7 @@ public class PgProcessor extends SQLiteProcessor {
             int maxRows = readShort();
             Prepared prepared = p.prep;
             SQLStatement sql = prepared.sql;
-            server.trace(log, "execute SQL {}", sql);
+            server.trace(log, "execute SQL: {}", sql);
             
             // check empty statement
             if (sql.isEmpty()) {
@@ -619,7 +619,7 @@ public class PgProcessor extends SQLiteProcessor {
                             checkPerm(sqlStmt);
                             // execute SQL
                             String sql = getSQL(sqlStmt);
-                            server.trace(log, "execute SQL {}", sql);
+                            server.trace(log, "execute SQL: {}", sql);
                             boolean txBegin = tryBegin(sqlStmt);
                             boolean exeFail = true, result = false;
                             try {
@@ -675,11 +675,11 @@ public class PgProcessor extends SQLiteProcessor {
         }
         case 'X': {
             server.trace(log, "Terminate");
-            close();
+            stop();
             break;
         }
         default:
-            server.trace(log, "Unsupported: {} ({})", x, (char) x);
+            server.trace(log, "Unsupported message: type {}(c) {}", (char) x, x);
             flush = true;
             break;
         }

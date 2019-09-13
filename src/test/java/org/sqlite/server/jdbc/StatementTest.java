@@ -16,6 +16,7 @@
 package org.sqlite.server.jdbc;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -27,10 +28,10 @@ import org.sqlite.server.TestDbBase;
  * @since 2019-08-31
  *
  */
-public class TestStatement extends TestDbBase {
+public class StatementTest extends TestDbBase {
     
     public static void main(String args[]) throws SQLException {
-        new TestStatement().test();
+        new StatementTest().test();
     }
 
     @Override
@@ -80,6 +81,33 @@ public class TestStatement extends TestDbBase {
         
         doAlterUserTest(false, false, true);
         try (Connection c = getConnection("test02", "0123")) {}
+        
+        // test outer statement of transaction
+        try (Connection conn = getConnection()) {
+            int n;
+            conn.setAutoCommit(false);
+            // Simple statement
+            Statement outOfTxStmt = conn.createStatement();
+            n = outOfTxStmt.executeUpdate("create user 'test-1'@localhost identified by '123'");
+            assertTrue(1 == n);
+            conn.commit();
+            conn.setAutoCommit(true);
+            n = outOfTxStmt.executeUpdate("alter user 'test-1'@localhost identified by '0123'");
+            assertTrue(1 == n);
+            
+            // Prepared statement
+            conn.setAutoCommit(false);
+            PreparedStatement ps = 
+                    conn.prepareStatement("alter user 'test-1'@localhost identified by '1123'");
+            n = ps.executeUpdate();
+            assertTrue(1 == n);
+            conn.commit();
+            n = ps.executeUpdate();
+            assertTrue(1 == n);
+            conn.setAutoCommit(true);
+            n = ps.executeUpdate();
+            assertTrue(1 == n);
+        }
     }
     
     private void doAlterUserTest(boolean useTx, boolean commitTx, boolean created) throws SQLException {

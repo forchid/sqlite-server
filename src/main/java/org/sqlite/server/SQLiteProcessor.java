@@ -17,6 +17,7 @@ package org.sqlite.server;
 
 import java.net.Socket;
 import java.sql.SQLException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,9 +48,8 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     protected SQLiteAuthMethod authMethod;
     protected User user;
     
-    private volatile boolean open = true;
-    private volatile boolean stopped;
-    protected Thread runner;
+    private final AtomicBoolean open = new AtomicBoolean(true);
+    private final AtomicBoolean stopped = new AtomicBoolean();
     
     protected SQLiteConnection connection;
     private String metaSchema = null;
@@ -184,41 +184,46 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     }
 
     public void start() {
+        final String name = getName();
         if (isStopped()) {
-            throw new IllegalStateException(getName() + " has been stopped");
+            throw new IllegalStateException(name + " has been stopped");
         }
         
-        Thread thread = new Thread(this, getName());
-        this.runner = thread;
+        Thread thread = new Thread(this, name);
         thread.start();
     }
     
-    public void stop() {
-        if (isStopped()) {
-            return;
+    /** Stop this processor
+     * @return true if has been stopped, otherwise false
+     */
+    public boolean stop() {
+        if (!this.stopped.compareAndSet(false, true)) {
+            return true;
         }
-        this.stopped = true;
+        this.server.close(this);
+        return false;
     }
     
     public boolean isStopped() {
-        return this.stopped;
+        return this.stopped.get();
     }
     
     public boolean isOpen() {
-        return this.open;
+        return this.open.get();
     }
     
     @Override
     public void close() {
-        if (!isOpen()) {
+        if (!stop()) {
             return;
         }
-        this.open = false;
         
-        stop();
+        if (!this.open.compareAndSet(true, false)) {
+            return;
+        }
+        
         IoUtils.close(this.socket);
         IoUtils.close(this.connection);
-        this.server.removeProcessor(this);
         this.server.trace(log, "Close");
     }
 

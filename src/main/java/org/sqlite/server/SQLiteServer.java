@@ -22,14 +22,19 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
+import java.util.Iterator;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +66,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String METADB_NAME  = "sqlite3.meta";
     public static final String HOST_DEFAULT = "localhost";
     public static final int PORT_DEFAULT = 3272;
-    public static final int MAX_CONNS_DEFAULT = 151;
+    public static final int MAX_CONNS_DEFAULT = 150;
     
     // command list
     public static final String CMD_INITDB = "initdb";
@@ -79,15 +84,17 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected String host = HOST_DEFAULT;
     protected int port = PORT_DEFAULT;
     protected int maxConns = MAX_CONNS_DEFAULT;
+    private int processCount;
+    private int maxProcessId;
     protected File dataDir = new File(System.getProperty("user.home"), "sqlite3Data");
     protected boolean trace;
     
-    private final AtomicInteger processCount = new AtomicInteger(0);
-    private int maxProcessId;
-    
     protected final String protocol;
-    protected ServerSocket serverSocket;
-    final ConcurrentMap<Integer, SQLiteProcessor> processors = new ConcurrentHashMap<>();
+    private final AtomicBoolean wakeup = new AtomicBoolean();
+    protected Selector selector;
+    protected ServerSocketChannel serverSocket;
+    private ConcurrentMap<Integer, SQLiteProcessor> processors;
+    private BlockingQueue<SQLiteProcessor> closeQueue;
     
     private final AtomicBoolean inited = new AtomicBoolean(false);
     private volatile boolean stopped;
@@ -341,66 +348,106 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public void start() throws NetworkException {
+        String name = getName();
+        
         if (!isInited()) {
-            throw new IllegalStateException(getName() + " hasn't been initialized");
+            throw new IllegalStateException(name + " hasn't been initialized");
         }
         if (isStopped()) {
-            throw new IllegalStateException(getName() + " has been stopped");
+            throw new IllegalStateException(name + " has been stopped");
         }
         
+        boolean failed = true;
         try {
-            InetAddress addr = InetAddress.getByName(getHost());
-            this.serverSocket = new ServerSocket(getPort(), getMaxConns(), addr);
-        } catch (IOException e) {
-            throw new NetworkException("Can't create server socket", e);
+            try {
+                InetAddress addr = InetAddress.getByName(getHost());
+                InetSocketAddress local = new InetSocketAddress(addr, getPort());
+                int backlog = getMaxConns();
+                this.serverSocket = ServerSocketChannel.open();
+                this.serverSocket.bind(local, backlog);
+                this.serverSocket.configureBlocking(false);
+                
+                this.selector = Selector.open();
+                this.serverSocket.register(this.selector, SelectionKey.OP_ACCEPT);
+            } catch (IOException e) {
+                throw new NetworkException("Can't create server socket", e);
+            }
+            
+            this.processors = new ConcurrentHashMap<>();
+            this.closeQueue = new ArrayBlockingQueue<>(this.maxConns * 10);
+            failed = false;
+        } finally {
+            if (failed) {
+                stop();
+            }
         }
     }
     
     public void listen() {
+        String name = getName();
         if (!isInited()) {
-            throw new IllegalStateException(getName() + " hasn't been initialized");
+            throw new IllegalStateException(name + " hasn't been initialized");
         }
         
         try {
-            Thread.currentThread().setName(getName());
+            Thread.currentThread().setName(name);
             log.info("Ready for connections on {}:{}, version {}", getHost(), getPort(), getVersion());
-            while (!isStopped()) {
-                Socket s = this.serverSocket.accept();
-                try {
-                    trace(log, "Connection {}", s);
-                    
-                    incrProcessCount();
-                    if (this.processCount.get() > this.maxConns) {
-                        IoUtils.close(s);
-                        decrProcessCount();
-                        
-                        trace(log, "Exceeds maxConns limit({}), close connection", getMaxConns());
-                        continue;
-                    }
-                    s.setTcpNoDelay(true);
-                    s.setKeepAlive(true);
-                    
-                    int processId = nextProcessId();
-                    SQLiteProcessor processor = newProcessor(s, processId);
-                    if (processors.putIfAbsent(processId, processor) != null) {
-                        IoUtils.close(s);
-                        decrProcessCount();
-                        log.error("Processor-{} exists, close the current", processId);
-                        continue;
-                    }
-                    
-                    processor.start();
+            for (; !isStopped(); ) {
+                int n = this.selector.select();
+                this.wakeup.set(false);
+                vacuum();
+                if (n == 0) {
                     continue;
-                } catch (Throwable cause) {
-                    IoUtils.close(s);
-                    decrProcessCount();
-                    
-                    traceError(log, getName(), "can't create processor", cause);
                 }
+                Iterator<SelectionKey> keys = this.selector.selectedKeys().iterator();
+                for (; keys.hasNext(); keys.remove()) {
+                    SelectionKey key = keys.next();
+                    if (key.isAcceptable()) {
+                        ServerSocketChannel schan = (ServerSocketChannel)key.channel();
+                        SocketChannel chan = schan.accept();
+                        if (chan == null) {
+                            continue;
+                        }
+                        try {
+                            chan.configureBlocking(true);
+                            Socket s = chan.socket();
+                            
+                            trace(log, "Connection {}", s);
+                            incrProcessCount();
+                            int procs = this.processCount, maxPid = this.maxProcessId;
+                            trace(log, "{}: procs {}, maxConns {}, maxPid {}", name, procs, this.maxConns, maxPid);
+                            if (procs > this.maxConns) {
+                                IoUtils.close(s);
+                                decrProcessCount();
+                                trace(log, "Exceeds maxConns {}(< procs {}, maxPid {})", this.maxConns, procs, maxPid);
+                                continue;
+                            }
+                            
+                            s.setTcpNoDelay(true);
+                            s.setKeepAlive(true);
+                            int processId = nextProcessId();
+                            SQLiteProcessor processor = newProcessor(s, processId);
+                            if (processors.putIfAbsent(processId, processor) != null) {
+                                IoUtils.close(s);
+                                decrProcessCount();
+                                log.error("Processor-{} exists, close the current one", processId);
+                                continue;
+                            }
+                            
+                            processor.start();
+                        } catch (Throwable cause) {
+                            IoUtils.close(chan);
+                            decrProcessCount();
+                            log.error("Can't create processor", cause);
+                        }
+                    } else {
+                        key.cancel();
+                    }
+                }// for-keys
             }
         } catch (IOException e) {
-            if (!this.serverSocket.isClosed()) {
-                log.error(getName()+" fatal", e);
+            if (this.serverSocket.isOpen()) {
+                log.error(name+" fatal", e);
             }
         } finally {
             doStop();
@@ -410,16 +457,23 @@ public abstract class SQLiteServer implements AutoCloseable {
     public void stop() {
         if (!isStopped()) {
             this.stopped = true;
-            doStop();
+            IoUtils.close(this.serverSocket);
+            IoUtils.close(this.selector);
         }
     }
     
     protected void doStop() {
         // 1. Close this server
         IoUtils.close(this.serverSocket);
+        IoUtils.close(this.selector);
         // 2. Stop all processors
         for(SQLiteProcessor p : this.processors.values()) {
             p.stop();
+        }
+        for (; this.processCount > 0;) {
+            vacuum();
+            try { Thread.sleep(100L); } 
+            catch (InterruptedException e) {}
         }
         // 3. Close metaDb
         IoUtils.close(this.metaDb);
@@ -443,19 +497,35 @@ public abstract class SQLiteServer implements AutoCloseable {
         this.stop();
     }
     
-    public boolean isOpen() {
-        return (!this.isStopped());
+    protected void close(SQLiteProcessor processor) {
+        for( ;!this.closeQueue.offer(processor); ) {
+            if (this.wakeup.compareAndSet(false, true)) {
+                this.selector.wakeup();
+            }
+        }
+        if (this.wakeup.compareAndSet(false, true)) {
+            this.selector.wakeup();
+        }
     }
     
-    public SQLiteProcessor removeProcessor(SQLiteProcessor processor) {
-        int id = processor.getId();
-        
-        if (getProcessor(id) == processor) {
-            SQLiteProcessor proc = this.processors.remove(id);
-            decrProcessCount();
-            return proc;
+    private void vacuum() {
+        for (;;) {
+            SQLiteProcessor p = this.closeQueue.poll();
+            if (p == null) {
+                break;
+            }
+            p.close();
+            // remove it from processors
+            int id = p.getId();
+            if (getProcessor(id) == p) {
+                this.processors.remove(id);
+                decrProcessCount();
+            }
         }
-        return null;
+    }
+    
+    public boolean isOpen() {
+        return (!this.isStopped());
     }
     
     public SQLiteConnection newSQLiteConnection(User user, String databaseName, boolean createDb)
@@ -596,11 +666,11 @@ public abstract class SQLiteServer implements AutoCloseable {
     public abstract SQLiteAuthMethod newAuthMethod(String protocol, String authMethod);
     
     protected int incrProcessCount() {
-        return this.processCount.incrementAndGet();
+        return ++this.processCount;
     }
     
     protected int decrProcessCount() {
-        return this.processCount.decrementAndGet();
+        return --this.processCount;
     }
     
     protected int nextProcessId() {
