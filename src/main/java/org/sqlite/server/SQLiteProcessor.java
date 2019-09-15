@@ -47,14 +47,18 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     
     static final Logger log = LoggerFactory.getLogger(SQLiteProcessor.class);
     
+    // Read settings
+    static final int initReadBuffer = Integer.getInteger("org.sqlite.server.procssor.initReadBuffer", 1<<12);
+    static final int maxReadBuffer  = Integer.getInteger("org.sqlite.server.procssor.maxReadBuffer",  1<<16);
     // Write settings
     static final int maxWriteTimes  = Integer.getInteger("org.sqlite.server.procssor.maxWriteTimes",  1<<10);
     static final int maxWriteQueue  = Integer.getInteger("org.sqlite.server.procssor.maxWriteQueue",  1<<10);
-    static final int maxWriteBuffer = Integer.getInteger("org.sqlite.server.procssor.maxWriteBuffer", 1<<20);
+    static final int maxWriteBuffer = Integer.getInteger("org.sqlite.server.procssor.maxWriteBuffer", 1<<12);
     
     protected final InetSocketAddress remoteAddress;
     protected final SocketChannel channel;
     protected Selector selector;
+    protected ByteBuffer readBuffer;
     protected Deque<ByteBuffer> writeQueue;
     protected WriteTask writeTask;
     
@@ -300,6 +304,56 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         }
     }
     
+    protected ByteBuffer getReadBuffer(final int minSize) {
+        final ByteBuffer buf = this.readBuffer;
+        if (buf == null) {
+            int cap = Math.max(minSize, initReadBuffer);
+            return (this.readBuffer = ByteBuffer.allocate(cap));
+        }
+        
+        final int cap = buf.capacity(), pos = buf.position();
+        int freeSize = cap - pos;
+        if (freeSize >= minSize) {
+            return buf;
+        }
+        
+        final int lim = buf.limit();
+        freeSize = Math.max(freeSize + cap, minSize);
+        ByteBuffer newBuffer = ByteBuffer.allocate(pos + freeSize);
+        buf.flip();
+        newBuffer.put(buf);
+        newBuffer.limit(lim);
+        return (this.readBuffer = newBuffer);
+    }
+    
+    protected int resetReadBuffer() {
+        final ByteBuffer buf = this.readBuffer;
+        if (buf == null) {
+            return 0;
+        }
+        
+        final int cap = buf.capacity();
+        int rem = buf.remaining();
+        if (rem == 0) {
+            if (cap > maxReadBuffer) {
+                this.readBuffer = null;
+            } else {
+                buf.clear();
+            }
+            return 0;
+        }
+        
+        buf.compact();
+        if (buf.position() <= initReadBuffer && cap > maxReadBuffer) {
+            ByteBuffer newBuffer = ByteBuffer.allocate(initReadBuffer);
+            buf.flip();
+            newBuffer.put(buf);
+            this.readBuffer = newBuffer;
+        }
+        
+        return (this.readBuffer.position());
+    }
+    
     protected void write() {
         try {
             flush();
@@ -341,7 +395,12 @@ public abstract class SQLiteProcessor implements AutoCloseable {
             
             disableWrite();
             if (isRunning()) {
+                // Go on
                 enableRead();
+                ByteBuffer rb = this.readBuffer;
+                if (rb != null && rb.position() > 0) {
+                    read();
+                }
             } else {
                 this.worker.close(this);
             }
@@ -369,6 +428,38 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     }
     
     protected void offerWriteBuffer(ByteBuffer writeBuffer) {
+        final ByteBuffer last = this.writeQueue.peekLast();
+        final int minSize = writeBuffer.remaining();
+        if (last == null || minSize > maxWriteBuffer) {
+            this.writeQueue.offer(writeBuffer);
+            return;
+        }
+        
+        // Merge buffer: optimize write performance!
+        final int lim = last.limit(), cap = last.capacity();
+        int freeSize = cap - lim;
+        if (freeSize >= minSize) {
+            // Case-1 space enough
+            last.position(lim).limit(cap);
+            last.put(writeBuffer);
+            last.flip();
+            return;
+        }
+        // - Try to expand capacity
+        freeSize = Math.max(freeSize + cap, minSize);
+        final int newSize = lim + freeSize;
+        if (newSize <= maxWriteBuffer) {
+            // Case-c space enough after expanding
+            final ByteBuffer newBuffer = ByteBuffer.allocate(newSize);
+            newBuffer.put(last);
+            newBuffer.put(writeBuffer);
+            newBuffer.flip();
+            this.writeQueue.pollLast();
+            this.writeQueue.offer(newBuffer);
+            return;
+        }
+        
+        // - buffer too big!
         this.writeQueue.offer(writeBuffer);
     }
     

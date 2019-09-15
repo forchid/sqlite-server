@@ -79,10 +79,8 @@ public class PgProcessor extends SQLiteProcessor {
     protected static final String UNNAMED  = "";
     
     private final int secret;
-    private final ByteBuffer inHeader = ByteBuffer.allocate(5);
-    private ByteBuffer inBuf = inHeader;
     private DataInputStream dataBuf;
-    private int x, inSize;
+    private int x, inSize = -1;
     
     private int messageType;
     private ByteArrayOutputStream outBuf;
@@ -214,418 +212,435 @@ public class PgProcessor extends SQLiteProcessor {
         SQLiteWorker worker = this.worker;
         SocketChannel ch = getChannel();
         
-        int n;
-        if (this.inBuf == this.inHeader) {
-            if (this.initDone) {
-                n = ch.read(this.inBuf);
+        int rem = -1/* the first time */;
+        for (; rem == -1 || (!this.needFlush && rem >= 5);) {
+            ByteBuffer inBuf = getReadBuffer(5);
+            int n = 0;
+            
+            if (this.inSize == -1) {
+                // read header
+                if (this.initDone) {
+                    n = ch.read(inBuf);
+                    if (n < 0) {
+                        stop();
+                        enableWrite();
+                        return;
+                    }
+                    if (inBuf.position() < 5) {
+                        return;
+                    }
+                    x = inBuf.get(0) & 0xFF;
+                } else {
+                    if (inBuf.position() == 0) {
+                        inBuf.position(1);
+                    }
+                    x = 0;
+                }
+                
+                if (n == 0) {
+                    n = ch.read(inBuf);
+                    if (n == -1) {
+                        stop();
+                        enableWrite();
+                        return;
+                    }
+                    if (inBuf.position() < 5) {
+                        return;
+                    }
+                }
+                
+                this.inSize = (inBuf.get(1) & 0xFF) << 24
+                        | (inBuf.get(2) & 0xFF) << 16
+                        | (inBuf.get(3) & 0xFF) << 8
+                        | (inBuf.get(4) & 0xFF) << 0;
+                this.inSize -= 4;
+                server.trace(log, ">> message: type '{}'(c) {}, len {}", (char)x, x, this.inSize);
+            }
+            
+            int buffered = inBuf.position() - 5;
+            if (buffered < inSize) {
+                inBuf = getReadBuffer(inSize - buffered);
+                n = ch.read(inBuf);
                 if (n < 0) {
                     stop();
                     enableWrite();
                     return;
                 }
-                if (this.inBuf.position() < 1) {
+                buffered = inBuf.position() - 5;
+                if (buffered < inSize) {
                     return;
                 }
-                x = this.inBuf.get(0) & 0xFF;
-            } else {
-                if (this.inBuf.position() == 0) {
-                    this.inBuf.position(1);
-                }
-                x = 0;
             }
             
-            n = ch.read(this.inBuf);
-            if (n == -1) {
-                stop();
-                enableWrite();
-                return;
+            // process: read OK
+            byte[] data = inBuf.array();
+            if (this.xQueryFailed && 'S' != x) {
+                server.trace(log, "Discard any message for xQuery error detected until Sync");
+                this.dataBuf = null;
+                this.inSize = -1;
+                rem = resetReadBuffer();
+                continue;
             }
-            if (this.inBuf.hasRemaining()) {
-                return;
-            }
+            this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 5, inSize));
+            // mark read state
+            inBuf.flip();
+            inBuf.position(5 + inSize);
             
-            inSize =  (this.inBuf.get(1) & 0xFF) << 24
-                    | (this.inBuf.get(2) & 0xFF) << 16
-                    | (this.inBuf.get(3) & 0xFF) << 8
-                    | (this.inBuf.get(4) & 0xFF) << 0;
-            inSize -= 4;
-            this.inBuf.clear();
-            server.trace(log, ">> message: type '{}'(c) {}, len {}", (char)x, x, inSize);
-            
-            byte[] data = new byte[inSize];
-            this.inBuf = ByteBuffer.wrap(data);
-        }
-        n = ch.read(this.inBuf);
-        if (n < 0) {
-            stop();
-            enableWrite();
-            return;
-        }
-        if (this.inBuf.hasRemaining()) {
-            return;
-        }
-        // process: read OK
-        byte[] data = this.inBuf.array();
-        this.inBuf = this.inHeader;
-        
-        if (this.xQueryFailed && 'S' != x) {
-            server.trace(log, "Discard any message for xQuery error detected until Sync");
-            return;
-        }
-        this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 0, data.length));
-        
-        this.needFlush = false;
-        switch (x) {
-        case 0:
-            server.trace(log, "Init");
-            int version = readInt();
-            if (version == 80877102) {
-                server.trace(log, "CancelRequest");
-                int pid = readInt();
-                int key = readInt();
-                PgProcessor processor = (PgProcessor)server.getProcessor(pid);
-                if (processor != null && processor.secret == key) {
-                    try {
-                        processor.cancelRequest();
-                    } catch (SQLException e) {
-                        server.traceError(log, "can't cancel request", e);
+            this.needFlush = false;
+            switch (x) {
+            case 0:
+                server.trace(log, "Init");
+                int version = readInt();
+                if (version == 80877102) {
+                    server.trace(log, "CancelRequest");
+                    int pid = readInt();
+                    int key = readInt();
+                    PgProcessor processor = (PgProcessor)server.getProcessor(pid);
+                    if (processor != null && processor.secret == key) {
+                        try {
+                            processor.cancelRequest();
+                        } catch (SQLException e) {
+                            server.traceError(log, "can't cancel request", e);
+                        }
+                    } else {
+                        // According to the PostgreSQL documentation, when canceling
+                        // a request, if an invalid secret is provided then no
+                        // exception should be sent back to the client.
+                        server.trace(log, "Invalid CancelRequest: pid={}, key={}, proc={}", pid, key, processor);
                     }
+                    worker.close(this);
+                } else if (version == 80877103) {
+                    server.trace(log, "SSLRequest");
+                    this.needFlush = true;
+                    ByteBuffer buf = ByteBuffer.allocate(1)
+                    .put((byte)'N');
+                    buf.flip();
+                    offerWriteBuffer(buf);
+                    enableWrite();
                 } else {
-                    // According to the PostgreSQL documentation, when canceling
-                    // a request, if an invalid secret is provided then no
-                    // exception should be sent back to the client.
-                    server.trace(log, "Invalid CancelRequest: pid={}, key={}, proc={}", pid, key, processor);
-                }
-                worker.close(this);
-            } else if (version == 80877103) {
-                server.trace(log, "SSLRequest");
-                this.needFlush = true;
-                ByteBuffer buf = ByteBuffer.allocate(1)
-                .put((byte)'N');
-                buf.flip();
-                offerWriteBuffer(buf);
-                enableWrite();
-            } else {
-                server.trace(log, "StartupMessage");
-                server.trace(log, "version {} ({}.{})", version, (version >> 16), (version & 0xff));
-                while (true) {
-                    String param = readString();
-                    if (param.isEmpty()) {
+                    server.trace(log, "StartupMessage");
+                    server.trace(log, "version {} ({}.{})", version, (version >> 16), (version & 0xff));
+                    while (true) {
+                        String param = readString();
+                        if (param.isEmpty()) {
+                            break;
+                        }
+                        String value = readString();
+                        if ("user".equals(param)) {
+                            this.userName = value;
+                        } else if ("database".equals(param)) {
+                            this.databaseName = server.checkKeyAndGetDatabaseName(value);
+                        } else if ("client_encoding".equals(param)) {
+                            // UTF8
+                            clientEncoding = value;
+                        } else if ("DateStyle".equals(param)) {
+                            if (value.indexOf(',') < 0) {
+                                value += ", MDY";
+                            }
+                            dateStyle = value;
+                        }
+                        // extra_float_digits 2
+                        // geqo on (Genetic Query Optimization)
+                        server.trace(log, "param {} = {}", param, value);
+                    }
+                    
+                    // Check user and database
+                    User user = null;
+                    try {
+                        user = server.selectUser(getRemoteAddress(), this.userName, this.databaseName);
+                    } catch (SQLException e) {
+                        log.error("Can't query user information", e);
+                        user = null;
+                    }
+                    if (user == null) {
+                        this.needFlush = true;
+                        sendErrorAuth();
                         break;
                     }
-                    String value = readString();
-                    if ("user".equals(param)) {
-                        this.userName = value;
-                    } else if ("database".equals(param)) {
-                        this.databaseName = server.checkKeyAndGetDatabaseName(value);
-                    } else if ("client_encoding".equals(param)) {
-                        // UTF8
-                        clientEncoding = value;
-                    } else if ("DateStyle".equals(param)) {
-                        if (value.indexOf(',') < 0) {
-                            value += ", MDY";
-                        }
-                        dateStyle = value;
-                    }
-                    // extra_float_digits 2
-                    // geqo on (Genetic Query Optimization)
-                    server.trace(log, "param {} = {}", param, value);
-                }
-                
-                // Check user and database
-                User user = null;
-                try {
-                    user = server.selectUser(getRemoteAddress(), this.userName, this.databaseName);
-                } catch (SQLException e) {
-                    log.error("Can't query user information", e);
-                    user = null;
-                }
-                if (user == null) {
+                    this.user = user;
                     this.needFlush = true;
+                    
+                    // Request authentication
+                    if ("trust".equals(user.getAuthMethod())) {
+                        authOk();
+                    } else {
+                        sendAuthenticationMessage();
+                    }
+                    initDone = true;
+                }
+                break;
+            case 'p': {
+                server.trace(log, "PasswordMessage");
+                this.needFlush = true;
+                
+                String password = readString();
+                if (!this.authMethod.equals(password)) {
                     sendErrorAuth();
                     break;
                 }
-                this.user = user;
-                this.needFlush = true;
-                
-                // Request authentication
-                if ("trust".equals(user.getAuthMethod())) {
-                    authOk();
-                } else {
-                    sendAuthenticationMessage();
-                }
-                initDone = true;
-            }
-            break;
-        case 'p': {
-            server.trace(log, "PasswordMessage");
-            this.needFlush = true;
-            
-            String password = readString();
-            if (!this.authMethod.equals(password)) {
-                sendErrorAuth();
+                authOk();
                 break;
             }
-            authOk();
-            break;
-        }
-        case 'P': {
-            server.trace(log, "Parse");
-            this.xQueryFailed = true;
-            Prepared p = new Prepared();
-            p.name = readString();
-            try (SQLParser parser = newSQLParser(readString())) {
-                SQLStatement sqlStmt = parser.next();
-                // check for single SQL prepared statement
-                for (; parser.hasNext(); ) {
-                    SQLStatement next = parser.next();
-                    if (sqlStmt.isEmpty()) {
-                        sqlStmt = next;
-                        continue;
+            case 'P': {
+                server.trace(log, "Parse");
+                this.xQueryFailed = true;
+                Prepared p = new Prepared();
+                p.name = readString();
+                try (SQLParser parser = newSQLParser(readString())) {
+                    SQLStatement sqlStmt = parser.next();
+                    // check for single SQL prepared statement
+                    for (; parser.hasNext(); ) {
+                        SQLStatement next = parser.next();
+                        if (sqlStmt.isEmpty()) {
+                            sqlStmt = next;
+                            continue;
+                        }
+                        
+                        if (!next.isEmpty()) {
+                            throw new SQLParseException(sqlStmt.getSQL()+"^");
+                        }
+                    }
+                    p.sql = sqlStmt;
+                    server.trace(log, "named '{}' SQL: {}", p.name, p.sql);
+                    if (UNNAMED.equals(p.name)) {
+                        destroyPrepared(UNNAMED);
+                    }
+                    int paramTypesCount = readShort();
+                    int[] paramTypes = null;
+                    if (paramTypesCount > 0) {
+                        if (sqlStmt.isMetaStatement()) {
+                            String message = "Meta statement can't be parameterized";
+                            throw convertError(SQLiteErrorCode.SQLITE_PERM, message);
+                        }
+                        paramTypes = new int[paramTypesCount];
+                        for (int i = 0; i < paramTypesCount; i++) {
+                            paramTypes[i] = readInt();
+                        }
                     }
                     
-                    if (!next.isEmpty()) {
-                        throw new SQLParseException(sqlStmt.getSQL()+"^");
-                    }
-                }
-                p.sql = sqlStmt;
-                server.trace(log, "named '{}' SQL: {}", p.name, p.sql);
-                if (UNNAMED.equals(p.name)) {
-                    destroyPrepared(UNNAMED);
-                }
-                int paramTypesCount = readShort();
-                int[] paramTypes = null;
-                if (paramTypesCount > 0) {
-                    if (sqlStmt.isMetaStatement()) {
-                        String message = "Meta statement can't be parameterized";
-                        throw convertError(SQLiteErrorCode.SQLITE_PERM, message);
-                    }
-                    paramTypes = new int[paramTypesCount];
-                    for (int i = 0; i < paramTypesCount; i++) {
-                        paramTypes[i] = readInt();
-                    }
-                }
-                
-                if (!sqlStmt.isEmpty()) {
-                    checkPerm(sqlStmt);
-                    String sql = getSQL(sqlStmt);
-                    p.prep = getConnection().prepareStatement(sql);
-                    if (!sqlStmt.isMetaStatement()) {
-                        ParameterMetaData meta = p.prep.getParameterMetaData();
-                        p.paramType = new int[meta.getParameterCount()];
-                        for (int i = 0; i < p.paramType.length; i++) {
-                            int type;
-                            if (i < paramTypesCount && paramTypes[i] != 0) {
-                                type = paramTypes[i];
-                            } else {
-                                type = PgServer.convertType(meta.getParameterType(i + 1));
+                    if (!sqlStmt.isEmpty()) {
+                        checkPerm(sqlStmt);
+                        String sql = getSQL(sqlStmt);
+                        p.prep = getConnection().prepareStatement(sql);
+                        if (!sqlStmt.isMetaStatement()) {
+                            ParameterMetaData meta = p.prep.getParameterMetaData();
+                            p.paramType = new int[meta.getParameterCount()];
+                            for (int i = 0; i < p.paramType.length; i++) {
+                                int type;
+                                if (i < paramTypesCount && paramTypes[i] != 0) {
+                                    type = paramTypes[i];
+                                } else {
+                                    type = PgServer.convertType(meta.getParameterType(i + 1));
+                                }
+                                p.paramType[i] = type;
                             }
-                            p.paramType[i] = type;
                         }
                     }
+                    prepared.put(p.name, p);
+                    
+                    sendParseComplete();
+                    this.xQueryFailed = false;
+                } catch (SQLParseException e) {
+                    sendErrorResponse(e);
+                } catch (SQLException e) {
+                    sendErrorResponse(e);
                 }
-                prepared.put(p.name, p);
-                
-                sendParseComplete();
+                break;
+            }
+            case 'B': {
+                server.trace(log, "Bind");
+                this.xQueryFailed = true;
+                Portal portal = new Portal();
+                portal.name = readString();
+                String prepName = readString();
+                Prepared prep = prepared.get(prepName);
+                if (prep == null) {
+                    sendErrorResponse("Prepared not found");
+                    break;
+                }
+                portal.prep = prep;
+                portals.put(portal.name, portal);
+                int formatCodeCount = readShort();
+                int[] formatCodes = new int[formatCodeCount];
+                for (int i = 0; i < formatCodeCount; i++) {
+                    formatCodes[i] = readShort();
+                }
+                int paramCount = readShort();
+                try {
+                    for (int i = 0; i < paramCount; i++) {
+                        setParameter(prep.prep, prep.paramType[i], i, formatCodes);
+                    }
+                } catch (SQLException e) {
+                    sendErrorResponse(e);
+                    break;
+                }
+                int resultCodeCount = readShort();
+                portal.resultColumnFormat = new int[resultCodeCount];
+                for (int i = 0; i < resultCodeCount; i++) {
+                    portal.resultColumnFormat[i] = readShort();
+                }
+                sendBindComplete();
                 this.xQueryFailed = false;
-            } catch (SQLParseException e) {
-                sendErrorResponse(e);
-            } catch (SQLException e) {
-                sendErrorResponse(e);
-            }
-            break;
-        }
-        case 'B': {
-            server.trace(log, "Bind");
-            this.xQueryFailed = true;
-            Portal portal = new Portal();
-            portal.name = readString();
-            String prepName = readString();
-            Prepared prep = prepared.get(prepName);
-            if (prep == null) {
-                sendErrorResponse("Prepared not found");
                 break;
             }
-            portal.prep = prep;
-            portals.put(portal.name, portal);
-            int formatCodeCount = readShort();
-            int[] formatCodes = new int[formatCodeCount];
-            for (int i = 0; i < formatCodeCount; i++) {
-                formatCodes[i] = readShort();
-            }
-            int paramCount = readShort();
-            try {
-                for (int i = 0; i < paramCount; i++) {
-                    setParameter(prep.prep, prep.paramType[i], i, formatCodes);
-                }
-            } catch (SQLException e) {
-                sendErrorResponse(e);
-                break;
-            }
-            int resultCodeCount = readShort();
-            portal.resultColumnFormat = new int[resultCodeCount];
-            for (int i = 0; i < resultCodeCount; i++) {
-                portal.resultColumnFormat[i] = readShort();
-            }
-            sendBindComplete();
-            this.xQueryFailed = false;
-            break;
-        }
-        case 'C': {
-            server.trace(log, "Close");
-            this.needFlush = true;
-            char type = (char) readByte();
-            String name = readString();
-            if (type == 'S') {
-                destroyPrepared(name);
-            } else if (type == 'P') {
-                portals.remove(name);
-            } else {
-                server.trace(log, "expected S or P, got {}", type);
-                sendErrorResponse("expected S or P");
-                break;
-            }
-            sendCloseComplete();
-            break;
-        }
-        case 'D': {
-            server.trace(log, "Describe");
-            this.xQueryFailed = true;
-            char type = (char) readByte();
-            String name = readString();
-            if (type == 'S') {
-                Prepared p = prepared.get(name);
-                if (p == null) {
-                    sendErrorResponse("Prepared not found: " + name);
+            case 'C': {
+                server.trace(log, "Close");
+                this.needFlush = true;
+                char type = (char) readByte();
+                String name = readString();
+                if (type == 'S') {
+                    destroyPrepared(name);
+                } else if (type == 'P') {
+                    portals.remove(name);
                 } else {
-                    try {
-                        ParameterMetaData paramMeta = null;
-                        ResultSetMetaData rsMeta = null;
-                        if (!p.sql.isEmpty()) {
-                            if (!p.sql.isMetaStatement()) {
-                                paramMeta = p.prep.getParameterMetaData();
-                            }
-                            rsMeta = p.prep.getMetaData();
-                        }
-                        sendParameterDescription(paramMeta, p.paramType);
-                        sendRowDescription(rsMeta);
-                        this.xQueryFailed = false;
-                    } catch (SQLException e) {
-                        sendErrorResponse(e);
-                    }
+                    server.trace(log, "expected S or P, got {}", type);
+                    sendErrorResponse("expected S or P");
+                    break;
                 }
-            } else if (type == 'P') {
+                sendCloseComplete();
+                break;
+            }
+            case 'D': {
+                server.trace(log, "Describe");
+                this.xQueryFailed = true;
+                char type = (char) readByte();
+                String name = readString();
+                if (type == 'S') {
+                    Prepared p = prepared.get(name);
+                    if (p == null) {
+                        sendErrorResponse("Prepared not found: " + name);
+                    } else {
+                        try {
+                            ParameterMetaData paramMeta = null;
+                            ResultSetMetaData rsMeta = null;
+                            if (!p.sql.isEmpty()) {
+                                if (!p.sql.isMetaStatement()) {
+                                    paramMeta = p.prep.getParameterMetaData();
+                                }
+                                rsMeta = p.prep.getMetaData();
+                            }
+                            sendParameterDescription(paramMeta, p.paramType);
+                            sendRowDescription(rsMeta);
+                            this.xQueryFailed = false;
+                        } catch (SQLException e) {
+                            sendErrorResponse(e);
+                        }
+                    }
+                } else if (type == 'P') {
+                    Portal p = portals.get(name);
+                    if (p == null) {
+                        sendErrorResponse("Portal not found: " + name);
+                    } else {
+                        PreparedStatement prep = p.prep.prep;
+                        try {
+                            ResultSetMetaData meta = null;
+                            if (!p.prep.sql.isEmpty()) {
+                                meta = prep.getMetaData();
+                            }
+                            sendRowDescription(meta);
+                            this.xQueryFailed = false;
+                        } catch (SQLException e) {
+                            sendErrorResponse(e);
+                        }
+                    }
+                } else {
+                    server.trace(log, "expected S or P, got {}", type);
+                    sendErrorResponse("expected S or P");
+                }
+                break;
+            }
+            case 'E': {
+                server.trace(log, "Execute");
+                this.xQueryFailed = true;
+                String name = readString();
                 Portal p = portals.get(name);
                 if (p == null) {
                     sendErrorResponse("Portal not found: " + name);
-                } else {
-                    PreparedStatement prep = p.prep.prep;
+                    break;
+                }
+                int maxRows = readShort();
+                Prepared prepared = p.prep;
+                SQLStatement sql = prepared.sql;
+                server.trace(log, "execute SQL: {}", sql);
+                
+                // check empty statement
+                if (sql.isEmpty()) {
+                    server.trace(log, "query string empty: {}", sql);
+                    sendEmptyQueryResponse();
+                    this.xQueryFailed = false;
+                    break;
+                }
+                
+                try {
+                    PreparedStatement prep = prepared.prep;
+                    prep.setMaxRows(maxRows);
+                    // Set correct autoCommit for transaction status 
+                    // in readyForQuery() response
+                    boolean txBegin = tryBegin(sql);
+                    boolean exeFail = true, result = false;
                     try {
-                        ResultSetMetaData meta = null;
-                        if (!p.prep.sql.isEmpty()) {
-                            meta = prep.getMetaData();
+                        result = prep.execute();
+                        if (!txBegin && sql.isTransaction()) {
+                            TransactionStatement txSql = (TransactionStatement)sql;
+                            if (txSql.isSavepoint()) {
+                                this.savepointStack.push(txSql);
+                            }
                         }
-                        sendRowDescription(meta);
+                        exeFail= false;
+                    } finally {
+                        if (exeFail && txBegin) {
+                            resetAutoCommit();
+                        }
+                    }
+                    tryFinish(sql);
+                    
+                    if (result) {
+                        processResultSet(p);
+                    } else {
+                        n = prep.getUpdateCount();
+                        sendCommandComplete(sql, n, result);
                         this.xQueryFailed = false;
-                    } catch (SQLException e) {
+                    }
+                } catch (SQLException e) {
+                    if (isCanceled(e)) {
+                        sendCancelQueryResponse();
+                    } else {
                         sendErrorResponse(e);
                     }
                 }
-            } else {
-                server.trace(log, "expected S or P, got {}", type);
-                sendErrorResponse("expected S or P");
-            }
-            break;
-        }
-        case 'E': {
-            server.trace(log, "Execute");
-            this.xQueryFailed = true;
-            String name = readString();
-            Portal p = portals.get(name);
-            if (p == null) {
-                sendErrorResponse("Portal not found: " + name);
                 break;
             }
-            int maxRows = readShort();
-            Prepared prepared = p.prep;
-            SQLStatement sql = prepared.sql;
-            server.trace(log, "execute SQL: {}", sql);
-            
-            // check empty statement
-            if (sql.isEmpty()) {
-                server.trace(log, "query string empty: {}", sql);
-                sendEmptyQueryResponse();
+            case 'S': {
+                server.trace(log, "Sync");
                 this.xQueryFailed = false;
+                this.needFlush = true;
+                sendReadyForQuery();
+                break;
+            }
+            case 'Q': {
+                server.trace(log, "Query");
+                destroyPrepared(UNNAMED);
+                String query = readString();
+                processQuery(query);
+                break;
+            }
+            case 'X': {
+                server.trace(log, "Terminate");
+                // Here we must release DB resources!
+                IoUtils.close(getConnection());
+                worker.close(this);
+                break;
+            }
+            default:
+                server.trace(log, "Unsupported message: type {}(c) {}", (char) x, x);
                 break;
             }
             
-            try {
-                PreparedStatement prep = prepared.prep;
-                prep.setMaxRows(maxRows);
-                // Set correct autoCommit for transaction status 
-                // in readyForQuery() response
-                boolean txBegin = tryBegin(sql);
-                boolean exeFail = true, result = false;
-                try {
-                    result = prep.execute();
-                    if (!txBegin && sql.isTransaction()) {
-                        TransactionStatement txSql = (TransactionStatement)sql;
-                        if (txSql.isSavepoint()) {
-                            this.savepointStack.push(txSql);
-                        }
-                    }
-                    exeFail= false;
-                } finally {
-                    if (exeFail && txBegin) {
-                        resetAutoCommit();
-                    }
-                }
-                tryFinish(sql);
-                
-                if (result) {
-                    processResultSet(p);
-                } else {
-                    n = prep.getUpdateCount();
-                    sendCommandComplete(sql, n, result);
-                    this.xQueryFailed = false;
-                }
-            } catch (SQLException e) {
-                if (isCanceled(e)) {
-                    sendCancelQueryResponse();
-                } else {
-                    sendErrorResponse(e);
-                }
-            }
-            break;
+            // reset and cleanup
+            this.dataBuf = null;
+            this.inSize = -1;
+            rem = resetReadBuffer();
         }
-        case 'S': {
-            server.trace(log, "Sync");
-            this.xQueryFailed = false;
-            this.needFlush = true;
-            sendReadyForQuery();
-            break;
-        }
-        case 'Q': {
-            server.trace(log, "Query");
-            destroyPrepared(UNNAMED);
-            String query = readString();
-            processQuery(query);
-            break;
-        }
-        case 'X': {
-            server.trace(log, "Terminate");
-            // Here we must release DB resources!
-            IoUtils.close(getConnection());
-            worker.close(this);
-            break;
-        }
-        default:
-            server.trace(log, "Unsupported message: type {}(c) {}", (char) x, x);
-            break;
-        }
-        
-        // cleanup
-        this.dataBuf = null;
     }
     
     protected void processResultSet(final Portal p) {
