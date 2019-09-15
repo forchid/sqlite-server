@@ -529,7 +529,7 @@ public abstract class SQLiteServer implements AutoCloseable {
         return (!this.isStopped());
     }
     
-    public SQLiteConnection newSQLiteConnection(User user, String databaseName, boolean createDb)
+    public SQLiteConnection newSQLiteConnection(String databaseName, boolean createDb)
             throws SQLException {
         String url = "jdbc:sqlite:"+databaseName;
         if (!":memory:".equals(databaseName) && !"".equals(databaseName)/* temporary */) {
@@ -726,7 +726,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --user|-U       <user>        Superuser's name, default "+USER_DEFAULT+"\n"+
                 "  --password|-p   <password>    Superuser's password, must be provided in non-trust auth\n"+
                 "  --db|-d         <dbName>      Initialized database, default as the user name\n"+
-                "  --host|-H       <host>        Superuser's login host, IP, or '%' default "+HOST_DEFAULT+"\n"+
+                "  --host|-H       <host>        Superuser's login host, IP, or '%', default "+HOST_DEFAULT+"\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
                 "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
     }

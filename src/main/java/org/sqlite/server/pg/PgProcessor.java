@@ -828,7 +828,7 @@ public class PgProcessor extends SQLiteProcessor {
         try {
             this.authMethod = null;
             
-            conn = server.newSQLiteConnection(this.user, this.databaseName, false);
+            conn = server.newSQLiteConnection(this.databaseName, false);
             if (server.isTrace()) {
                 server.trace(log, "sqliteConn init: autocommit {}", conn.getAutoCommit());
             }

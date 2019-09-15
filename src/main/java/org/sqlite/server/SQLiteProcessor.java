@@ -211,6 +211,16 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         if (stmt.isMetaStatement()) {
             MetaStatement metaStmt = (MetaStatement)stmt;
             if (metaStmt.needSa() && !this.user.isSa()) {
+                if ("ALTER USER".equals(stmt.getCommand())) {
+                    AlterUserStatement s = (AlterUserStatement)stmt;
+                    User u = this.user;
+                    // Alter my user information myself
+                    if ((u.getUser().equals(s.getUser()))
+                            && (u.getHost().equals(s.getHost()))
+                            && (u.getProtocol().equals(s.getProtocol()))) {
+                        return;
+                    }
+                }
                 throw convertError(SQLiteErrorCode.SQLITE_PERM);
             }
         }

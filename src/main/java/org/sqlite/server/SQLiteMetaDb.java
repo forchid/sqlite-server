@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
+import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.server.meta.Db;
 import org.sqlite.server.meta.User;
@@ -113,14 +114,15 @@ public class SQLiteMetaDb implements AutoCloseable {
         }
         
         SQLiteConfig config = new SQLiteConfig();
-        config.setJournalMode(JournalMode.DELETE);
+        config.setJournalMode(JournalMode.WAL);
+        config.setSynchronous(SynchronousMode.NORMAL);
         config.setBusyTimeout(50000);
         config.setEncoding(Encoding.UTF8);
         return (SQLiteConnection)config.createConnection("jdbc:sqlite:"+this.file);
     }
     
     public String attachTo(SQLiteConnection conn) throws SQLException {
-        String schema = "meta_"+SecurityUtils.nextHexs(10);
+        String schema = genSchemaName();
         String sql = format("attach database '%s' as %s", this.file, schema);
         try (Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);
@@ -133,6 +135,10 @@ public class SQLiteMetaDb implements AutoCloseable {
         try (Statement stmt = conn.createStatement()) {
             stmt.executeUpdate(sql);
         }
+    }
+    
+    private String genSchemaName() {
+        return ("meta_"+SecurityUtils.nextHexs(10));
     }
     
     public boolean isOpen() {
@@ -212,8 +218,9 @@ public class SQLiteMetaDb implements AutoCloseable {
             if (!server.inDataDir(db.getDb())) {
                 throw new SQLException("Database name isn't a relative file name");
             }
-            stmt.executeUpdate(format("attach database '%s' as %s", dbFile, db.getDb()));
-            stmt.executeUpdate(format("detach database %s", db.getDb()));
+            String schema = db.getDb();
+            stmt.executeUpdate(format("attach database '%s' as '%s'", dbFile, schema));
+            stmt.executeUpdate(format("detach database '%s'", schema));
         }
         
         stmt.executeUpdate(CREATE_TABLE_DB);
