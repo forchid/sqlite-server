@@ -61,6 +61,7 @@ public class SQLiteWorker implements Runnable {
     protected final BlockingQueue<SQLiteProcessor> procQueue;
     protected final int maxConns;
     private int conns;
+    protected final AtomicBoolean procsLock = new AtomicBoolean();
     private final Map<Integer, SQLiteProcessor> processors;
     
     public SQLiteWorker(SQLiteServer server, int id) {
@@ -133,11 +134,16 @@ public class SQLiteWorker implements Runnable {
         }
         
         Iterator<Map.Entry<Integer, SQLiteProcessor>> procs;
-        procs = this.processors.entrySet().iterator();
-        for (; procs.hasNext();) {
-            SQLiteProcessor p = procs.next().getValue();
-            IoUtils.close(p);
-            procs.remove();
+        procsLock();
+        try {
+            procs = this.processors.entrySet().iterator();
+            for (; procs.hasNext();) {
+                SQLiteProcessor p = procs.next().getValue();
+                IoUtils.close(p);
+                procs.remove();
+            }
+        } finally {
+            procsUnlock();
         }
     }
     
@@ -145,12 +151,18 @@ public class SQLiteWorker implements Runnable {
         if (processor == null) {
             return;
         }
+        processor.stop();
         
         int id = processor.getId();
-        SQLiteProcessor p = this.processors.get(id);
-        if (p == processor) {
-            this.processors.remove(id);
-            --this.conns;
+        procsLock();
+        try {
+            SQLiteProcessor p = this.processors.get(id);
+            if (p == processor) {
+                this.processors.remove(id);
+                --this.conns;
+            }
+        } finally {
+            procsUnlock();
         }
         
         IoUtils.close(processor);
@@ -186,7 +198,6 @@ public class SQLiteWorker implements Runnable {
     }
     
     protected void acceptProcs(long runNanos) {
-        Map<Integer, SQLiteProcessor> procs = this.processors;
         BlockingQueue<SQLiteProcessor> queue = this.procQueue;
         Selector selector = this.selector;
         long deadNano = System.nanoTime() + runNanos;
@@ -203,10 +214,6 @@ public class SQLiteWorker implements Runnable {
             try {
                 p.setSelector(selector);
                 p.setWorker(this);
-                if (this.conns != procs.size()) {
-                    throw new IllegalStateException("conns " + this.conns 
-                            + " <-> processors " + procs.size());
-                }
                 if (this.conns >= this.maxConns) {
                     p.tooManyConns();
                     p.stop();
@@ -220,7 +227,12 @@ public class SQLiteWorker implements Runnable {
                         IoUtils.close(p);
                         continue;
                     }
-                    procs.put(id, p);
+                    procsLock();
+                    try {
+                        this.processors.put(id, p);
+                    } finally {
+                        procsUnlock();
+                    }
                     ++this.conns;
                 }
             } catch (IOException e) {
@@ -274,8 +286,23 @@ public class SQLiteWorker implements Runnable {
         return ok;
     }
 
-    public SQLiteProcessor getProcessor(int pid) {
-        return this.processors.get(pid);
+    SQLiteProcessor getProcessor(int pid) {
+        procsLock();
+        try {
+            return this.processors.get(pid);
+        } finally {
+            procsUnlock();
+        }
+    }
+    
+    protected void procsLock() {
+        for (; !this.procsLock.compareAndSet(false, true);) {
+            // LOOP
+        }
+    }
+    
+    protected void procsUnlock() {
+        this.procsLock.set(false);
     }
     
 }

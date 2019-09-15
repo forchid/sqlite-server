@@ -47,11 +47,16 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     
     static final Logger log = LoggerFactory.getLogger(SQLiteProcessor.class);
     
+    // Write settings
+    static final int maxWriteTimes  = Integer.getInteger("org.sqlite.server.procssor.maxWriteTimes",  1<<10);
+    static final int maxWriteQueue  = Integer.getInteger("org.sqlite.server.procssor.maxWriteQueue",  1<<10);
+    static final int maxWriteBuffer = Integer.getInteger("org.sqlite.server.procssor.maxWriteBuffer", 1<<20);
+    
     protected final InetSocketAddress remoteAddress;
     protected final SocketChannel channel;
     protected Selector selector;
-    protected Deque<ByteBuffer> writeBufferQueue;
-    protected Deque<WriteTask> writeTaskQueue;
+    protected Deque<ByteBuffer> writeQueue;
+    protected WriteTask writeTask;
     
     protected final int id;
     protected final String name;
@@ -79,8 +84,7 @@ public abstract class SQLiteProcessor implements AutoCloseable {
             throw new NetworkException(e);
         }
         
-        this.writeTaskQueue = new ArrayDeque<>();
-        this.writeBufferQueue = new ArrayDeque<>();
+        this.writeQueue = new ArrayDeque<>();
     }
     
     public int getId() {
@@ -282,7 +286,6 @@ public abstract class SQLiteProcessor implements AutoCloseable {
             process();
         } catch (IOException e) {
             this.server.traceError(log, "process error", e);
-            stop();
             this.worker.close(this);
         }
     }
@@ -292,7 +295,6 @@ public abstract class SQLiteProcessor implements AutoCloseable {
             flush();
         } catch (IOException |SQLException e) {
             this.server.traceError(log, "flush error", e);
-            stop();
             this.worker.close(this);
         }
     }
@@ -310,22 +312,21 @@ public abstract class SQLiteProcessor implements AutoCloseable {
                     if (n == 0) {
                         break;
                     }
-                    if (++i >= 1000) {
+                    if (++i >= maxWriteTimes) {
                         break;
                     }
                 }
                 if (buf.hasRemaining()) {
-                    this.writeBufferQueue.offerFirst(buf);
+                    this.writeQueue.offerFirst(buf);
                     return;
                 }
                 continue;
             }
             
-            WriteTask task = nextWriteTask();
+            WriteTask task = this.writeTask;
             if (task != null) {
                 task.run();
                 continue;
-                
             }
             
             disableWrite();
@@ -338,20 +339,27 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         }
     }
     
+    protected boolean canFlush() {
+        ByteBuffer buf = this.writeQueue.peek();
+        if (buf == null) {
+            return false;
+        } else if (buf.remaining() >= maxWriteBuffer) {
+            // Case-1
+            return true;
+        } else if (this.writeQueue.size() >= maxWriteQueue) {
+            // Case-2
+            return true;
+        }
+        
+        return false;
+    }
+    
     protected ByteBuffer nextWriteBuffer() {
-        return this.writeBufferQueue.poll();
+        return this.writeQueue.poll();
     }
     
     protected void offerWriteBuffer(ByteBuffer writeBuffer) {
-        this.writeBufferQueue.offer(writeBuffer);
-    }
-    
-    protected WriteTask nextWriteTask() {
-        return this.writeTaskQueue.poll();
-    }
-    
-    protected void offerWriteTask(WriteTask task) {
-        this.writeTaskQueue.offer(task);
+        this.writeQueue.offer(writeBuffer);
     }
     
     protected void enableRead() throws IOException {
@@ -417,9 +425,13 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         this.server.trace(log, "Close: id {}", this.id);
     }
     
+    public String toString() {
+        return this.name;
+    }
+    
     protected static abstract class WriteTask implements Runnable {
         
-        final SQLiteProcessor proc;
+        protected final SQLiteProcessor proc;
         
         protected WriteTask(SQLiteProcessor proc) {
             this.proc = proc;
@@ -429,7 +441,6 @@ public abstract class SQLiteProcessor implements AutoCloseable {
             try {
                 write();
             } catch (IOException e) {
-                this.proc.stop();
                 this.proc.worker.close(this.proc);
             }
         }

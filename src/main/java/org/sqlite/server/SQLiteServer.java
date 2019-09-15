@@ -407,6 +407,20 @@ public abstract class SQLiteServer implements AutoCloseable {
         throw new IllegalStateException("No available worker");
     }
     
+    public SQLiteProcessor getProcessor(int pid) {
+        SQLiteWorker[] workers = this.workers;
+        for (SQLiteWorker worker: workers) {
+            if (worker == null) {
+                continue;
+            }
+            SQLiteProcessor p = worker.getProcessor(pid);
+            if (p != null) {
+                return p;
+            }
+        }
+        return null;
+    }
+    
     public void listen() {
         String name = getName();
         if (!isInited()) {
