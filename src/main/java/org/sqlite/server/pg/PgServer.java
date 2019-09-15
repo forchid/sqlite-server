@@ -15,11 +15,12 @@
  */
 package org.sqlite.server.pg;
 
-import java.net.Socket;
+import java.nio.channels.SocketChannel;
 import java.sql.Types;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.server.NetworkException;
 import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteServer;
@@ -122,8 +123,9 @@ public class PgServer extends SQLiteServer {
     }
     
     @Override
-    protected SQLiteProcessor newProcessor(Socket s, int processId) {
-        return new PgProcessor(s, processId, this);
+    protected SQLiteProcessor newProcessor(SocketChannel channel, int processId) 
+            throws NetworkException {
+        return new PgProcessor(channel, processId, this);
     }
     
     @Override

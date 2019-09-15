@@ -125,8 +125,9 @@ public class StatementTest extends TestDbBase {
             n = stmt.executeUpdate("alter user test0@localhost identified by '0123'");
             assertTrue(1 == n);
             try {
-                getConnection("test0", "0123");
-                fail("User test@localhost hasn't been granted or tx not committed");
+                try (Connection c = getConnection("test0", "0123")) {
+                    fail("User test@localhost hasn't been granted or tx not committed");
+                }
             } catch (SQLException e) {
                 // OK
             }
@@ -165,8 +166,9 @@ public class StatementTest extends TestDbBase {
                 if (!created) throw e;
             }
             try {
-                getConnection("test03", "0123");
-                fail("User test03@'localhost' hasn't been granted");
+                try (Connection c = getConnection("test03", "0123")) {
+                    fail("User test03@'localhost' hasn't been granted");
+                }
             } catch (SQLException e) {
                 // OK
             }
@@ -180,8 +182,9 @@ public class StatementTest extends TestDbBase {
                 if (!created) throw e;
             }
             try {
-                getConnection("test04", "0123");
-                fail("User test04@'localhost' hasn't been granted");
+                try (Connection c = getConnection("test04", "0123")) {
+                    fail("User test04@'localhost' hasn't been granted");
+                }
             } catch (SQLException e) {
                 // OK
             }
@@ -197,8 +200,9 @@ public class StatementTest extends TestDbBase {
                 if (!created) throw e;
             }
             try {
-                getConnection("test05", "");
-                if (useTx) fail("User test5@'localhost' hasn't been granted");
+                try (Connection c = getConnection("test05", "")) {
+                    if (useTx) fail("User test5@'localhost' hasn't been granted");
+                }
             } catch (SQLException e) {
                 // OK
                 if (!useTx) throw e;

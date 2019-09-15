@@ -17,18 +17,14 @@ package org.sqlite.server.pg;
 
 import static java.lang.String.format;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.EOFException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.sql.ParameterMetaData;
@@ -51,7 +47,9 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
+import org.sqlite.server.NetworkException;
 import org.sqlite.server.SQLiteProcessor;
+import org.sqlite.server.SQLiteWorker;
 import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
@@ -81,12 +79,15 @@ public class PgProcessor extends SQLiteProcessor {
     protected static final String UNNAMED  = "";
     
     private final int secret;
-    private DataInputStream dataIn, dataBuf;
-    private OutputStream out;
+    private final ByteBuffer inHeader = ByteBuffer.allocate(5);
+    private ByteBuffer inBuf = inHeader;
+    private DataInputStream dataBuf;
+    private int x, inSize;
     
     private int messageType;
     private ByteArrayOutputStream outBuf;
     private DataOutputStream dataOut;
+    private boolean needFlush;
     
     private String userName;
     private String databaseName;
@@ -98,8 +99,9 @@ public class PgProcessor extends SQLiteProcessor {
     private final HashMap<String, Portal> portals = new HashMap<>();
     private final Stack<TransactionStatement> savepointStack;
 
-    protected PgProcessor(Socket socket, int processId, PgServer server) {
-        super(socket, processId, server);
+    protected PgProcessor(SocketChannel channel, int processId, PgServer server) 
+            throws NetworkException {
+        super(channel, processId, server);
         this.secret = (int)SecurityUtils.secureRandomLong();
         this.savepointStack = new Stack<>();
     }
@@ -107,47 +109,26 @@ public class PgProcessor extends SQLiteProcessor {
     public PgServer getServer() {
         return (PgServer)this.server;
     }
-
+    
     @Override
-    public void run() {
-        try {
-            server.trace(log, "Connect");
-            if (!server.isAllowed(socket)) {
-                InetSocketAddress remoteAddr = (InetSocketAddress)socket.getRemoteSocketAddress();
-                server.trace(log, "Connection {} not allowed", remoteAddr.getHostName());
-                return;
-            }
-            // buffer is very important for performance!
-            int bufferSize = IoUtils.BUFFER_SIZE;
-            InputStream in = new BufferedInputStream(socket.getInputStream(), bufferSize << 2);
-            out = new BufferedOutputStream(socket.getOutputStream(), bufferSize << 4);
-            dataIn = new DataInputStream(in);
-            for (; isRunning(); ) {
-                // Optimize flush()
-                if (process()) {
-                    out.flush();
-                }
-            }
-        } catch (EOFException e) {
-            // more or less normal disconnect
-        } catch (Exception e) {
-            server.traceError(log, getName(), "fatal", e);
-        } finally {
-            server.trace(log, "Disconnect");
-            stop();
-        }
+    protected void deny(InetSocketAddress remote) throws IOException {
+        String message = format("Host '%s' not allowed", remote.getHostName());
+        SQLException error = convertError(SQLiteErrorCode.SQLITE_PERM, message);
+        sendErrorResponse(error);
     }
     
-    protected boolean isRunning() throws SQLException {
-        if (!isStopped()) {
-            return true;
-        }
-        
-        SQLiteConnection conn = getConnection();
-        if (conn == null || conn.isClosed()) {
-            return false;
-        }
-        return (!conn.getAutoCommit() /* Ongoing tx */);
+    @Override
+    protected void interalError() throws IOException {
+        String message = "Internal error in SQLite server";
+        SQLException error = convertError(SQLiteErrorCode.SQLITE_INTERNAL, message);
+        sendErrorResponse(error);
+    }
+    
+    @Override
+    protected void tooManyConns() throws IOException {
+        String message = "Too many connections";
+        SQLException error = convertError(SQLiteErrorCode.SQLITE_PERM, message, "08004");
+        sendErrorResponse(error);
     }
     
     private void setParameter(PreparedStatement prep,
@@ -227,33 +208,73 @@ public class PgProcessor extends SQLiteProcessor {
         }
     }
     
-    private boolean process() throws IOException {
+    @Override
+    protected void process() throws IOException {
         PgServer server = getServer();
+        SQLiteWorker worker = this.worker;
+        SocketChannel ch = getChannel();
         
-        int x;
-        if (this.initDone) {
-            x = this.dataIn.read();
-            if (x < 0) {
-                stop();
-                return true;
+        int n;
+        if (this.inBuf == this.inHeader) {
+            if (this.initDone) {
+                n = ch.read(this.inBuf);
+                if (n < 0) {
+                    stop();
+                    enableWrite();
+                    return;
+                }
+                if (n == 0 && this.inBuf.position() < 1) {
+                    return;
+                }
+                x = this.inBuf.get(0) & 0xFF;
+            } else {
+                if (this.inBuf.position() == 0) {
+                    this.inBuf.position(1);
+                }
+                x = 0;
             }
-        } else {
-            x = 0;
+            
+            n = ch.read(this.inBuf);
+            if (n == -1) {
+                stop();
+                enableWrite();
+                return;
+            }
+            if (this.inBuf.hasRemaining()) {
+                return;
+            }
+            
+            inSize =  (this.inBuf.get(1) & 0xFF) << 24
+                    | (this.inBuf.get(2) & 0xFF) << 16
+                    | (this.inBuf.get(3) & 0xFF) << 8
+                    | (this.inBuf.get(4) & 0xFF) << 0;
+            inSize -= 4;
+            this.inBuf.clear();
+            server.trace(log, ">> message: type '{}'(c) {}, len {}", (char)x, x, inSize);
+            
+            byte[] data = new byte[inSize];
+            this.inBuf = ByteBuffer.wrap(data);
         }
+        n = ch.read(this.inBuf);
+        if (n < 0) {
+            stop();
+            enableWrite();
+            return;
+        }
+        if (this.inBuf.hasRemaining()) {
+            return;
+        }
+        // process: read OK
+        byte[] data = this.inBuf.array();
+        this.inBuf = this.inHeader;
         
-        int len = this.dataIn.readInt();
-        len -= 4;
-        server.trace(log, ">> message: type {}(c) {}, len {}", (char)x, x, len);
-        
-        byte[] data = new byte[len];
-        this.dataIn.readFully(data, 0, len);
         if (this.xQueryFailed && 'S' != x) {
             server.trace(log, "Discard any message for xQuery error detected until Sync");
-            return false;
+            return;
         }
-        this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 0, len));
+        this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 0, data.length));
         
-        boolean flush = false;
+        this.needFlush = false;
         switch (x) {
         case 0:
             server.trace(log, "Init");
@@ -262,7 +283,7 @@ public class PgProcessor extends SQLiteProcessor {
                 server.trace(log, "CancelRequest");
                 int pid = readInt();
                 int key = readInt();
-                PgProcessor processor = (PgProcessor)server.getProcessor(this.id);
+                PgProcessor processor = (PgProcessor)worker.getProcessor(this.id);
                 if (processor != null && processor.secret == key) {
                     try {
                         processor.cancelRequest();
@@ -276,10 +297,15 @@ public class PgProcessor extends SQLiteProcessor {
                     server.trace(log, "Invalid CancelRequest: pid={}, key={}", pid, key);
                 }
                 stop();
+                worker.close(this);
             } else if (version == 80877103) {
                 server.trace(log, "SSLRequest");
-                out.write('N');
-                flush = true;
+                this.needFlush = true;
+                ByteBuffer buf = ByteBuffer.allocate(1)
+                .put((byte)'N');
+                buf.flip();
+                offerWriteBuffer(buf);
+                enableWrite();
             } else {
                 server.trace(log, "StartupMessage");
                 server.trace(log, "version {} ({}.{})", version, (version >> 16), (version & 0xff));
@@ -310,17 +336,18 @@ public class PgProcessor extends SQLiteProcessor {
                 // Check user and database
                 User user = null;
                 try {
-                    user = server.selectUser(socket, this.userName, this.databaseName);
+                    user = server.selectUser(getRemoteAddress(), this.userName, this.databaseName);
                 } catch (SQLException e) {
                     log.error("Can't query user information", e);
                     user = null;
                 }
                 if (user == null) {
+                    this.needFlush = true;
                     sendErrorAuth();
-                    flush = true;
                     break;
                 }
                 this.user = user;
+                this.needFlush = true;
                 
                 // Request authentication
                 if ("trust".equals(user.getAuthMethod())) {
@@ -328,13 +355,12 @@ public class PgProcessor extends SQLiteProcessor {
                 } else {
                     sendAuthenticationMessage();
                 }
-                flush = true;
                 initDone = true;
             }
             break;
         case 'p': {
             server.trace(log, "PasswordMessage");
-            flush = true;
+            this.needFlush = true;
             
             String password = readString();
             if (!this.authMethod.equals(password)) {
@@ -372,7 +398,8 @@ public class PgProcessor extends SQLiteProcessor {
                 int[] paramTypes = null;
                 if (paramTypesCount > 0) {
                     if (sqlStmt.isMetaStatement()) {
-                        throw convertError(SQLiteErrorCode.SQLITE_PERM, "Meta statement can't be parameterized");
+                        String message = "Meta statement can't be parameterized";
+                        throw convertError(SQLiteErrorCode.SQLITE_PERM, message);
                     }
                     paramTypes = new int[paramTypesCount];
                     for (int i = 0; i < paramTypesCount; i++) {
@@ -447,7 +474,7 @@ public class PgProcessor extends SQLiteProcessor {
         }
         case 'C': {
             server.trace(log, "Close");
-            flush = true;
+            this.needFlush = true;
             char type = (char) readByte();
             String name = readString();
             if (type == 'S') {
@@ -569,7 +596,7 @@ public class PgProcessor extends SQLiteProcessor {
                         sendErrorResponse(e);
                     }
                 } else {
-                    int n = prep.getUpdateCount();
+                    n = prep.getUpdateCount();
                     sendCommandComplete(sql, n, result);
                     this.xQueryFailed = false;
                 }
@@ -585,13 +612,12 @@ public class PgProcessor extends SQLiteProcessor {
         case 'S': {
             server.trace(log, "Sync");
             this.xQueryFailed = false;
-            flush = true;
+            this.needFlush = true;
             sendReadyForQuery();
             break;
         }
         case 'Q': {
             server.trace(log, "Query");
-            flush = true;
             destroyPrepared(UNNAMED);
             String query = readString();
             
@@ -610,6 +636,7 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 if (sqlStmt == null) {
                     server.trace(log, "query string empty: {}", query);
+                    this.needFlush = true;
                     sendEmptyQueryResponse();
                 } else {
                     SQLiteConnection conn = getConnection();
@@ -648,7 +675,7 @@ public class PgProcessor extends SQLiteProcessor {
                                 }
                                 sendCommandComplete(sqlStmt, 0, result);
                             } else {
-                                int n = stat.getUpdateCount();
+                                n = stat.getUpdateCount();
                                 sendCommandComplete(sqlStmt, n, result);
                             }
                             
@@ -670,21 +697,25 @@ public class PgProcessor extends SQLiteProcessor {
                     sendErrorResponse(e);
                 }
             }
+            this.needFlush = true;
             sendReadyForQuery();
             break;
         }
         case 'X': {
             server.trace(log, "Terminate");
+            // Here we must release DB resources!
+            IoUtils.close(getConnection());
             stop();
+            worker.close(this);
             break;
         }
         default:
             server.trace(log, "Unsupported message: type {}(c) {}", (char) x, x);
-            flush = true;
             break;
         }
         
-        return flush;
+        // cleanup
+        this.dataBuf = null;
     }
     
     protected boolean authOk() throws IOException {
@@ -959,7 +990,7 @@ public class PgProcessor extends SQLiteProcessor {
         SQLiteErrorCode error = SQLiteErrorCode.SQLITE_AUTH;
         String message = error.message;
         if (this.user == null) {
-            InetSocketAddress remoteAddr = (InetSocketAddress)this.socket.getRemoteSocketAddress();
+            InetSocketAddress remoteAddr = getRemoteAddress();
             String host = remoteAddr.getAddress().getHostAddress();
             message = format("%s for '%s'@'%s' (using protocol: %s)", 
                     message, this.userName, host, protocol);
@@ -981,7 +1012,7 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     private void sendErrorResponse(SQLException e) throws IOException {
-        server.traceError(log, "send error message", e);
+        server.traceError(log, "send an error message", e);
         String sqlState = e.getSQLState();
         if (sqlState == null) {
             sqlState = "HY000";
@@ -1015,11 +1046,23 @@ public class PgProcessor extends SQLiteProcessor {
     private void sendMessage() throws IOException {
         this.dataOut.flush();
         byte[] buff = this.outBuf.toByteArray();
-        int len = buff.length;
-        this.dataOut = new DataOutputStream(this.out);
-        this.dataOut.write(this.messageType);
-        this.dataOut.writeInt(len + 4);
-        this.dataOut.write(buff);
+        int len = buff.length - 1;
+        
+        ByteBuffer buffer = ByteBuffer.wrap(buff)
+        .put(0, (byte)this.messageType)
+        .put(1, (byte)(len >>> 24))
+        .put(2, (byte)(len >>> 16))
+        .put(3, (byte)(len >>> 8))
+        .put(4, (byte)(len >>> 0));
+        
+        offerWriteBuffer(buffer);
+        if (this.needFlush) {
+            enableWrite();
+        }
+        
+        // cleanup
+        this.dataOut = null;
+        this.outBuf  = null;
     }
     
     private void sendNoData() throws IOException {
@@ -1159,10 +1202,13 @@ public class PgProcessor extends SQLiteProcessor {
         }
     }
     
-    private void startMessage(int newMessageType) {
+    private void startMessage(int newMessageType) throws IOException {
         this.messageType = newMessageType;
         this.outBuf = new ByteArrayOutputStream();
         this.dataOut = new DataOutputStream(this.outBuf);
+        // Preserve the message header space
+        this.dataOut.write(0);
+        this.dataOut.writeInt(0);
     }
     
     private void writeDataColumn(ResultSet rs, int column, int pgType, boolean text)

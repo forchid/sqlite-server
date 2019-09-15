@@ -5,6 +5,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Support md5(default), password and trust authentication methods in PgServer
 + High performance(insert 50,000 ~ 100,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
 + Add a feature of user, privilege and database management for SQLite server engine
++ Use NIO infrastructure for supporting many connections by a few threads, SQLite server workers is default CPU cores
 
 # Examples
 1. Standalone SQLite server

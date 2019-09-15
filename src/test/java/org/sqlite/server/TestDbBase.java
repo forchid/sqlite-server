@@ -31,7 +31,7 @@ import org.sqlite.util.IoUtils;
  *
  */
 public abstract class TestDbBase extends TestBase {
-    protected static final int maxConns = SQLiteServer.MAX_CONNS_DEFAULT;
+    protected static final int maxConns = getMaxConns();
     
     protected static String user = "root";
     protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault();
@@ -47,7 +47,8 @@ public abstract class TestDbBase extends TestBase {
         server.initdb(initArgs);
         IoUtils.close(server);
         
-        String[] bootArgs = {"-D", dataDir};
+        String[] bootArgs = {"-D", dataDir, 
+                "--worker-count", getWorkCount()+"", "--max-conns", maxConns+""};
         server = SQLiteServer.create(bootArgs);
         server.bootAsync(bootArgs);
     }
@@ -86,6 +87,14 @@ public abstract class TestDbBase extends TestBase {
     
     protected static int getPortDefault() {
         return SQLiteServer.PORT_DEFAULT;
+    }
+    
+    protected static int getWorkCount() {
+        return 4;
+    }
+    
+    protected static int getMaxConns() {
+        return 50;
     }
     
     protected static String getDataDir() {

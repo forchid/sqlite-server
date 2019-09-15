@@ -15,9 +15,15 @@
  */
 package org.sqlite.server;
 
-import java.net.Socket;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,28 +43,44 @@ import org.sqlite.util.IoUtils;
  * @since 2019-09-01
  *
  */
-public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
+public abstract class SQLiteProcessor implements AutoCloseable {
     
     static final Logger log = LoggerFactory.getLogger(SQLiteProcessor.class);
     
-    protected Socket socket;
+    protected final InetSocketAddress remoteAddress;
+    protected final SocketChannel channel;
+    protected Selector selector;
+    protected Deque<ByteBuffer> writeBufferQueue;
+    protected Deque<WriteTask> writeTaskQueue;
+    
     protected final int id;
     protected final String name;
     protected final SQLiteServer server;
+    protected SQLiteWorker worker;
     protected SQLiteAuthMethod authMethod;
     protected User user;
     
-    private final AtomicBoolean open = new AtomicBoolean(true);
-    private final AtomicBoolean stopped = new AtomicBoolean();
+    private volatile boolean open = true;
+    private volatile boolean stopped;
     
-    protected SQLiteConnection connection;
+    private SQLiteConnection connection;
     private String metaSchema = null;
     
-    protected SQLiteProcessor(Socket socket, int processId, SQLiteServer server) {
-        this.socket = socket;
+    protected SQLiteProcessor(SocketChannel channel, int processId, SQLiteServer server)
+            throws NetworkException {
+        this.channel = channel;
         this.server = server;
         this.id = processId;
-        this.name = String.format("%s processor-%d", server.getName(), processId);
+        this.name = String.format("proc-%d", processId);
+        
+        try {
+            this.remoteAddress = (InetSocketAddress)channel.getRemoteAddress();
+        } catch (IOException e) {
+            throw new NetworkException(e);
+        }
+        
+        this.writeTaskQueue = new ArrayDeque<>();
+        this.writeBufferQueue = new ArrayDeque<>();
     }
     
     public int getId() {
@@ -71,6 +93,26 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     
     public SQLiteServer getServer() {
         return this.server;
+    }
+    
+    protected SocketChannel getChannel() {
+        return this.channel;
+    }
+    
+    protected Selector getSelector() {
+        return selector;
+    }
+    
+    protected void setSelector(Selector selector) {
+        this.selector = selector;
+    }
+    
+    protected SQLiteWorker getWorker() {
+        return this.worker;
+    }
+    
+    protected void setWorker(SQLiteWorker worker) {
+        this.worker = worker;
     }
     
     protected SQLiteMetaDb getMetaDb() {
@@ -150,6 +192,10 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
         return this.connection;
     }
     
+    public InetSocketAddress getRemoteAddress() {
+        return this.remoteAddress;
+    }
+    
     public void cancelRequest() throws SQLException {
         SQLiteConnection conn = getConnection();
         if (conn != null && isOpen()) {
@@ -167,64 +213,228 @@ public abstract class SQLiteProcessor implements Runnable, AutoCloseable {
     }
     
     protected SQLException convertError(SQLiteErrorCode error) {
-        return convertError(error, null);
+        return convertError(error, null, null);
     }
     
     protected SQLException convertError(SQLiteErrorCode error, String message) {
-        String sqlState = "HY000";
-        if (SQLiteErrorCode.SQLITE_ERROR.code == error.code) {
-            sqlState = "42000";
-        } else if (SQLiteErrorCode.SQLITE_PERM.code == error.code){
-            sqlState = "42501";
+        return convertError(error, message, null);
+    }
+    
+    protected SQLException convertError(SQLiteErrorCode error, String message, String sqlState) {
+        if (sqlState == null) {
+            if (SQLiteErrorCode.SQLITE_ERROR.code == error.code) {
+                sqlState = "42000";
+            } else if (SQLiteErrorCode.SQLITE_PERM.code == error.code){
+                sqlState = "42501";
+            } else if (SQLiteErrorCode.SQLITE_INTERNAL.code == error.code) {
+                sqlState = "58005";
+            } else if (SQLiteErrorCode.SQLITE_IOERR.code == error.code) {
+                sqlState = "58030";
+            }
+            if (sqlState == null) {
+                sqlState = "HY000";
+            }
         }
+        
         if (message == null) {
             message = error.message;
         }
         return new SQLException(message, sqlState, error.code);
     }
 
-    public void start() {
+    public void start() throws IOException, IllegalStateException {
         final String name = getName();
         if (isStopped()) {
             throw new IllegalStateException(name + " has been stopped");
         }
         
-        Thread thread = new Thread(this, name);
-        thread.start();
+        SQLiteServer server = this.server;
+        server.trace(log, "Connect: id {}", this.id);
+        try {
+            InetSocketAddress remoteAddr = this.remoteAddress;
+            if (!server.isAllowed(remoteAddr)) {
+                server.trace(log, "Host '{}' not allowed", remoteAddr.getHostName());
+                deny(remoteAddr);
+                return;
+            }
+            enableRead();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Access metaDb fatal", e);
+        }
     }
     
-    /** Stop this processor
-     * @return true if has been stopped, otherwise false
-     */
-    public boolean stop() {
-        if (!this.stopped.compareAndSet(false, true)) {
+    protected boolean isRunning() throws SQLException {
+        if (!isStopped()) {
             return true;
         }
-        this.server.close(this);
-        return false;
+        
+        SQLiteConnection conn = getConnection();
+        if (conn == null || conn.isClosed()) {
+            return false;
+        }
+        return (!conn.getAutoCommit() /* Ongoing tx */);
+    }
+    
+    protected abstract void deny(InetSocketAddress remote) throws IOException;
+    
+    protected void read() {
+        try {
+            process();
+        } catch (IOException e) {
+            this.server.traceError(log, "process error", e);
+            stop();
+            this.worker.close(this);
+        }
+    }
+    
+    protected void write() {
+        try {
+            flush();
+        } catch (IOException |SQLException e) {
+            this.server.traceError(log, "flush error", e);
+            stop();
+            this.worker.close(this);
+        }
+    }
+    
+    protected void flush() throws IOException, SQLException {
+        SocketChannel ch = getChannel();
+        int i = 0;
+        
+        disableRead();
+        for (;;) {
+            ByteBuffer buf = nextWriteBuffer();
+            if (buf != null) {
+                for (; buf.hasRemaining();) {
+                    int n = ch.write(buf);
+                    if (n == 0) {
+                        break;
+                    }
+                    if (++i >= 1000) {
+                        break;
+                    }
+                }
+                if (buf.hasRemaining()) {
+                    this.writeBufferQueue.offerFirst(buf);
+                    return;
+                }
+                continue;
+            }
+            
+            WriteTask task = nextWriteTask();
+            if (task != null) {
+                task.run();
+                continue;
+                
+            }
+            
+            disableWrite();
+            if (isRunning()) {
+                enableRead();
+            } else {
+                this.worker.close(this);
+            }
+            break;
+        }
+    }
+    
+    protected ByteBuffer nextWriteBuffer() {
+        return this.writeBufferQueue.poll();
+    }
+    
+    protected void offerWriteBuffer(ByteBuffer writeBuffer) {
+        this.writeBufferQueue.offer(writeBuffer);
+    }
+    
+    protected WriteTask nextWriteTask() {
+        return this.writeTaskQueue.poll();
+    }
+    
+    protected void offerWriteTask(WriteTask task) {
+        this.writeTaskQueue.offer(task);
+    }
+    
+    protected void enableRead() throws IOException {
+        SelectionKey key = this.channel.keyFor(this.selector);
+        if (key == null) {
+            this.channel.register(this.selector, SelectionKey.OP_READ, this);
+        } else {
+            key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+        }
+    }
+    
+    protected void disableRead() throws IOException {
+        SelectionKey key = this.channel.keyFor(this.selector);
+        if (key != null) {
+            key.interestOps(key.interestOps() & ~SelectionKey.OP_READ);
+        }
+    }
+    
+    protected void enableWrite() throws IOException {
+        SelectionKey key = this.channel.keyFor(this.selector);
+        if (key == null) {
+            this.channel.register(this.selector, SelectionKey.OP_WRITE, this);
+        } else {
+            key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
+        }
+    }
+    
+    protected void disableWrite() throws IOException {
+        SelectionKey key = this.channel.keyFor(this.selector);
+        if (key != null) {
+            key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+        }
+    }
+    
+    protected abstract void process() throws IOException;
+    
+    protected abstract void tooManyConns() throws IOException;
+    
+    protected abstract void interalError() throws IOException;
+    
+    public void stop() {
+        this.stopped = true;
     }
     
     public boolean isStopped() {
-        return this.stopped.get();
+        return this.stopped;
     }
     
     public boolean isOpen() {
-        return this.open.get();
+        return this.open;
     }
     
     @Override
     public void close() {
-        if (!stop()) {
+        stop();
+        if (!isOpen()) {
             return;
         }
+        this.open = false;
         
-        if (!this.open.compareAndSet(true, false)) {
-            return;
-        }
-        
-        IoUtils.close(this.socket);
+        IoUtils.close(this.channel);
         IoUtils.close(this.connection);
-        this.server.trace(log, "Close");
+        this.server.trace(log, "Close: id {}", this.id);
     }
-
+    
+    protected static abstract class WriteTask implements Runnable {
+        
+        final SQLiteProcessor proc;
+        
+        protected WriteTask(SQLiteProcessor proc) {
+            this.proc = proc;
+        }
+        
+        public void run() {
+            try {
+                write();
+            } catch (IOException e) {
+                this.proc.stop();
+                this.proc.worker.close(this.proc);
+            }
+        }
+        
+        protected abstract void write() throws IOException;
+    }
+    
 }

@@ -69,4 +69,9 @@ public abstract class TestBase extends TestCase {
         out.printf(prefix +format, args);
     }
     
+    protected static void sleep(long millis) {
+        try { Thread.sleep(millis); } 
+        catch (InterruptedException e) {}
+    }
+    
 }
