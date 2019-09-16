@@ -320,20 +320,61 @@ public class SQLParserTest extends TestBase {
         emptyTest("/*;*/; ;", 2);
         
         grantTest("grant all on database testdb to test@localhost", 
-                1, "meta", new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+                1, "meta", new String[] {"all"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
         grantTest("grant all on schema testdb to test@localhost", 
-                1, "meta", new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+                1, "meta", new String[] {"all"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
         grantTest("grant all PRIvileges on database testdb to test@localhost", 
-                1, "meta", new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+                1, "meta", new String[] {"all"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
         grantTest("grant all on database 'test.db', testdb to test@localhost", 
-                1, "meta", new String[]{"test.db", "testdb"}, new String[][]{{"localhost", "test"}});
+                1, "meta", new String[] {"all"}, 
+                new String[]{"test.db", "testdb"}, new String[][]{{"localhost", "test"}});
         grantTest("grant all on database 'test.db', testdb to test@localhost, 'test1'@localhost", 
-                1, "meta", new String[]{"test.db", "testdb"}, 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"test.db", "testdb"}, 
                 new String[][]{{"localhost", "test"}, {"localhost", "test1"}});
         try {
             grantTest("grant all on database 'test.db', testdb, to test@localhost, 'test1'@localhost", 
-                1, "meta", new String[]{"test.db", "testdb"}, 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"test.db", "testdb"}, 
                 new String[][]{{"localhost", "test"}, {"localhost", "test1"}});
+        } catch (SQLParseException e) {
+            // OK
+        }
+        grantTest("grant all,select,vacuum on database testdb to test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all ,select, vacuum on database testdb to test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all , select, vacuum on database testdb to test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all , select , vacuum on database testdb to test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant select ,all ,  vacuum on database testdb to test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all privileges , select ,  vacuum on database testdb to test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant select ,all privileges,  vacuum on database testdb to test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant select ,  vacuum,all privileges on database testdb to test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant attach, select ,  vacuum,all privileges on database testdb to test@localhost", 
+                1, "meta", new String[] {"attach", "select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        try {
+            grantTest("grant all , on on database testdb to test@localhost", 
+                1, "meta", new String[] {"all", "on"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+            fail("Unknonw privilege 'on'");
         } catch (SQLParseException e) {
             // OK
         }
@@ -701,7 +742,8 @@ public class SQLParserTest extends TestBase {
         overTest(parser, i, stmts);
     }
 
-    private void grantTest(String sqls, int stmts, String metaSchema, String[] dbnames, String[][]users) {
+    private void grantTest(String sqls, int stmts, String metaSchema, 
+            String[] privs, String[] dbnames, String[][]users) {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
@@ -714,10 +756,12 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isTransaction());
             assertTrue(stmt.isMetaStatement());
             
+            for (String priv: privs) {
+                assertTrue(s.hasPrivilege(priv));
+            }
             for (String dbname: dbnames) {
                 assertTrue(s.exists(dbname));
             }
-            
             for (String[] user: users) {
                 assertTrue(s.exists(user[0], user[1]));
             }

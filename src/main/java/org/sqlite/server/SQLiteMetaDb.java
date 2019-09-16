@@ -61,7 +61,7 @@ public class SQLiteMetaDb implements AutoCloseable {
             + "password varchar(50),"
             + "protocol varchar(50) not null,"
             + "auth_method varchar(50) not null,"
-            + "sa integer not null,"
+            + "sa integer not null default 0,"
             + "primary key(protocol, user, host))";
     
     protected static final String INSERT_USER =
@@ -73,10 +73,25 @@ public class SQLiteMetaDb implements AutoCloseable {
             + "host varchar(60) not null,"
             + "db varchar(64) not null,"
             + "user varchara(32) not null,"
+            + "all_priv integer not null default 0,"
+            + "select_priv integer not null default 0,"
+            + "insert_priv integer not null default 0,"
+            + "update_priv integer not null default 0,"
+            + "delete_priv integer not null default 0,"
+            + "create_priv integer not null default 0,"
+            + "alter_priv integer not null default 0,"
+            + "drop_priv integer not null default 0,"
+            + "pragma_priv integer not null default 0,"
+            + "vacuum_priv integer not null default 0,"
+            + "attach_priv integer not null default 0,"
             + "primary key(host, db, user))";
     
     protected static final String INSERT_DB =
-            "insert into db(host, db, user) values(?, ?, ?)";
+            "insert into db(host, db, user, "
+            + "all_priv, select_priv, insert_priv, update_priv, delete_priv,"
+            + "create_priv, alter_priv, drop_priv, pragma_priv, vacuum_priv, "
+            + "attach_priv) "
+            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     
     private volatile boolean open = true;
     protected final SQLiteServer server;
@@ -229,6 +244,17 @@ public class SQLiteMetaDb implements AutoCloseable {
             ps.setString(++i, db.getHost());
             ps.setString(++i, db.getDb());
             ps.setString(++i, db.getUser());
+            ps.setInt(++i, db.getAllPriv());
+            ps.setInt(++i, db.getSelectPriv());
+            ps.setInt(++i, db.getInsertPriv());
+            ps.setInt(++i, db.getUpdatePriv());
+            ps.setInt(++i, db.getDeletePriv());
+            ps.setInt(++i, db.getCreatePriv());
+            ps.setInt(++i, db.getAlterPriv());
+            ps.setInt(++i, db.getDropPriv());
+            ps.setInt(++i, db.getPragmaPriv());
+            ps.setInt(++i, db.getVacuumPriv());
+            ps.setInt(++i, db.getAttachPriv());
             ps.executeUpdate();
         }
         

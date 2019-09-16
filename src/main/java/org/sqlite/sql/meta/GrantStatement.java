@@ -23,9 +23,11 @@ import java.util.Set;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import org.sqlite.util.StringUtils;
 
 /**The GRANT statement:
- * GRANT ALL [PRIVILEGES]
+ * GRANT ALL [PRIVILEGES] [, SELECT | INSERT | UPDATE | DELETE 
+ * | CREATE | ALTER | DROP | PRAGMA | VACUUM]
  * ON {DATABASE | SCHEMA} dbname [, ...]
  * TO {'user'@'host' [, ...]}
  * 
@@ -34,7 +36,10 @@ import org.sqlite.sql.SQLStatement;
  *
  */
 public class GrantStatement extends SQLStatement implements MetaStatement {
+    private static String[] PRIVS = {"ALL", "SELECT", "INSERT", "UPDATE", "DELETE",
+            "CREATE", "ALTER", "DROP", "PRAGMA", "VACUUM", "ATTACH"};
     
+    protected final Set<String> privileges = new HashSet<>();
     protected final Set<String> granteds = new HashSet<>();
     protected final Set<Grantee> grantees = new HashSet<>();
     
@@ -53,7 +58,10 @@ public class GrantStatement extends SQLStatement implements MetaStatement {
             throw new SQLParseException("No grantee specified");
         }
         
-        String f = "replace into '%s'.db(host, user, db)values";
+        String f = "replace into '%s'.db(host, user, db, "
+                + "all_priv, select_priv, insert_priv, update_priv, delete_priv,"
+                + "create_priv, alter_priv, drop_priv, pragma_priv, vacuum_priv,"
+                + "attach_priv)values";
         StringBuilder sb = new StringBuilder(format(f, metaSchema));
         int i = 0;
         for (Grantee u: this.grantees) {
@@ -61,7 +69,18 @@ public class GrantStatement extends SQLStatement implements MetaStatement {
                 sb.append(i++ == 0? "": ',').append('(')
                 .append('\'').append(u.host).append('\'').append(',')
                 .append('\'').append(u.user).append('\'').append(',')
-                .append('\'').append(g).append('\'')
+                .append('\'').append(g).append('\'').append(',')
+                .append(priv("ALL")).append(',')
+                .append(priv("SELECT")).append(',')
+                .append(priv("INSERT")).append(',')
+                .append(priv("UPDATE")).append(',')
+                .append(priv("DELETE")).append(',')
+                .append(priv("CREATE")).append(',')
+                .append(priv("ALTER")).append(',')
+                .append(priv("DROP")).append(',')
+                .append(priv("PRAGMA")).append(',')
+                .append(priv("VACUUM")).append(',')
+                .append(priv("ATTACH"))
                 .append(')');
             }
         }
@@ -82,6 +101,16 @@ public class GrantStatement extends SQLStatement implements MetaStatement {
         return true;
     }
     
+    public boolean hasPrivilege(String privilege) {
+        privilege = StringUtils.toUpperEnglish(privilege);
+        return this.privileges.contains(privilege);
+    }
+    
+    public boolean addPrivilege(String privilege) {
+        privilege = StringUtils.toUpperEnglish(privilege);
+        return this.privileges.add(privilege);
+    }
+    
     public boolean addGranted(String granted) {
         return this.granteds.add(granted);
     }
@@ -98,6 +127,14 @@ public class GrantStatement extends SQLStatement implements MetaStatement {
     public boolean exists(String host, String user) {
         Grantee g = new Grantee(host, user);
         return this.grantees.contains(g);
+    }
+    
+    protected int priv(String command) {
+        return (this.privileges.contains(command)? 1: 0);
+    }
+    
+    public static String[] getPrivileges() {
+        return PRIVS;
     }
 
     static class Grantee {

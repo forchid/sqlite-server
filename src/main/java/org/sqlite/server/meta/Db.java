@@ -15,16 +15,33 @@
  */
 package org.sqlite.server.meta;
 
-/**
+/** The user privileges on DB.
+ * 
  * @author little-pan
  * @since 2019-09-08
  *
  */
 public class Db {
     
-    private String user;
     private String host;
+    private String user;
     private String db;
+    
+    // privileges
+    private int allPriv;
+    
+    private int selectPriv;
+    private int insertPriv; // includes replace
+    private int updatePriv;
+    private int deletePriv;
+    
+    private int createPriv;
+    private int alterPriv;
+    private int dropPriv;
+    
+    private int pragmaPriv;
+    private int vacuumPriv;
+    private int attachPriv; // include detach
     
     public Db() {
         
@@ -59,5 +76,192 @@ public class Db {
     public void setDb(String db) {
         this.db = db;
     }
+    
+    /**
+     * @return the allPriv
+     */
+    public int getAllPriv() {
+        return allPriv;
+    }
 
+    /**
+     * @param allPriv the allPriv to set
+     */
+    public void setAllPriv(int allPriv) {
+        this.allPriv = allPriv;
+    }
+
+    /**
+     * @return the selectPriv
+     */
+    public int getSelectPriv() {
+        return selectPriv;
+    }
+
+    /**
+     * @param selectPriv the selectPriv to set
+     */
+    public void setSelectPriv(int selectPriv) {
+        this.selectPriv = selectPriv;
+    }
+
+    /**
+     * @return the insertPriv
+     */
+    public int getInsertPriv() {
+        return insertPriv;
+    }
+
+    /**
+     * @param insertPriv the insertPriv to set
+     */
+    public void setInsertPriv(int insertPriv) {
+        this.insertPriv = insertPriv;
+    }
+
+    /**
+     * @return the updatePriv
+     */
+    public int getUpdatePriv() {
+        return updatePriv;
+    }
+
+    /**
+     * @param updatePriv the updatePriv to set
+     */
+    public void setUpdatePriv(int updatePriv) {
+        this.updatePriv = updatePriv;
+    }
+
+    /**
+     * @return the deletePriv
+     */
+    public int getDeletePriv() {
+        return deletePriv;
+    }
+
+    /**
+     * @param deletePriv the deletePriv to set
+     */
+    public void setDeletePriv(int deletePriv) {
+        this.deletePriv = deletePriv;
+    }
+
+    /**
+     * @return the createPriv
+     */
+    public int getCreatePriv() {
+        return createPriv;
+    }
+
+    /**
+     * @param createPriv the createPriv to set
+     */
+    public void setCreatePriv(int createPriv) {
+        this.createPriv = createPriv;
+    }
+
+    /**
+     * @return the alterPriv
+     */
+    public int getAlterPriv() {
+        return alterPriv;
+    }
+
+    /**
+     * @param alterPriv the alterPriv to set
+     */
+    public void setAlterPriv(int alterPriv) {
+        this.alterPriv = alterPriv;
+    }
+
+    /**
+     * @return the dropPriv
+     */
+    public int getDropPriv() {
+        return dropPriv;
+    }
+
+    /**
+     * @param dropPriv the dropPriv to set
+     */
+    public void setDropPriv(int dropPriv) {
+        this.dropPriv = dropPriv;
+    }
+
+    /**
+     * @return the pragmaPriv
+     */
+    public int getPragmaPriv() {
+        return pragmaPriv;
+    }
+
+    /**
+     * @param pragmaPriv the pragmaPriv to set
+     */
+    public void setPragmaPriv(int pragmaPriv) {
+        this.pragmaPriv = pragmaPriv;
+    }
+
+    /**
+     * @return the vacuumPriv
+     */
+    public int getVacuumPriv() {
+        return vacuumPriv;
+    }
+
+    /**
+     * @param vacuumPriv the vacuumPriv to set
+     */
+    public void setVacuumPriv(int vacuumPriv) {
+        this.vacuumPriv = vacuumPriv;
+    }
+    
+    /**
+     * @return the attachPriv
+     */
+    public int getAttachPriv() {
+        return attachPriv;
+    }
+
+    /**
+     * @param attachPriv the attachPriv to set
+     */
+    public void setAttachPriv(int attachPriv) {
+        this.attachPriv = attachPriv;
+    }
+    
+    public boolean hasPriv(String command) {
+        if (1 == getAllPriv()) {
+            return true;
+        }
+        
+        switch(command) {
+        case "SELECT":
+            return (1 == getSelectPriv());
+        case "INSERT":
+        case "REPLACE":
+            return (1 == getInsertPriv());
+        case "UPDATE":
+            return (1 == getUpdatePriv());
+        case "DELETE":
+            return (1 == getDeletePriv());
+        case "CREATE":
+            return (1 == getCreatePriv());
+        case "ALTER":
+            return (1 == getAlterPriv());
+        case "DROP":
+            return (1 == getDropPriv());
+        case "PRAGMA":
+            return (1 == getPragmaPriv());
+        case "VACUUM":
+            return (1 == getVacuumPriv());
+        case "ATTACH":
+        case "DETACH":
+            return (1 == getAttachPriv());
+        default:
+            return false;
+        }
+    }
+    
 }

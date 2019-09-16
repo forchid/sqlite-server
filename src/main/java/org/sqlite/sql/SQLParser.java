@@ -448,17 +448,47 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     
     protected SQLStatement parseGrant() {
         nextString("rant");
+        
+        GrantStatement stmt = new GrantStatement(this.sql);
         skipIgnorable();
-        nextString("all");
-        skipIgnorable();
-        if (nextStringIf("privileges") != -1) {
-            skipIgnorable();
+        boolean hasPriv = false;
+        for (;;) {
+            String priv = null;
+            for (String p: GrantStatement.getPrivileges()) {
+                if (nextStringIf(p) == -1) {
+                    continue;
+                }
+                priv = p;
+                break;
+            }
+            if (priv == null) {
+                break;
+            }
+            
+            hasPriv = true;
+            stmt.addPrivilege(priv);
+            boolean hasSpace = skipIgnorableIf() != -1;
+            if ("all".equalsIgnoreCase(priv)) {
+                if (hasSpace && nextStringIf("privileges") != -1) {
+                    skipIgnorableIf();
+                }
+            }
+            if (nextCharIf(',') != -1) {
+                skipIgnorableIf();
+                hasPriv = false;
+                continue;
+            }
+            
+            break;
         }
+        if (!hasPriv) {
+            throw syntaxError();
+        }
+        
         nextString("on");
         skipIgnorable();
         if (nextStringIf("database") != -1 || nextStringIf("schema") != -1) {
             skipIgnorable();
-            GrantStatement stmt = new GrantStatement(this.sql);
             boolean skipSpace = false;
             for (;;) {
                 String granted = nextString();
