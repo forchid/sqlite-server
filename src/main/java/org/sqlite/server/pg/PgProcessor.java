@@ -259,6 +259,9 @@ public class PgProcessor extends SQLiteProcessor {
             
             // process: read OK
             byte[] data = inBuf.array();
+            // mark read state
+            inBuf.flip();
+            inBuf.position(5 + inSize);
             if (this.xQueryFailed && 'S' != x) {
                 server.trace(log, "Discard any message for xQuery error detected until Sync");
                 this.dataBuf = null;
@@ -267,9 +270,6 @@ public class PgProcessor extends SQLiteProcessor {
                 continue;
             }
             this.dataBuf = new DataInputStream(new ByteArrayInputStream(data, 5, inSize));
-            // mark read state
-            inBuf.flip();
-            inBuf.position(5 + inSize);
             
             this.needFlush = false;
             switch (x) {
