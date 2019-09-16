@@ -29,6 +29,7 @@ import org.sqlite.sql.TransactionStatement;
 import org.sqlite.sql.meta.AlterUserStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
+import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -317,6 +318,25 @@ public class SQLParserTest extends TestBase {
         emptyTest(" ; ", 2);
         emptyTest("/*;*/;", 1);
         emptyTest("/*;*/; ;", 2);
+        
+        grantTest("grant all on database testdb to test@localhost", 
+                1, "meta", new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all on schema testdb to test@localhost", 
+                1, "meta", new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all PRIvileges on database testdb to test@localhost", 
+                1, "meta", new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all on database 'test.db', testdb to test@localhost", 
+                1, "meta", new String[]{"test.db", "testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all on database 'test.db', testdb to test@localhost, 'test1'@localhost", 
+                1, "meta", new String[]{"test.db", "testdb"}, 
+                new String[][]{{"localhost", "test"}, {"localhost", "test1"}});
+        try {
+            grantTest("grant all on database 'test.db', testdb, to test@localhost, 'test1'@localhost", 
+                1, "meta", new String[]{"test.db", "testdb"}, 
+                new String[][]{{"localhost", "test"}, {"localhost", "test1"}});
+        } catch (SQLParseException e) {
+            // OK
+        }
         
         selectTest("select 1", 1);
         selectTest("select 1;", 1);
@@ -681,6 +701,32 @@ public class SQLParserTest extends TestBase {
         overTest(parser, i, stmts);
     }
 
+    private void grantTest(String sqls, int stmts, String metaSchema, String[] dbnames, String[][]users) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            GrantStatement s = (GrantStatement)stmt;
+            assertTrue(!stmt.isComment());
+            assertTrue("GRANT".equals(stmt.getCommand()));
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(stmt.isMetaStatement());
+            
+            for (String dbname: dbnames) {
+                assertTrue(s.exists(dbname));
+            }
+            
+            for (String[] user: users) {
+                assertTrue(s.exists(user[0], user[1]));
+            }
+            
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
     private void selectTest(String sqls, int stmts) {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;

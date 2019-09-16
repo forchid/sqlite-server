@@ -27,6 +27,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.sql.meta.AlterUserStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
+import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.MetaStatement;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.StringUtils;
@@ -212,6 +213,9 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                     return parseExplain();
                 }
                 throw syntaxError();
+            case 'g':
+            case 'G':
+                return parseGrant();
             case 'i':
             case 'I':
                 return parseInsert();
@@ -440,6 +444,53 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     protected SQLStatement parseDelete() {
         nextString("ete");
         return new SQLStatement(this.sql, "DELETE");
+    }
+    
+    protected SQLStatement parseGrant() {
+        nextString("rant");
+        skipIgnorable();
+        nextString("all");
+        skipIgnorable();
+        if (nextStringIf("privileges") != -1) {
+            skipIgnorable();
+        }
+        nextString("on");
+        skipIgnorable();
+        if (nextStringIf("database") != -1 || nextStringIf("schema") != -1) {
+            skipIgnorable();
+            GrantStatement stmt = new GrantStatement(this.sql);
+            boolean skipSpace = false;
+            for (;;) {
+                String granted = nextString();
+                stmt.addGranted(granted);
+                skipSpace = skipIgnorableIf() != -1;
+                if (nextCharIf(',') == -1) {
+                    break;
+                }
+                skipIgnorableIf();
+            }
+            if (!skipSpace) {
+                skipIgnorable();
+            }
+            nextString("to");
+            skipIgnorable();
+            for (;;) {
+                String user = nextString();
+                skipIgnorableIf();
+                nextChar('@');
+                skipIgnorableIf();
+                String host = nextString();
+                stmt.addGrantee(host, user);
+                skipIgnorableIf();
+                if (nextCharIf(',') == -1) {
+                    break;
+                }
+                skipIgnorableIf();
+            }
+            return stmt;
+        }
+        
+        throw syntaxError();
     }
     
     protected SQLStatement parseSavepoint() {
