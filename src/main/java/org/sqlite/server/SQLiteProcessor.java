@@ -459,7 +459,6 @@ public abstract class SQLiteProcessor implements AutoCloseable {
             return;
         }
         
-        // - buffer too big!
         this.writeQueue.offer(writeBuffer);
     }
     
