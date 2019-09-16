@@ -40,8 +40,8 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     protected String host;
     protected boolean sa;
     protected String password;
-    protected String protocol = "pg";
-    protected String authMethod = "md5";
+    protected String protocol = PROTO_DEFAULT;
+    protected String authMethod = AUTHM_DEFAULT;
     
     private boolean passwordSet;
     
@@ -122,8 +122,8 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
                 }
             } catch (SQLParseException e) {
                 // re-throw: hide metaSchema name
-                throw new SQLParseException(getSQL());
             }
+            
             throw new SQLParseException(getSQL());
         }
     }

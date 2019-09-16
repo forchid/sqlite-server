@@ -33,6 +33,7 @@ import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.meta.AlterUserStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
+import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.MetaStatement;
 import org.sqlite.util.IoUtils;
 
@@ -212,21 +213,32 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     }
     
     protected void checkPerm(SQLStatement stmt) throws SQLException {
-        if (stmt.isMetaStatement()) {
-            MetaStatement metaStmt = (MetaStatement)stmt;
-            if (metaStmt.needSa() && !this.user.isSa()) {
-                if ("ALTER USER".equals(stmt.getCommand())) {
-                    AlterUserStatement s = (AlterUserStatement)stmt;
-                    User u = this.user;
-                    // Alter my user information myself
-                    if ((u.getUser().equals(s.getUser()))
-                            && (u.getHost().equals(s.getHost()))
-                            && (u.getProtocol().equals(s.getProtocol()))) {
-                        return;
-                    }
+        if (!stmt.isMetaStatement()) {
+            return;
+        }
+        
+        MetaStatement metaStmt = (MetaStatement)stmt;
+        if (metaStmt.needSa() && !this.user.isSa()) {
+            User user = this.user;
+            // Modify my user information myself?
+            switch (stmt.getCommand()) {
+            case "ALTER USER":
+                AlterUserStatement as = (AlterUserStatement)stmt;
+                if (as.isUser(user.getHost(), user.getUser(), user.getProtocol())) {
+                    // Pass
+                    return;
                 }
+                break;
+            case "DROP USER":
+                DropUserStatement ds = (DropUserStatement)stmt;
+                if (ds.exists(user.getHost(), user.getUser(), user.getProtocol())) {
+                    // Pass
+                    return;
+                }
+            default:
                 throw convertError(SQLiteErrorCode.SQLITE_PERM);
             }
+            // no SA
         }
     }
     
@@ -240,13 +252,15 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     
     protected SQLException convertError(SQLiteErrorCode error, String message, String sqlState) {
         if (sqlState == null) {
-            if (SQLiteErrorCode.SQLITE_ERROR.code == error.code) {
+            if (SQLiteErrorCode.SQLITE_AUTH.code            == error.code) {
+                sqlState = "28000";
+            } else if (SQLiteErrorCode.SQLITE_ERROR.code    == error.code) {
                 sqlState = "42000";
-            } else if (SQLiteErrorCode.SQLITE_PERM.code == error.code){
+            } else if (SQLiteErrorCode.SQLITE_PERM.code     == error.code) {
                 sqlState = "42501";
             } else if (SQLiteErrorCode.SQLITE_INTERNAL.code == error.code) {
                 sqlState = "58005";
-            } else if (SQLiteErrorCode.SQLITE_IOERR.code == error.code) {
+            } else if (SQLiteErrorCode.SQLITE_IOERR.code    == error.code) {
                 sqlState = "58030";
             }
             if (sqlState == null) {

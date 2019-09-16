@@ -1104,7 +1104,7 @@ public class PgProcessor extends SQLiteProcessor {
                     message, this.userName, this.user.getHost(), protocol, authMethod);
         }
         
-        sendErrorResponse(new SQLException(message, "28000", error.code));
+        sendErrorResponse(convertError(error, message));
         stop();
     }
     

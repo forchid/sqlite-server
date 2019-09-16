@@ -39,6 +39,7 @@ public class StatementTest extends TestDbBase {
         alterUserTest();
         createTableTest();
         createUserTest();
+        dropUserTest();
         nestedBlockCommentTest();
         simpleScalarQueryTest();
     }
@@ -107,6 +108,29 @@ public class StatementTest extends TestDbBase {
             conn.setAutoCommit(true);
             n = ps.executeUpdate();
             assertTrue(1 == n);
+        }
+    }
+    
+    private void dropUserTest() throws SQLException {
+        try (Connection conn = getConnection()) {
+            Statement stmt = conn.createStatement();
+            int n;
+            
+            n = stmt.executeUpdate("create user test10@localhost identified by '123'");
+            assertTrue(1 == n);
+            n = stmt.executeUpdate("drop user test10@localhost;");
+            assertTrue(1 == n);
+            
+            n = stmt.executeUpdate("create user test11@localhost identified by '123' superuser");
+            assertTrue(1 == n);
+            try (Connection c = getConnection("test11", "123")){}
+            n = stmt.executeUpdate("drop user test11@localhost;");
+            assertTrue(1 == n);
+            try (Connection c = getConnection("test11", "123")){
+                fail("The user 'test11' has been dropped");
+            } catch (SQLException e) {
+                if (!"28000".equals(e.getSQLState())) throw e;
+            }
         }
     }
     

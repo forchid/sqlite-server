@@ -28,6 +28,7 @@ import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
 import org.sqlite.sql.meta.AlterUserStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
+import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -285,6 +286,31 @@ public class SQLParserTest extends TestBase {
             // OK
         }
         
+        deleteTest("delete from t where id =1", 1);
+        deleteTest("Delete from t where id = 1", 1);
+        deleteTest("deLete from t where id =1;/**/deletE from t where id = 2;", 2);
+        deleteTest(" Delete from t where id =1-- sql", 1);
+        deleteTest("/**/delete from t where id =1;", 1);
+        deleteTest("/*sql*/delete from t where id =1;", 1);
+        deleteTest("/*sql*/delete/*;*/from t /*'*/where id=1;", 1);
+        deleteTest("/*sql*/delete/*;*/ from t where id=1-- sql", 1);
+        deleteTest("/*sql*/delete/*;*/from t where id=1; DeleTe from t /*\"*/ where id=2-- sql", 2);
+        
+        dropUserTest("drop user test@localhost;", 1, "meta_", new String[][]{{"localhost", "test", "pg"}});
+        dropUserTest("drop user 'test' @/**/'localhost' ;", 1, "meta_", new String[][]{{"localhost", "test", "pg"}});
+        dropUserTest("drop user 'test' @/**/'localhost' identified with PG ", 
+                1, "meta_", new String[][]{{"localhost", "test", "pg"}});
+        dropUserTest("drop user 'test' @/**/'localhost','test-a'@'127.0.0.1' identified with PG ", 
+                1, "meta_", new String[][]{{"localhost", "test", "pg"}, {"127.0.0.1", "test-a", "pg"}});
+        dropUserTest(" drop user 'test' @/**/'localhost' identified with pg , /*aaa*/ 'test-a'@'127.0.0.1' identified with PG ", 
+                1, "meta_", new String[][]{{"localhost", "test", "pg"}, {"127.0.0.1", "test-a", "pg"}});
+        try {
+            dropUserTest("drop user ;", 1, "meta_", new String[][]{{"localhost", "test", "pg"}});
+            fail("No 'user'@'host' specified");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        
         emptyTest(";", 1);
         emptyTest(" ;", 1);
         emptyTest("; ", 2);
@@ -324,16 +350,6 @@ public class SQLParserTest extends TestBase {
         insertTest("/*sql*/insert/*;*/into t (a)/*'*/values(1);", 1);
         insertTest("/*sql*/insert/*;*/ into t(a) values(1)-- sql", 1);
         insertTest("/*sql*/insert/*;*/ into t(a) values(1); insert into t(a) /*\"*/values(2)-- sql", 2);
-        
-        deleteTest("delete from t where id =1", 1);
-        deleteTest("Delete from t where id = 1", 1);
-        deleteTest("deLete from t where id =1;/**/deletE from t where id = 2;", 2);
-        deleteTest(" Delete from t where id =1-- sql", 1);
-        deleteTest("/**/delete from t where id =1;", 1);
-        deleteTest("/*sql*/delete from t where id =1;", 1);
-        deleteTest("/*sql*/delete/*;*/from t /*'*/where id=1;", 1);
-        deleteTest("/*sql*/delete/*;*/ from t where id=1-- sql", 1);
-        deleteTest("/*sql*/delete/*;*/from t where id=1; DeleTe from t /*\"*/ where id=2-- sql", 2);
         
         txBeginTest("begin", 1);
         txBeginTest("begin;", 1);
@@ -626,6 +642,40 @@ public class SQLParserTest extends TestBase {
             assertTrue(protocol.equalsIgnoreCase(s.getProtocol()));
             assertTrue(authMethod.equalsIgnoreCase(s.getAuthMethod()));
             assertTrue(sa == s.isSa());
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void dropUserTest(String sqls, int stmts, String metaSchema, String[][]users) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            DropUserStatement s = (DropUserStatement)stmt;
+            assertTrue(!stmt.isComment());
+            assertTrue("DROP USER".equals(stmt.getCommand()));
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(stmt.isMetaStatement());
+            
+            for (String[] user: users) {
+                assertTrue(s.exists(user[0], user[1], user[2]));
+            }
+            StringBuilder sb = new StringBuilder("delete from '"+metaSchema+"'.user where ");
+            for (int j = 0; j < users.length; ++j) {
+                String[] user = users[j];
+                sb.append(j == 0? "": " or ").append('(')
+                .append("host = '").append(user[0]).append("' and ")
+                .append("user = '").append(user[1]).append("' and ")
+                .append("protocol = '").append(user[2]).append('\'')
+                .append(')');
+            }
+            String metaSql = s.getMetaSQL(metaSchema);
+            String sql = sb.toString();
+            assertTrue(metaSql.equals(sql));
+            
             ++i;
         }
         overTest(parser, i, stmts);

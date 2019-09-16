@@ -22,6 +22,9 @@ package org.sqlite.sql.meta;
  *
  */
 public interface MetaStatement {
+    
+    String PROTO_DEFAULT = "pg";
+    String AUTHM_DEFAULT = "md5";
 
     String getMetaSQL(String metaSchema);
     

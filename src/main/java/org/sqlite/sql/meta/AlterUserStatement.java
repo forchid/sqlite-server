@@ -35,7 +35,7 @@ public class AlterUserStatement extends SQLStatement implements MetaStatement {
     protected String host;
     protected Boolean sa;
     protected String password;
-    protected String protocol = "pg";
+    protected String protocol = PROTO_DEFAULT;
     protected String authMethod;
     
     private boolean passwordSet;
@@ -135,14 +135,21 @@ public class AlterUserStatement extends SQLStatement implements MetaStatement {
                 return stmt.getSQL();
             }
         } catch (SQLParseException e) {
-            throw new SQLParseException(getSQL());
+            // next throw
         }
+        
         throw new SQLParseException(getSQL());
     }
 
     @Override
     public boolean needSa() {
         return true;
+    }
+    
+    public boolean isUser(String host, String user, String protocol) {
+        return ((getHost().equals(host))
+                && (getUser().equals(user))
+                && (getProtocol().equalsIgnoreCase(protocol)));
     }
     
 }

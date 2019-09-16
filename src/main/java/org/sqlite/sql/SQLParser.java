@@ -26,7 +26,10 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.sql.meta.AlterUserStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
+import org.sqlite.sql.meta.DropUserStatement;
+import org.sqlite.sql.meta.MetaStatement;
 import org.sqlite.util.IoUtils;
+import org.sqlite.util.StringUtils;
 
 /**A simple SQL parser.
  * 
@@ -380,6 +383,65 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         return stmt;
     }
     
+    protected SQLStatement parseDrop() {
+        nextString("op");
+        skipIgnorable();
+        if (nextStringIf("user") != -1) {
+            skipIgnorable();
+            return parseDropUser();
+        }
+        
+        return new SQLStatement(this.sql, "DROP");
+    }
+    
+    protected SQLStatement parseDropUser() {
+        DropUserStatement stmt = new DropUserStatement(this.sql);
+        for (;;) {
+            String user = nextString();
+            skipIgnorableIf();
+            nextChar('@');
+            skipIgnorableIf();
+            String host = nextString();
+            String proto= MetaStatement.PROTO_DEFAULT;
+            if (skipIgnorableIf() != -1 && nextStringIf("identified") != -1) {
+                skipIgnorable();
+                nextString("with");
+                skipIgnorable();
+                proto = StringUtils.toLowerEnglish(nextString());
+            }
+            stmt.addUser(host, user, proto);
+            if (!nextEnd()) {
+                nextChar(',');
+                skipIgnorableIf();
+                continue;
+            }
+            
+            break;
+        }
+        
+        return stmt;
+    }
+
+    protected SQLStatement parseDetach() {
+        DetachStatement stmt;
+        nextString("ach");
+        
+        skipIgnorable();
+        if (nextStringIf("database") != -1) {
+            skipIgnorable();
+        }
+        String schemaName = nextString();
+        
+        stmt = new DetachStatement(this.sql, "DETACH");
+        stmt.setSchemaName(schemaName);
+        return stmt;
+    }
+
+    protected SQLStatement parseDelete() {
+        nextString("ete");
+        return new SQLStatement(this.sql, "DELETE");
+    }
+    
     protected SQLStatement parseSavepoint() {
         nextString("vepoint");
         skipIgnorable();
@@ -496,31 +558,6 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     protected SQLStatement parseEnd() {
         nextString("d");
         return new TransactionStatement(this.sql, "END");
-    }
-
-    protected SQLStatement parseDrop() {
-        nextString("op");
-        return new SQLStatement(this.sql, "DROP");
-    }
-
-    protected SQLStatement parseDetach() {
-        DetachStatement stmt;
-        nextString("ach");
-        
-        skipIgnorable();
-        if (nextStringIf("database") != -1) {
-            skipIgnorable();
-        }
-        String schemaName = nextString();
-        
-        stmt = new DetachStatement(this.sql, "DETACH");
-        stmt.setSchemaName(schemaName);
-        return stmt;
-    }
-
-    protected SQLStatement parseDelete() {
-        nextString("ete");
-        return new SQLStatement(this.sql, "DELETE");
     }
 
     protected SQLStatement parseCreate() {
