@@ -212,42 +212,26 @@ public class PgProcessor extends SQLiteProcessor {
         SQLiteWorker worker = this.worker;
         SocketChannel ch = getChannel();
         
-        int rem = -1/* the first time */;
-        for (; rem == -1 || (!this.needFlush && rem >= 5);) {
+        int rem = 0;
+        do {
             ByteBuffer inBuf = getReadBuffer(5);
             int n = 0;
             
             if (this.inSize == -1) {
-                // read header
-                if (this.initDone) {
-                    n = ch.read(inBuf);
-                    if (n < 0) {
-                        stop();
-                        enableWrite();
-                        return;
-                    }
-                    if (inBuf.position() < 5) {
-                        return;
-                    }
-                    x = inBuf.get(0) & 0xFF;
-                } else {
-                    if (inBuf.position() == 0) {
-                        inBuf.position(1);
-                    }
-                    x = 0;
+                // 1. read header
+                if (!this.initDone && inBuf.position()==0) {
+                    inBuf.put((byte)0);
                 }
-                
-                if (n == 0) {
-                    n = ch.read(inBuf);
-                    if (n == -1) {
-                        stop();
-                        enableWrite();
-                        return;
-                    }
-                    if (inBuf.position() < 5) {
-                        return;
-                    }
+                n = ch.read(inBuf);
+                if (n < 0) {
+                    stop();
+                    enableWrite();
+                    return;
                 }
+                if (inBuf.position() < 5) {
+                    return;
+                }
+                x = inBuf.get(0) & 0xFF;
                 
                 this.inSize = (inBuf.get(1) & 0xFF) << 24
                         | (inBuf.get(2) & 0xFF) << 16
@@ -257,6 +241,7 @@ public class PgProcessor extends SQLiteProcessor {
                 server.trace(log, ">> message: type '{}'(c) {}, len {}", (char)x, x, this.inSize);
             }
             
+            // 2. read body
             int buffered = inBuf.position() - 5;
             if (buffered < inSize) {
                 inBuf = getReadBuffer(inSize - buffered);
@@ -640,7 +625,7 @@ public class PgProcessor extends SQLiteProcessor {
             this.dataBuf = null;
             this.inSize = -1;
             rem = resetReadBuffer();
-        }
+        } while(!this.needFlush && rem >= 5);
     }
     
     protected void processResultSet(final Portal p) {
