@@ -28,8 +28,13 @@ import java.util.Stack;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.Function;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.func.CurrentUserFunc;
+import org.sqlite.server.func.StringResultFunc;
+import org.sqlite.server.func.UserFunc;
+import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
@@ -71,6 +76,7 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     protected final SQLiteServer server;
     protected SQLiteWorker worker;
     protected SQLiteAuthMethod authMethod;
+    protected String databaseName;
     protected User user;
     
     private volatile boolean open = true;
@@ -186,7 +192,7 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         return stmt.getSQL();
     }
     
-    public void setConnection(SQLiteConnection connection) {
+    public void setConnection(SQLiteConnection connection) throws SQLException {
         if (!isOpen()) {
             throw new IllegalStateException("Processor has been closed");
         }
@@ -200,6 +206,25 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         }
         
         this.connection = connection;
+        // init
+        String host = getRemoteAddress().getHostName();
+        String version = this.server.getVersion();
+        StringResultFunc strResFunc;
+        
+        strResFunc = new VersionFunc(this.server);
+        Function.create(connection, strResFunc.getName(), strResFunc);
+        strResFunc = new StringResultFunc("server_version", version);
+        Function.create(connection, strResFunc.getName(), strResFunc);
+        
+        strResFunc = new UserFunc(this.user, host);
+        Function.create(connection, strResFunc.getName(), strResFunc);
+        strResFunc = new CurrentUserFunc(this.user);
+        Function.create(connection, strResFunc.getName(), strResFunc);
+        
+        strResFunc = new StringResultFunc("database", this.databaseName);
+        Function.create(connection, strResFunc.getName(), strResFunc);
+        strResFunc = new StringResultFunc("current_database", this.databaseName);
+        Function.create(connection, strResFunc.getName(), strResFunc);
     }
     
     public SQLiteConnection getConnection() {

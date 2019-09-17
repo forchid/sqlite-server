@@ -87,7 +87,6 @@ public class PgProcessor extends SQLiteProcessor {
     private boolean needFlush;
     
     private String userName;
-    private String databaseName;
     private String clientEncoding = "UTF-8";
     private String dateStyle = "ISO, MDY";
     
