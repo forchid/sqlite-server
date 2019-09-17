@@ -20,6 +20,7 @@ import static java.lang.String.format;
 import java.io.File;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -27,11 +28,14 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -88,10 +92,16 @@ public class SQLiteMetaDb implements AutoCloseable {
     
     protected static final String INSERT_DB =
             "insert into db(host, db, user, "
-            + "all_priv, select_priv, insert_priv, update_priv, delete_priv,"
+            + "all_priv, select_priv, insert_priv, update_priv, delete_priv, "
             + "create_priv, alter_priv, drop_priv, pragma_priv, vacuum_priv, "
             + "attach_priv) "
             + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    protected static final String SELECT_DB =
+            "select host, db, user, "
+            + "all_priv, select_priv, insert_priv, update_priv, delete_priv, "
+            + "create_priv, alter_priv, drop_priv, pragma_priv, vacuum_priv, "
+            + "attach_priv "
+            + "from db";
     
     private volatile boolean open = true;
     protected final SQLiteServer server;
@@ -101,12 +111,17 @@ public class SQLiteMetaDb implements AutoCloseable {
     protected final ConcurrentMap<String, Set<String>> hostsCache;
     /** host -> resolved time */
     protected final ConcurrentMap<String, Resolution> reslvCache;
+    /** user@host/db -> Db */
+    protected final ConcurrentMap<String, Db> privCache;
+    private final AtomicBoolean privLoading = new AtomicBoolean();
+    private volatile boolean flushPrivs = true;
     
     public SQLiteMetaDb(SQLiteServer server, File metaFile) {
         this.server = server;
         this.file = metaFile;
         this.hostsCache = new ConcurrentHashMap<>();
         this.reslvCache = new ConcurrentHashMap<>();
+        this.privCache = new ConcurrentHashMap<>();
     }
     
     public boolean isInited() {
@@ -259,6 +274,45 @@ public class SQLiteMetaDb implements AutoCloseable {
         }
         
         return db;
+    }
+    
+    public Db selectDb(User user) throws SQLException {
+        return (selectDb(user.getHost(), user.getUser(), user.getDb()));
+    }
+    
+    public Db selectDb(String host, String user, String db) throws SQLException {
+        if (tryLoadPrivs()) {
+            String key = privCacheKey(host, user, db);
+            this.server.trace(log, "privCache key: {}", key);
+            Db d = this.privCache.get(key);
+            this.server.trace(log, "privCache db: {}", d);
+            return d;
+        }
+        
+        return null;
+    }
+    
+    public boolean hasPrivilege(String host, String user, String db, String command) 
+            throws SQLException {
+        Db d = selectDb(host, user, db);
+        if (d == null) {
+            return false;
+        }
+        
+        return (d.hasPriv(command));
+    }
+    
+    public boolean hasPrivilege(User user, String command) throws SQLException {
+        if (user.isSa()) {
+            return true;
+        }
+        
+        Db d = selectDb(user);
+        if (d == null) {
+            return false;
+        }
+        
+        return (d.hasPriv(command));
     }
     
     public int selectUserCount(SQLiteConnection conn) throws SQLException {
@@ -499,6 +553,72 @@ public class SQLiteMetaDb implements AutoCloseable {
     public void flushHosts() {
         this.reslvCache.clear();
         this.hostsCache.clear();
+    }
+    
+    public void flushPrivileges() {
+        this.flushPrivs = true;
+    }
+    
+    protected boolean tryLoadPrivs() throws SQLException {
+        if (!this.flushPrivs) {
+            return true;
+        }
+        
+        for (; !this.privLoading.compareAndSet(false, true);) {
+            // Spin lock
+        }
+        Connection conn = null;
+        try {
+            this.server.trace(log, "load privileges");
+            // Double check
+            if (!this.flushPrivs) {
+                return true;
+            }
+            
+            conn = newConnection();
+            Statement stmt = conn.createStatement();
+            if (!tableExists(stmt, "db")) {
+                this.server.trace(log, "`db` table not exists in metaDb");
+                return false;
+            }
+            
+            ResultSet rs = stmt.executeQuery(SELECT_DB);
+            Map<String, Db> privs = new HashMap<>();
+            for (; rs.next(); ) {
+                final Db db = new Db();
+                final String h, u, d, k;
+                int i = 0;
+                db.setHost(h = rs.getString(++i));
+                db.setDb(d = rs.getString(++i));
+                db.setUser(u = rs.getString(++i));
+                db.setAllPriv(rs.getInt(++i));
+                db.setSelectPriv(rs.getInt(++i));
+                db.setInsertPriv(rs.getInt(++i));
+                db.setUpdatePriv(rs.getInt(++i));
+                db.setDeletePriv(rs.getInt(++i));
+                db.setCreatePriv(rs.getInt(++i));
+                db.setAlterPriv(rs.getInt(++i));
+                db.setDropPriv(rs.getInt(++i));
+                db.setPragmaPriv(rs.getInt(++i));
+                db.setVacuumPriv(rs.getInt(++i));
+                db.setAttachPriv(rs.getInt(++i));
+                k = privCacheKey(h, u, d);
+                privs.put(k, db);
+                this.server.trace(log, "privCache put(<{}, {}...>)", k, db);
+            }
+            this.privCache.clear();
+            this.privCache.putAll(privs);
+            this.flushPrivs = false;
+            this.server.trace(log, "load privileges OK");
+            return true;
+        } finally {
+            this.privLoading.set(false);
+            IoUtils.close(conn);
+        }
+    }
+    
+    protected String privCacheKey(String host, String user, String db) {
+        return (format("%s@%s/%s", user, host, db));
     }
     
     protected boolean tableExists(Statement stmt, String name) throws SQLException {

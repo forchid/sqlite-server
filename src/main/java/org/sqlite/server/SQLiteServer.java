@@ -634,6 +634,18 @@ public abstract class SQLiteServer implements AutoCloseable {
      */
     public abstract String getAuthMethods();
     
+    public void flushHosts() {
+        this.metaDb.flushHosts();
+    }
+    
+    public void flushPrivileges() {
+        this.metaDb.flushPrivileges();
+    }
+    
+    public boolean hasPrivilege(User user, String command) throws SQLException {
+        return (this.metaDb.hasPrivilege(user, command));
+    }
+    
     public void trace(Logger log, String message) {
         if (isTrace()) {
             log.info(message);

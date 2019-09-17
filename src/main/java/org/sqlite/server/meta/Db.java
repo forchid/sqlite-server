@@ -15,6 +15,8 @@
  */
 package org.sqlite.server.meta;
 
+import static java.lang.String.*;
+
 /** The user privileges on DB.
  * 
  * @author little-pan
@@ -262,6 +264,32 @@ public class Db {
         default:
             return false;
         }
+    }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (o == this) {
+            return true;
+        }
+        
+        if (o instanceof Db) {
+            Db d = (Db)o;
+            return (this.host.equals(d.host) 
+                    && this.user.equals(d.user) && this.db.equals(d.db));
+        }
+        
+        return false;
+    }
+    
+    @Override
+    public int hashCode() {
+        return (this.host.hashCode() 
+                ^ this.user.hashCode() ^ this.db.hashCode());
+    }
+    
+    @Override
+    public String toString() {
+        return (format("%s@%s/%s", this.user, this.host, this.db));
     }
     
 }

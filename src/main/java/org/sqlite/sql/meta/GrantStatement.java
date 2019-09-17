@@ -27,7 +27,7 @@ import org.sqlite.util.StringUtils;
 
 /**The GRANT statement:
  * GRANT ALL [PRIVILEGES] [, SELECT | INSERT | UPDATE | DELETE 
- * | CREATE | ALTER | DROP | PRAGMA | VACUUM]
+ * | CREATE | ALTER | DROP | PRAGMA | VACUUM | ATTACH]
  * ON {DATABASE | SCHEMA} dbname [, ...]
  * TO {'user'@'host' [, ...]}
  * 

@@ -40,7 +40,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map.Entry;
-import java.util.Stack;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,13 +94,11 @@ public class PgProcessor extends SQLiteProcessor {
     private boolean initDone, xQueryFailed;
     private final HashMap<String, Prepared> prepared = new HashMap<>();
     private final HashMap<String, Portal> portals = new HashMap<>();
-    private final Stack<TransactionStatement> savepointStack;
 
     protected PgProcessor(SocketChannel channel, int processId, PgServer server) 
             throws NetworkException {
         super(channel, processId, server);
         this.secret = (int)SecurityUtils.secureRandomLong();
-        this.savepointStack = new Stack<>();
     }
     
     public PgServer getServer() {
@@ -866,82 +863,6 @@ public class PgProcessor extends SQLiteProcessor {
                 }
             }
         }
-    }
-    
-    private boolean tryBegin(SQLStatement sql) throws SQLException {
-        boolean success = false;
-        SQLiteConnection conn = getConnection();
-        if (sql.isTransaction() && conn.getAutoCommit()) {
-            TransactionStatement txSql = (TransactionStatement)sql;
-            if (txSql.isBegin() || txSql.isSavepoint()) {
-                server.trace(log, "tx: begin");
-                this.savepointStack.clear();
-                conn.getConnectionConfig().setAutoCommit(false);
-                this.savepointStack.push(txSql);
-                success = true;
-            } 
-        }
-        if (server.isTrace()) {
-            server.trace(log, "sqliteConn execute: autocommit {} ->", conn.getAutoCommit());
-        }
-        
-        return success;
-    }
-    
-    private void tryFinish(SQLStatement sql) throws SQLException {
-        SQLiteConnection conn = getConnection();
-        if (sql.isTransaction()) {
-            TransactionStatement txSql = (TransactionStatement)sql;
-            String command = sql.getCommand();
-            switch (command) {
-            case "COMMIT":
-            case "END":
-            case "ROLLBACK":
-                if (txSql.hasSavepoint()) {
-                    break;
-                }
-                conn.getConnectionConfig().setAutoCommit(true);
-                this.savepointStack.clear();
-                server.trace(log, "tx: finish");
-                break;
-            case "RELEASE":
-                boolean autoCommit = this.savepointStack.isEmpty();
-                String savepoint = txSql.getSavepointName();
-                for (; !this.savepointStack.isEmpty(); ) {
-                    TransactionStatement spSql = this.savepointStack.peek();
-                    if (spSql.isBegin()) {
-                        break;
-                    }
-                    this.savepointStack.pop();
-                    String target = spSql.getSavepointName();
-                    server.trace(log, "tx: release savepoint {}", target);
-                    if (target.equalsIgnoreCase(savepoint)) {
-                        autoCommit = this.savepointStack.isEmpty();
-                        break;
-                    }
-                }
-                if (autoCommit) {
-                    conn.getConnectionConfig().setAutoCommit(true);
-                    server.trace(log, "tx: finish");
-                }
-                break;
-            }
-        }
-        
-        boolean autoCommit = conn.getAutoCommit();
-        if (autoCommit) {
-            detachMetaDb(conn);
-        }
-        
-        if (server.isTrace()) {
-            server.trace(log, "sqliteConn execute: autocommit {} <-", autoCommit);
-        }
-    }
-    
-    private void resetAutoCommit() {
-        getConnection().getConnectionConfig()
-        .setAutoCommit(true);
-        this.savepointStack.clear();
     }
     
     private static boolean isCanceled(SQLException e) {
