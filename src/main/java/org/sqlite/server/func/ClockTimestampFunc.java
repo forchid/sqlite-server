@@ -15,17 +15,34 @@
  */
 package org.sqlite.server.func;
 
-import org.sqlite.server.meta.User;
+import java.sql.SQLException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
-/** Function CURRENT_USER()
+import org.sqlite.Function;
+
+/** Function clock_timestamp(), not thread-safe.
  * 
  * @author little-pan
- * @since 2019-09-17
+ * @since 2019-09-18
  *
  */
-public class CurrentUserFunc extends StringResultFunc {
+public class ClockTimestampFunc extends Function {
     
-    public CurrentUserFunc(User user) {
-        super(String.format("%s@%s", user.getUser(), user.getHost()));
+    protected final DateFormat formater;
+    
+    public ClockTimestampFunc(String format) {
+        this.formater = new SimpleDateFormat(format);
     }
+    
+    public ClockTimestampFunc() {
+        this("yyyy-MM-dd HH:mm:ss.SSSZ");
+    }
+
+    @Override
+    protected void xFunc() throws SQLException {
+        super.result(this.formater.format(new Date()));
+    }
+
 }

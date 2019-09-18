@@ -26,7 +26,7 @@ import org.sqlite.server.meta.User;
 public class UserFunc extends StringResultFunc {
     
     public UserFunc(User user, String host) {
-        super("user", String.format("%s@%s", user.getUser(), host));
+        super(String.format("%s@%s", user.getUser(), host));
     }
 
 }

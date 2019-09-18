@@ -26,7 +26,7 @@ import org.sqlite.server.SQLiteServer;
 public class VersionFunc extends StringResultFunc {
     
     public VersionFunc(SQLiteServer server) {
-        super("version", String.format("%s %s", server.getName(), server.getVersion()));
+        super(String.format("%s %s", server.getName(), server.getVersion()));
     }
 
 }

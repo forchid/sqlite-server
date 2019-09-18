@@ -15,7 +15,7 @@
  */
 package org.sqlite.server;
 
-import static org.sqlite.util.StringUtils.*;
+import static org.sqlite.util.StringUtils.toLowerEnglish;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,6 +28,9 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,11 +38,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
-import org.sqlite.SQLiteConnection;
-import org.sqlite.SQLiteErrorCode;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
+import org.sqlite.SQLiteConnection;
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.func.StringResultFunc;
+import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.meta.User;
 import org.sqlite.server.pg.PgServer;
 import org.sqlite.sql.meta.CreateUserStatement;
@@ -91,6 +96,11 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected SQLiteWorker[] workers;
     protected int workerCount = Runtime.getRuntime().availableProcessors();
     protected int workerId;
+    
+    private String startTime;
+    protected StringResultFunc startTimeFunc;
+    protected VersionFunc versionFunc;
+    protected StringResultFunc serverVersionFunc;
     
     private final AtomicBoolean inited = new AtomicBoolean(false);
     private volatile boolean stopped;
@@ -367,7 +377,16 @@ public abstract class SQLiteServer implements AutoCloseable {
             this.selector = Selector.open();
             this.serverSocket.register(this.selector, SelectionKey.OP_ACCEPT);
             
+            // server workers
             startWorkers();
+            
+            // server base information
+            DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSSZ");
+            this.startTime = df.format(new Date());
+            this.startTimeFunc = new StringResultFunc(this.startTime);
+            this.versionFunc = new VersionFunc(this);
+            this.serverVersionFunc = new StringResultFunc(getVersion());
+            
             failed = false;
         } catch (IOException e) {
             throw new NetworkException("Can't create server socket", e);

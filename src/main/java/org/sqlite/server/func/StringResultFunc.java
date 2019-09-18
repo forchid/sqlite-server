@@ -28,20 +28,14 @@ import org.sqlite.Function;
 public class StringResultFunc extends Function {
     
     protected final String result;
-    protected final String name;
     
-    public StringResultFunc(String name, String result) {
-        this.name = name;
+    public StringResultFunc(String result) {
         this.result = result;
     }
 
     @Override
     protected void xFunc() throws SQLException {
         super.result(this.result);
-    }
-
-    public String getName() {
-        return this.name;
     }
     
 }

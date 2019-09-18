@@ -34,7 +34,6 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.func.CurrentUserFunc;
 import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.UserFunc;
-import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
@@ -208,23 +207,29 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         this.connection = connection;
         // init
         String host = getRemoteAddress().getHostName();
-        String version = this.server.getVersion();
-        StringResultFunc strResFunc;
+        Function func;
         
-        strResFunc = new VersionFunc(this.server);
-        Function.create(connection, strResFunc.getName(), strResFunc);
-        strResFunc = new StringResultFunc("server_version", version);
-        Function.create(connection, strResFunc.getName(), strResFunc);
+        func = this.server.startTimeFunc;
+        Function.create(connection, "start_time", func);
+        Function.create(connection, "pg_postmaster_start_time", func);
+        func = this.server.versionFunc;
+        Function.create(connection, "version", func);
+        func = this.server.serverVersionFunc;
+        Function.create(connection, "server_version", func);
         
-        strResFunc = new UserFunc(this.user, host);
-        Function.create(connection, strResFunc.getName(), strResFunc);
-        strResFunc = new CurrentUserFunc(this.user);
-        Function.create(connection, strResFunc.getName(), strResFunc);
+        func = new UserFunc(this.user, host);
+        Function.create(connection, "user", func);
+        func = new CurrentUserFunc(this.user);
+        Function.create(connection, "current_user", func);
         
-        strResFunc = new StringResultFunc("database", this.databaseName);
-        Function.create(connection, strResFunc.getName(), strResFunc);
-        strResFunc = new StringResultFunc("current_database", this.databaseName);
-        Function.create(connection, strResFunc.getName(), strResFunc);
+        func = new StringResultFunc(this.databaseName);
+        Function.create(connection, "database", func);
+        Function.create(connection, "current_database", func);
+        
+        func = this.worker.clockTimestampFunc;
+        Function.create(connection, "clock_timestamp", func);
+        func = this.worker.sysdateFunc;
+        Function.create(connection, "sysdate", func);
     }
     
     public SQLiteConnection getConnection() {
