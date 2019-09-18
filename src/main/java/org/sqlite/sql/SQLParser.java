@@ -489,38 +489,37 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         skipIgnorable();
         if (nextStringIf("database") != -1 || nextStringIf("schema") != -1) {
             skipIgnorable();
-            boolean skipSpace = false;
-            for (;;) {
-                String granted = nextString();
-                stmt.addGranted(granted);
-                skipSpace = skipIgnorableIf() != -1;
-                if (nextCharIf(',') == -1) {
-                    break;
-                }
-                skipIgnorableIf();
+        }
+        boolean skipSpace = false;
+        for (;;) {
+            String granted = nextString();
+            stmt.addGranted(granted);
+            skipSpace = skipIgnorableIf() != -1;
+            if (nextCharIf(',') == -1) {
+                break;
             }
-            if (!skipSpace) {
-                skipIgnorable();
-            }
-            nextString("to");
+            skipIgnorableIf();
+        }
+        if (!skipSpace) {
             skipIgnorable();
-            for (;;) {
-                String user = nextString();
-                skipIgnorableIf();
-                nextChar('@');
-                skipIgnorableIf();
-                String host = nextString();
-                stmt.addGrantee(host, user);
-                skipIgnorableIf();
-                if (nextCharIf(',') == -1) {
-                    break;
-                }
-                skipIgnorableIf();
+        }
+        nextString("to");
+        skipIgnorable();
+        for (;;) {
+            String user = nextString();
+            skipIgnorableIf();
+            nextChar('@');
+            skipIgnorableIf();
+            String host = nextString();
+            stmt.addGrantee(host, user);
+            skipIgnorableIf();
+            if (nextCharIf(',') == -1) {
+                break;
             }
-            return stmt;
+            skipIgnorableIf();
         }
         
-        throw syntaxError();
+        return stmt;
     }
     
     protected SQLStatement parseSavepoint() {

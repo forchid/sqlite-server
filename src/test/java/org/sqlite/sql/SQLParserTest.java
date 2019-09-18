@@ -346,6 +346,12 @@ public class SQLParserTest extends TestBase {
         grantTest("grant all,select,vacuum on database testdb to test@localhost", 
                 1, "meta", new String[] {"all", "select", "vacuum"}, 
                 new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all,select,vacuum on schema testdb to test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant all,select,vacuum on testdb to test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
         grantTest("grant all ,select, vacuum on database testdb to test@localhost", 
                 1, "meta", new String[] {"all", "select", "vacuum"}, 
                 new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
@@ -368,6 +374,9 @@ public class SQLParserTest extends TestBase {
                 1, "meta", new String[] {"select", "all",  "vacuum"}, 
                 new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
         grantTest("grant attach, select ,  vacuum,all privileges on database testdb to test@localhost", 
+                1, "meta", new String[] {"attach", "select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        grantTest("grant attach, select ,  vacuum,all privileges on testdb to test@localhost", 
                 1, "meta", new String[] {"attach", "select", "all",  "vacuum"}, 
                 new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
         try {

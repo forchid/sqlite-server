@@ -26,9 +26,9 @@ import org.sqlite.sql.SQLStatement;
 import org.sqlite.util.StringUtils;
 
 /**The GRANT statement:
- * GRANT ALL [PRIVILEGES] [, SELECT | INSERT | UPDATE | DELETE 
- * | CREATE | ALTER | DROP | PRAGMA | VACUUM | ATTACH]
- * ON {DATABASE | SCHEMA} dbname [, ...]
+ * GRANT {ALL [PRIVILEGES] [, SELECT | INSERT | UPDATE | DELETE 
+ * | CREATE | ALTER | DROP | PRAGMA | VACUUM | ATTACH]}
+ * ON [DATABASE | SCHEMA] dbname [, ...]
  * TO {'user'@'host' [, ...]}
  * 
  * @author little-pan
