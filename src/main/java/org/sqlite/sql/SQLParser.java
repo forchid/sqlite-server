@@ -29,6 +29,7 @@ import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.MetaStatement;
+import org.sqlite.sql.meta.RevokeStatement;
 import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.StringUtils;
@@ -236,6 +237,9 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                     }
                     if ('p' == c || 'P' == c) {
                         return parseReplace();
+                    }
+                    if ('v' == c || 'V' == c) {
+                        return parseRevoke();
                     }
                     throw syntaxError();
                 }
@@ -586,6 +590,82 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         String savepointName = nextString();
         return new TransactionStatement(this.sql, "RELEASE", savepointName);
+    }
+    
+    protected SQLStatement parseRevoke() {
+        nextString("oke");
+        
+        RevokeStatement stmt = new RevokeStatement(this.sql);
+        skipIgnorable();
+        boolean hasPriv = false;
+        for (;;) {
+            String priv = null;
+            for (String p: GrantStatement.getPrivileges()) {
+                if (nextStringIf(p) == -1) {
+                    continue;
+                }
+                priv = p;
+                break;
+            }
+            if (priv == null) {
+                break;
+            }
+            
+            hasPriv = true;
+            stmt.addPrivilege(priv);
+            boolean hasSpace = skipIgnorableIf() != -1;
+            if ("all".equalsIgnoreCase(priv)) {
+                if (hasSpace && nextStringIf("privileges") != -1) {
+                    skipIgnorableIf();
+                }
+            }
+            if (nextCharIf(',') != -1) {
+                skipIgnorableIf();
+                hasPriv = false;
+                continue;
+            }
+            
+            break;
+        }
+        if (!hasPriv) {
+            throw syntaxError();
+        }
+        
+        nextString("on");
+        skipIgnorable();
+        if (nextStringIf("database") != -1 || nextStringIf("schema") != -1) {
+            skipIgnorable();
+        }
+        boolean skipSpace = false;
+        for (;;) {
+            String revoked = nextString();
+            stmt.addRevoked(revoked);
+            skipSpace = skipIgnorableIf() != -1;
+            if (nextCharIf(',') == -1) {
+                break;
+            }
+            skipIgnorableIf();
+        }
+        if (!skipSpace) {
+            skipIgnorable();
+        }
+        nextString("from");
+        skipIgnorable();
+        for (;;) {
+            String user = nextString();
+            skipIgnorableIf();
+            nextChar('@');
+            skipIgnorableIf();
+            String host = nextString();
+            stmt.addGrantee(host, user);
+            skipIgnorableIf();
+            if (nextCharIf(',') == -1) {
+                break;
+            }
+            skipIgnorableIf();
+        }
+        
+        return stmt;
     }
 
     protected SQLStatement parseRollback() {

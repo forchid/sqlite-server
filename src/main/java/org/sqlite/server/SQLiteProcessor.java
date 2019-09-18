@@ -43,6 +43,7 @@ import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.MetaStatement;
+import org.sqlite.sql.meta.RevokeStatement;
 import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 
@@ -646,7 +647,7 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         boolean autoCommit = conn.getAutoCommit();
         if (autoCommit) {
             detachMetaDb(conn);
-            if (sql instanceof GrantStatement) {
+            if (sql instanceof GrantStatement | sql instanceof RevokeStatement) {
                 this.server.flushPrivileges();
             } else if (sql instanceof CreateUserStatement) {
                 this.server.flushHosts();

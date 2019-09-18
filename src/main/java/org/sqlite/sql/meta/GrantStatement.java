@@ -36,7 +36,7 @@ import org.sqlite.util.StringUtils;
  *
  */
 public class GrantStatement extends SQLStatement implements MetaStatement {
-    private static String[] PRIVS = {"ALL", "SELECT", "INSERT", "UPDATE", "DELETE",
+    static String[] PRIVS = {"ALL", "SELECT", "INSERT", "UPDATE", "DELETE",
             "CREATE", "ALTER", "DROP", "PRAGMA", "VACUUM", "ATTACH"};
     
     protected final Set<String> privileges = new HashSet<>();

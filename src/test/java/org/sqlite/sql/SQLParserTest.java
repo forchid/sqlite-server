@@ -30,6 +30,7 @@ import org.sqlite.sql.meta.AlterUserStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
+import org.sqlite.sql.meta.RevokeStatement;
 import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 
@@ -382,6 +383,75 @@ public class SQLParserTest extends TestBase {
                 new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
         try {
             grantTest("grant all , on on database testdb to test@localhost", 
+                1, "meta", new String[] {"all", "on"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+            fail("Unknonw privilege 'on'");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        
+        revokeTest("revoke all on database testdb from test@localhost", 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all on schema testdb from test@localhost", 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all PRIvileges on database testdb from test@localhost", 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all on database 'test.db', testdb from test@localhost", 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"test.db", "testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all on database 'test.db', testdb from test@localhost, 'test1'@localhost", 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"test.db", "testdb"}, 
+                new String[][]{{"localhost", "test"}, {"localhost", "test1"}});
+        try {
+            revokeTest("revoke all on database 'test.db', testdb, from test@localhost, 'test1'@localhost", 
+                1, "meta", new String[] {"all"}, 
+                new String[]{"test.db", "testdb"}, 
+                new String[][]{{"localhost", "test"}, {"localhost", "test1"}});
+        } catch (SQLParseException e) {
+            // OK
+        }
+        revokeTest("revoke all,select,vacuum on database testdb from test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all,select,vacuum on schema testdb from test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all,select,vacuum on testdb from test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all ,select, vacuum on database testdb from test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all , select, vacuum on database testdb from test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all , select , vacuum on database testdb from test@localhost", 
+                1, "meta", new String[] {"all", "select", "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke select ,all ,  vacuum on database testdb from test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke all privileges , select ,  vacuum on database testdb from test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke select ,all privileges,  vacuum on database testdb from test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke select ,  vacuum,all privileges on database testdb from test@localhost", 
+                1, "meta", new String[] {"select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke attach, select ,  vacuum,all privileges on database testdb from test@localhost", 
+                1, "meta", new String[] {"attach", "select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        revokeTest("revoke attach, select ,  vacuum,all privileges on testdb from test@localhost", 
+                1, "meta", new String[] {"attach", "select", "all",  "vacuum"}, 
+                new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
+        try {
+            revokeTest("revoke all , on on database testdb from test@localhost", 
                 1, "meta", new String[] {"all", "on"}, 
                 new String[]{"testdb"}, new String[][]{{"localhost", "test"}});
             fail("Unknonw privilege 'on'");
@@ -772,6 +842,35 @@ public class SQLParserTest extends TestBase {
             GrantStatement s = (GrantStatement)stmt;
             assertTrue(!stmt.isComment());
             assertTrue("GRANT".equals(stmt.getCommand()));
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(stmt.isMetaStatement());
+            
+            for (String priv: privs) {
+                assertTrue(s.hasPrivilege(priv));
+            }
+            for (String dbname: dbnames) {
+                assertTrue(s.exists(dbname));
+            }
+            for (String[] user: users) {
+                assertTrue(s.exists(user[0], user[1]));
+            }
+            
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void revokeTest(String sqls, int stmts, String metaSchema, 
+            String[] privs, String[] dbnames, String[][]users) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            RevokeStatement s = (RevokeStatement)stmt;
+            assertTrue(!stmt.isComment());
+            assertTrue("REVOKE".equals(stmt.getCommand()));
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
