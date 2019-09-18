@@ -29,6 +29,7 @@ import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.MetaStatement;
+import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.StringUtils;
 
@@ -245,11 +246,14 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             case 's':
             case 'S':
                 c = nextChar();
+                if ('a' == c || 'A' == c) {
+                    return parseSavepoint();
+                }
                 if ('e' == c || 'E' == c) {
                     return parseSelect();
                 }
-                if ('a' == c || 'A' == c) {
-                    return parseSavepoint();
+                if ('h' == c || 'H' == c) {
+                    return parseShow();
                 }
                 throw syntaxError();
             case 'u':
@@ -527,6 +531,51 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         skipIgnorable();
         String savepointName = nextString();
         return new TransactionStatement(this.sql, "SAVEPOINT", savepointName);
+    }
+    
+    protected SQLStatement parseShow() {
+        nextString("ow");
+        skipIgnorable();
+        if (nextStringIf("grants") != -1) {
+            ShowGrantsStatement stmt = new ShowGrantsStatement(this.sql);
+            if (nextEnd()) {
+                stmt.setCurrentUser(true);
+            } else {
+                nextString("for");
+                skipIgnorable();
+                if (nextStringIf("current_user") != -1) {
+                    if (nextEnd()) {
+                        stmt.setCurrentUser(true);
+                    } else {
+                        skipIgnorableIf();
+                        nextChar('(');
+                        skipIgnorableIf();
+                        nextChar(')');
+                        if (nextEnd()) {
+                            stmt.setCurrentUser(true);
+                        } else {
+                            throw syntaxError();
+                        }
+                    }
+                } else {
+                    String user = nextString();
+                    if (!nextEnd()) {
+                        nextChar('@');
+                        skipIgnorableIf();
+                        String host = nextString();
+                        if (nextEnd()) {
+                            stmt.setHost(host);
+                        } else {
+                            throw syntaxError();
+                        }
+                    }
+                    stmt.setUser(user);
+                }
+            }
+            return stmt;
+        }
+        
+        throw syntaxError();
     }
 
     protected SQLStatement parseRelease() {

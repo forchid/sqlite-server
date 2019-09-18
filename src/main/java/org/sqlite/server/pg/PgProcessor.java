@@ -573,11 +573,11 @@ public class PgProcessor extends SQLiteProcessor {
                             resetAutoCommit();
                         }
                     }
-                    tryFinish(sql);
                     
                     if (result) {
                         processResultSet(p);
                     } else {
+                        tryFinish(sql);
                         n = prep.getUpdateCount();
                         sendCommandComplete(sql, n, result);
                         this.xQueryFailed = false;
@@ -650,6 +650,10 @@ public class PgProcessor extends SQLiteProcessor {
                             return;
                         }
                     }
+                    
+                    // detach only after resultSet finished
+                    tryFinish(sql);
+                    
                     sendCommandComplete(sql, 0, true);
                     self.xQueryFailed = false;
                 } catch (SQLException e) {

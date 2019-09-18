@@ -30,6 +30,7 @@ import org.sqlite.sql.meta.AlterUserStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
+import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -443,6 +444,17 @@ public class SQLParserTest extends TestBase {
         txBeginTest("begIn;/*tx*/begin/*tx*/--;", 2);
         txBeginTest("begIn transaction;/*tx*/begin/*tx*/--;", 2);
         
+        showGrantsTest("show grants for test@localhost", 
+                1, "localhost", "test", false, true);
+        showGrantsTest("show grants for 'test' @ 'localhost'", 
+                1, "localhost", "test", false, true);
+        showGrantsTest("show grants for 'test'", 1, "%", "test", false, true);
+        showGrantsTest(" show GRANTS for current_user", 1, "%", null, true, false);
+        showGrantsTest("show grants FOR current_user()", 1, "%", null, true, false);
+        showGrantsTest("SHOW grants for CURRENT_USER ( ) ", 1, "%", null, true, false);
+        showGrantsTest("show grants", 1, "%", null, true, false);
+        showGrantsTest("show grants ", 1, "%", null, true, false);
+        
         txCommitTest("commit", 1);
         txCommitTest("commit transaction", 1);
         txCommitTest("commit;", 1);
@@ -790,6 +802,29 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showGrantsTest(String sqls, int stmts, String host, String user, 
+            boolean currentUser, boolean needSa) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW GRANTS %s", stmt);
+            assertTrue("SHOW GRANTS".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowGrantsStatement s = (ShowGrantsStatement)stmt;
+            assertTrue(s.isMetaStatement());
+            assertTrue(host.equals(host));
+            assertTrue(user == null || user.equals(user));
+            assertTrue(currentUser == s.isCurrentUser());
+            assertTrue(needSa == s.needSa());
             ++i;
             parser.remove();
         }
