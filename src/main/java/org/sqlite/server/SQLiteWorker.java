@@ -27,8 +27,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sqlite.server.func.ClockTimestampFunc;
-import org.sqlite.server.func.SysdateFunc;
 import org.sqlite.util.IoUtils;
 
 /**SQLite server worker thread.
@@ -66,17 +64,12 @@ public class SQLiteWorker implements Runnable {
     protected final AtomicBoolean procsLock = new AtomicBoolean();
     private final Map<Integer, SQLiteProcessor> processors;
     
-    protected final ClockTimestampFunc clockTimestampFunc;
-    protected final SysdateFunc sysdateFunc;
-    
     public SQLiteWorker(SQLiteServer server, int id) {
         this.id = id;
         this.name = server.getName() + " worker-"+this.id;
         this.maxConns = server.getMaxConns();
         this.procQueue = new ArrayBlockingQueue<>(maxConns);
         this.processors= new HashMap<>();
-        this.clockTimestampFunc = new ClockTimestampFunc();
-        this.sysdateFunc = new SysdateFunc();
     }
     
     public int getId() {

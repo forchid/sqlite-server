@@ -21,7 +21,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import org.sqlite.server.TestDbBase;
+import org.sqlite.TestDbBase;
 
 /**
  * @author little-pan

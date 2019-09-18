@@ -33,6 +33,7 @@ import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.func.CurrentUserFunc;
 import org.sqlite.server.func.StringResultFunc;
+import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.UserFunc;
 import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLStatement;
@@ -226,10 +227,11 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         Function.create(connection, "database", func);
         Function.create(connection, "current_database", func);
         
-        func = this.worker.clockTimestampFunc;
-        Function.create(connection, "clock_timestamp", func);
-        func = this.worker.sysdateFunc;
-        Function.create(connection, "sysdate", func);
+        TimestampFunc timestampFunc;
+        timestampFunc = this.server.clockTimestampFunc;
+        Function.create(connection, timestampFunc.getName(), timestampFunc);
+        timestampFunc = this.server.sysdateFunc;
+        Function.create(connection, timestampFunc.getName(), timestampFunc);
     }
     
     public SQLiteConnection getConnection() {

@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.sqlite.SQLiteErrorCode;
-import org.sqlite.server.TestDbBase;
+import org.sqlite.TestDbBase;
 import org.sqlite.util.IoUtils;
 
 /**

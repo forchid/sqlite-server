@@ -13,16 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server;
+package org.sqlite;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.sqlite.server.SQLiteServerTest;
 import org.sqlite.server.jdbc.ConnectionTest;
 import org.sqlite.server.jdbc.StatementTest;
 import org.sqlite.sql.SQLParserTest;
 import org.sqlite.sql.SQLReaderTest;
+import org.sqlite.util.DateTimeUtilsTest;
 
 /**
  * @author little-pan
@@ -66,6 +68,7 @@ public class TestAll extends TestBase {
     
     protected void addAll() {
         add(new ConnectionTest()).
+        add(new DateTimeUtilsTest()).
         add(new StatementTest()).
         add(new SQLReaderTest()).
         add(new SQLParserTest()).

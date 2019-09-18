@@ -18,6 +18,7 @@ package org.sqlite.server;
 import java.sql.Connection;
 import java.sql.SQLException;
 
+import org.sqlite.TestDbBase;
 import org.sqlite.util.IoUtils;
 
 /**SQLite server test case.

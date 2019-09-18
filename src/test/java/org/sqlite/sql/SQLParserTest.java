@@ -18,7 +18,7 @@ package org.sqlite.sql;
 import java.sql.SQLException;
 import java.util.NoSuchElementException;
 
-import org.sqlite.server.TestBase;
+import org.sqlite.TestBase;
 import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.DetachStatement;
 import org.sqlite.sql.PragmaStatement;

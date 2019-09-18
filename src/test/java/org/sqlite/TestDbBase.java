@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server;
+package org.sqlite;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import org.sqlite.server.SQLiteServer;
 import org.sqlite.util.IoUtils;
 
 /**

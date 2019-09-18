@@ -15,6 +15,8 @@
  */
 package org.sqlite.util;
 
+import java.util.TimeZone;
+
 /**
  * @author little-pan
  * @since 2019-09-01
@@ -63,4 +65,18 @@ public final class DateTimeUtils {
     public static int dayFromDateValue(long x) {
         return (int) (x & 31);
     }
+    
+    public static String getTimeZoneID(boolean incGMT) {
+        return (getTimeZoneID(TimeZone.getDefault(), incGMT));
+    }
+    
+    public static String getTimeZoneID(TimeZone tz, boolean incGMT) {
+        int offset = tz.getRawOffset();
+        int hour = Math.abs(offset / 3600000);
+        int min = Math.abs((offset % 3600000) / 60000);
+        String sign = offset >= 0 ? "+": "-";
+        String GMT = incGMT? "GMT": "";
+        return (String.format("%s%s%02d:%02d", GMT, sign, hour, min));
+    }
+    
 }

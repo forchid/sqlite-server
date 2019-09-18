@@ -17,7 +17,7 @@ package org.sqlite.sql;
 
 import java.sql.SQLException;
 
-import org.sqlite.server.TestBase;
+import org.sqlite.TestBase;
 import org.sqlite.sql.SQLReader;
 
 /**Test SQL reader.

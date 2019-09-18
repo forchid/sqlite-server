@@ -28,9 +28,6 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,6 +41,7 @@ import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.func.StringResultFunc;
+import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.meta.User;
 import org.sqlite.server.pg.PgServer;
@@ -98,9 +96,13 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected int workerId;
     
     private String startTime;
+    private long startMillis;
+    private long startNanos;
     protected StringResultFunc startTimeFunc;
     protected VersionFunc versionFunc;
     protected StringResultFunc serverVersionFunc;
+    protected TimestampFunc clockTimestampFunc;
+    protected TimestampFunc sysdateFunc;
     
     private final AtomicBoolean inited = new AtomicBoolean(false);
     private volatile boolean stopped;
@@ -358,6 +360,13 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public void start() throws NetworkException {
         String name = getName();
+        TimestampFunc clockTimestampFunc;
+        // start timestamp
+        this.startMillis = System.currentTimeMillis();
+        this.startNanos = System.nanoTime();
+        clockTimestampFunc = new TimestampFunc(this, "clock_timestamp", 6);
+        this.startTime = clockTimestampFunc.getTimestamp();
+        trace(log, "Starting...");
         
         if (!isInited()) {
             throw new IllegalStateException(name + " hasn't been initialized");
@@ -380,13 +389,15 @@ public abstract class SQLiteServer implements AutoCloseable {
             // server workers
             startWorkers();
             
-            // server base information
-            DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSSZ");
-            this.startTime = df.format(new Date());
-            this.startTimeFunc = new StringResultFunc(this.startTime);
+            // version functions
             this.versionFunc = new VersionFunc(this);
             this.serverVersionFunc = new StringResultFunc(getVersion());
+            // timestamp functions
+            this.clockTimestampFunc = clockTimestampFunc;
+            this.startTimeFunc = new StringResultFunc(this.startTime);
+            this.sysdateFunc = new TimestampFunc(this, "sysdate");
             
+            trace(log, "Start OK");
             failed = false;
         } catch (IOException e) {
             throw new NetworkException("Can't create server socket", e);
@@ -652,6 +663,14 @@ public abstract class SQLiteServer implements AutoCloseable {
      * @return Authentication method list
      */
     public abstract String getAuthMethods();
+    
+    public long getStartMillis() {
+        return this.startMillis;
+    }
+    
+    public long getStartNanos() {
+        return this.startNanos;
+    }
     
     public void flushHosts() {
         this.metaDb.flushHosts();
