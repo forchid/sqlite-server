@@ -53,6 +53,7 @@ import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
+import org.sqlite.sql.meta.CreateDatabaseStatement;
 import org.sqlite.sql.meta.User;
 import org.sqlite.util.DateTimeUtils;
 import org.sqlite.util.IoUtils;
@@ -301,7 +302,8 @@ public class PgProcessor extends SQLiteProcessor {
                 } else {
                     server.trace(log, "StartupMessage");
                     server.trace(log, "version {} ({}.{})", version, (version >> 16), (version & 0xff));
-                    while (true) {
+                    this.needFlush = true;
+                    for (;;) {
                         String param = readString();
                         if (param.isEmpty()) {
                             break;
@@ -313,12 +315,12 @@ public class PgProcessor extends SQLiteProcessor {
                             this.databaseName = server.checkKeyAndGetDatabaseName(value);
                         } else if ("client_encoding".equals(param)) {
                             // UTF8
-                            clientEncoding = value;
+                            this.clientEncoding = value;
                         } else if ("DateStyle".equals(param)) {
                             if (value.indexOf(',') < 0) {
                                 value += ", MDY";
                             }
-                            dateStyle = value;
+                            this.dateStyle = value;
                         }
                         // extra_float_digits 2
                         // geqo on (Genetic Query Optimization)
@@ -326,6 +328,16 @@ public class PgProcessor extends SQLiteProcessor {
                     }
                     
                     // Check user and database
+                    if (this.userName == null) {
+                        // user required
+                        sendErrorAuth();
+                        break;
+                    }
+                    if (this.databaseName == null) {
+                        // database optional, and default as user
+                        this.databaseName = this.userName;
+                    }
+                    this.databaseName = StringUtils.toLowerEnglish(this.databaseName);
                     User user = null;
                     try {
                         user = server.selectUser(getRemoteAddress(), this.userName, this.databaseName);
@@ -334,20 +346,17 @@ public class PgProcessor extends SQLiteProcessor {
                         user = null;
                     }
                     if (user == null) {
-                        this.needFlush = true;
                         sendErrorAuth();
-                        break;
-                    }
-                    this.user = user;
-                    this.needFlush = true;
-                    
-                    // Request authentication
-                    if ("trust".equals(user.getAuthMethod())) {
-                        authOk();
                     } else {
-                        sendAuthenticationMessage();
+                        this.user = user;
+                        // Request authentication
+                        if ("trust".equals(user.getAuthMethod())) {
+                            authOk();
+                        } else {
+                            sendAuthenticationMessage();
+                        }
+                        this.initDone = true;
                     }
-                    initDone = true;
                 }
                 break;
             case 'p': {
@@ -583,7 +592,22 @@ public class PgProcessor extends SQLiteProcessor {
                         this.xQueryFailed = false;
                     }
                 } catch (SQLException e) {
-                    if (isCanceled(e)) {
+                    if ((sql instanceof CreateDatabaseStatement)
+                            && this.server.isUniqueViolated(e)) {
+                        CreateDatabaseStatement s = (CreateDatabaseStatement)sql;
+                        if (s.isQuite()) {
+                            this.server.traceError(log, "Database existing", e);
+                            try {
+                                tryFinish(sql);
+                                sendCommandComplete(sql, 0, false);
+                                this.xQueryFailed = false;
+                                break;
+                            } catch (SQLException cause) {
+                                e = cause;
+                            }
+                        }
+                    }
+                    if (this.server.isCanceled(e)) {
                         sendCancelQueryResponse();
                     } else {
                         sendErrorResponse(e);
@@ -657,7 +681,7 @@ public class PgProcessor extends SQLiteProcessor {
                     sendCommandComplete(sql, 0, true);
                     self.xQueryFailed = false;
                 } catch (SQLException e) {
-                    if (isCanceled(e)) {
+                    if (self.server.isCanceled(e)) {
                         sendCancelQueryResponse();
                     } else {
                         sendErrorResponse(e);
@@ -789,6 +813,24 @@ public class PgProcessor extends SQLiteProcessor {
                             if (next=this.parser.hasNext()) {
                                 sqlStmt = this.parser.next();
                             }
+                        } catch (SQLException e) {
+                            if ((sqlStmt instanceof CreateDatabaseStatement)
+                                    && self.server.isUniqueViolated(e)) {
+                                CreateDatabaseStatement s = (CreateDatabaseStatement)sqlStmt;
+                                if (s.isQuite()) {
+                                    self.server.traceError(log, "Database existing", e);
+                                    tryFinish(sqlStmt);
+                                    sendCommandComplete(sqlStmt, 0, false);
+                                    // try next
+                                    if (next=this.parser.hasNext()) {
+                                        sqlStmt = this.parser.next();
+                                    }
+                                } else {
+                                    throw e;
+                                }
+                            } else {
+                                throw e;
+                            }
                         } finally {
                             if (resetTask) {
                                 IoUtils.close(stat);
@@ -798,7 +840,7 @@ public class PgProcessor extends SQLiteProcessor {
                 } catch (SQLParseException e) {
                     sendErrorResponse(e);
                 } catch (SQLException e) {
-                    if (isCanceled(e)) {
+                    if (self.server.isCanceled(e)) {
                         sendCancelQueryResponse();
                     } else {
                         sendErrorResponse(e);
@@ -868,10 +910,6 @@ public class PgProcessor extends SQLiteProcessor {
                 }
             }
         }
-    }
-    
-    private static boolean isCanceled(SQLException e) {
-        return (e.getErrorCode() == SQLiteErrorCode.SQLITE_INTERRUPT.code);
     }
     
     private static boolean formatAsText(int pgType) {

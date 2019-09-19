@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 import org.sqlite.sql.meta.AlterUserStatement;
+import org.sqlite.sql.meta.CreateDatabaseStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
@@ -391,6 +392,124 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         AttachStatement stmt = new AttachStatement(this.sql);
         stmt.setDbName(dbName);
         stmt.setSchemaName(schemaName);
+        
+        return stmt;
+    }
+    
+    protected SQLStatement parseCommit() {
+        nextString("mmit");
+        return new TransactionStatement(this.sql, "COMMIT");
+    }
+
+    protected SQLStatement parseCreate() {
+        nextString("eate");
+        if (skipIgnorableIf() != -1) {
+            if (nextStringIf("user") != -1) {
+                skipIgnorable();
+                return parseCreateUser();
+            } else if (nextStringIf("database") != -1 
+                    || nextStringIf("schema")   != -1) {
+                skipIgnorable();
+                return parseCreateDatabase();
+            }
+        }
+        return new SQLStatement(this.sql, "CREATE");
+    }
+    
+    protected SQLStatement parseCreateDatabase() {
+        CreateDatabaseStatement stmt = new CreateDatabaseStatement(this.sql);
+        if (nextStringIf("if") != -1) {
+            skipIgnorable();
+            nextString("not");
+            skipIgnorable();
+            nextString("exists");
+            skipIgnorable();
+            stmt.setQuite(true);
+        }
+        stmt.setDb(nextString());
+        if (!nextEnd()) {
+            if (nextStringIf("location") != -1 || nextStringIf("directory") != -1) {
+                skipIgnorable();
+                stmt.setDir(nextString());
+                if (!nextEnd()) {
+                    throw syntaxError(); 
+                }
+            } else {
+                throw syntaxError();
+            }
+        }
+        
+        return stmt;
+    }
+    
+    protected SQLStatement parseCreateUser() {
+        CreateUserStatement stmt = new CreateUserStatement(this.sql);
+        stmt.setUser(nextString());
+        skipIgnorableIf();
+        nextChar('@');
+        skipIgnorableIf();
+        stmt.setHost(nextString());
+        
+        skipIgnorable();
+        if (nextStringIf("with") != -1) {
+            skipIgnorable();
+        }
+        for (;;) {
+            if (nextStringIf("superuser") != -1) {
+                skipIgnorableIf();
+                stmt.setSa(true);
+                continue;
+            }
+            if (nextStringIf("nosuperuser") != -1) {
+                skipIgnorableIf();
+                stmt.setSa(false);
+                continue;
+            }
+            if (nextStringIf("identified") != -1) {
+                skipIgnorable();
+                if (nextStringIf("by") != -1) {
+                    skipIgnorable();
+                    stmt.setPassword(nextString());
+                } else {
+                    nextString("with");
+                    skipIgnorable();
+                    String proto = "pg";
+                    nextString(proto);
+                    stmt.setProtocol(proto);
+                    skipIgnorable();
+                    // authentication method
+                    boolean hasAuth = false;
+                    for (String auth: authMethods.get(proto)) {
+                        if (nextStringIf(auth) != -1) {
+                            stmt.setAuthMethod(auth);
+                            hasAuth = true;
+                            break;
+                        }
+                    }
+                    if (!hasAuth) {
+                        throw syntaxError();
+                    }
+                }
+                if (skipIgnorableIf() != -1) {
+                    continue;
+                }
+                if (nextEnd()) {
+                    break;
+                }
+                throw syntaxError();
+            }
+            
+            if (nextEnd()) {
+                break;
+            }
+            throw syntaxError();
+        }
+        
+        // check
+        if (stmt.getPassword() == null && !"trust".equals(stmt.getAuthMethod())) {
+            String proto = stmt.getProtocol(), auth = stmt.getAuthMethod();
+            throw syntaxError("No password when identified with %s %s", proto, auth);
+        }
         
         return stmt;
     }
@@ -768,95 +887,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         nextString("d");
         return new TransactionStatement(this.sql, "END");
     }
-
-    protected SQLStatement parseCreate() {
-        nextString("eate");
-        if (skipIgnorableIf() != -1) {
-            if (nextStringIf("user") != -1) {
-                skipIgnorable();
-                return parseCreateUser();
-            }
-        }
-        return new SQLStatement(this.sql, "CREATE");
-    }
     
-    protected SQLStatement parseCreateUser() {
-        CreateUserStatement stmt = new CreateUserStatement(this.sql);
-        stmt.setUser(nextString());
-        skipIgnorableIf();
-        nextChar('@');
-        skipIgnorableIf();
-        stmt.setHost(nextString());
-        
-        skipIgnorable();
-        if (nextStringIf("with") != -1) {
-            skipIgnorable();
-        }
-        for (;;) {
-            if (nextStringIf("superuser") != -1) {
-                skipIgnorableIf();
-                stmt.setSa(true);
-                continue;
-            }
-            if (nextStringIf("nosuperuser") != -1) {
-                skipIgnorableIf();
-                stmt.setSa(false);
-                continue;
-            }
-            if (nextStringIf("identified") != -1) {
-                skipIgnorable();
-                if (nextStringIf("by") != -1) {
-                    skipIgnorable();
-                    stmt.setPassword(nextString());
-                } else {
-                    nextString("with");
-                    skipIgnorable();
-                    String proto = "pg";
-                    nextString(proto);
-                    stmt.setProtocol(proto);
-                    skipIgnorable();
-                    // authentication method
-                    boolean hasAuth = false;
-                    for (String auth: authMethods.get(proto)) {
-                        if (nextStringIf(auth) != -1) {
-                            stmt.setAuthMethod(auth);
-                            hasAuth = true;
-                            break;
-                        }
-                    }
-                    if (!hasAuth) {
-                        throw syntaxError();
-                    }
-                }
-                if (skipIgnorableIf() != -1) {
-                    continue;
-                }
-                if (nextEnd()) {
-                    break;
-                }
-                throw syntaxError();
-            }
-            
-            if (nextEnd()) {
-                break;
-            }
-            throw syntaxError();
-        }
-        
-        // check
-        if (stmt.getPassword() == null && !"trust".equals(stmt.getAuthMethod())) {
-            String proto = stmt.getProtocol(), auth = stmt.getAuthMethod();
-            throw syntaxError("No password when identified with %s %s", proto, auth);
-        }
-        
-        return stmt;
-    }
-
-    protected SQLStatement parseCommit() {
-        nextString("mmit");
-        return new TransactionStatement(this.sql, "COMMIT");
-    }
-
     protected SQLStatement parseBlockComment() {
         nextBlockComment();
         if (this.ei >= this.sql.length()) {

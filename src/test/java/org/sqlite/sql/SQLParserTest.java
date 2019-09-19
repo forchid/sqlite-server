@@ -27,6 +27,7 @@ import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
 import org.sqlite.sql.meta.AlterUserStatement;
+import org.sqlite.sql.meta.CreateDatabaseStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
@@ -147,6 +148,25 @@ public class SQLParserTest extends TestBase {
         commentTest("/*select 1;/*select 2;*/select 3;*/", 1);
         commentTest("/*select 1;/*select 2;*/select 3;*/--c", 1);
         commentTest("/*select 1;/*select 2;*/select 3;*/ --c", 1);
+        
+        createDatabaseTest("create database testdb", 1, false, "testdb", null);
+        createDatabaseTest(" create database Testdb", 1, false, "testdb", null);
+        createDatabaseTest("create DATABASE Testdb ", 1, false, "testdb", null);
+        createDatabaseTest("CREATE DATABASE Testdb ;", 1, false, "testdb", null);
+        createDatabaseTest("create database if not exists testdb", 1, true, "testdb", null);
+        createDatabaseTest("create database IF/*if*/NOT EXISTS testdb;", 1, true, "testdb", null);
+        createDatabaseTest("create database testdb location '/var/lib/sqlite'", 
+                1, false, "testdb", "/var/lib/sqlite");
+        createDatabaseTest("create database IF NOT EXISTS testdb location '/var/lib/sqlite'", 
+                1, true, "testdb", "/var/lib/sqlite");
+        createDatabaseTest("create database IF not exists 'TESTDB' directory '/var/lib/sqlite'", 
+                1, true, "testdb", "/var/lib/sqlite");
+        try {
+            createDatabaseTest("create database if", 1, false, "testdb", null);
+            fail("\"IF\" keyword can't be as dbname");
+        } catch (SQLParseException e) {
+            // OK
+        }
         
         // simple "create user"
         createUserTest("create user test@localhost identified by '123';", 1, 
@@ -770,6 +790,26 @@ public class SQLParserTest extends TestBase {
             assertTrue(protocol == null || protocol.equalsIgnoreCase(s.getProtocol()));
             assertTrue(authMethod == null || authMethod.equalsIgnoreCase(s.getAuthMethod()));
             assertTrue(sa == null || sa == s.isSa());
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void createDatabaseTest(String sqls, int stmts, boolean quiet, String dbname, String location) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            CreateDatabaseStatement s = (CreateDatabaseStatement)stmt;
+            assertTrue(!stmt.isComment());
+            assertTrue("CREATE DATABASE".equals(stmt.getCommand()));
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(stmt.isMetaStatement());
+            assertTrue(dbname.equals(s.getDb()));
+            assertTrue((location == null && location == s.getDir()) || location.equals(s.getDir()));
+            assertTrue(quiet == s.isQuite());
             ++i;
         }
         overTest(parser, i, stmts);

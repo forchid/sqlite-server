@@ -15,6 +15,7 @@
  */
 package org.sqlite.server;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -38,6 +39,7 @@ import org.sqlite.server.func.UserFunc;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
 import org.sqlite.sql.meta.AlterUserStatement;
+import org.sqlite.sql.meta.CreateDatabaseStatement;
 import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
@@ -584,6 +586,58 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     
     protected abstract void interalError() throws IOException;
     
+    protected void createDbFile(CreateDatabaseStatement stmt) throws SQLException {
+        String dir = stmt.getDir();
+        if (dir == null) {
+            dir = this.server.getDataDir().getAbsolutePath();
+        } else {
+            File dirFile = new File(dir);
+            if (dirFile.equals(this.server.getDataDir())) {
+                stmt.setDir(null);
+            }
+        }
+        // Check
+        String db = stmt.getDb();
+        File dbDir = new File(dir);
+        try {
+            dbDir = dbDir.getCanonicalFile();
+        } catch (IOException e) {
+            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
+            throw convertError(error, "Data directory format illegal");
+        }
+        stmt.setDir(dbDir.getAbsolutePath());
+        
+        File dbFile = new File(dbDir, db);
+        if (!dbFile.getName().equals(db)) {
+            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
+            throw convertError(error, "Database name isn't a file name");
+        }
+        if (dbFile.isFile() && dbFile.length() > 0L) {
+            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE;
+            throw convertError(error, "Database file already exists");
+        }
+        if (dbFile.isFile()) {
+            return;
+        }
+        
+        // Do create
+        if (!dbDir.isDirectory() && !dbDir.mkdirs()) {
+            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_IOERR;
+            throw convertError(error, "Can't create data directory");
+        }
+        try {
+            boolean exists = !dbFile.createNewFile();
+            if (exists) {
+                SQLiteErrorCode error = SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE;
+                throw convertError(error, "Database file already exists");
+            }
+        } catch (IOException e) {
+            this.server.traceError(log, "Can't create databse file", e);
+            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_IOERR;
+            throw convertError(error, "Can't create database file");
+        }
+    }
+    
     protected boolean tryBegin(SQLStatement sql) throws SQLException {
         boolean success = false;
         SQLiteConnection conn = getConnection();
@@ -597,6 +651,15 @@ public abstract class SQLiteProcessor implements AutoCloseable {
                 success = true;
             } 
         }
+        
+        if (!sql.isTransaction()) {
+            if (sql instanceof CreateDatabaseStatement) {
+                // It's necessary that creating dbFile before SQL execution
+                CreateDatabaseStatement s = (CreateDatabaseStatement)sql;
+                createDbFile(s);
+            }
+        }
+        
         if (server.isTrace()) {
             server.trace(log, "sqliteConn execute: autocommit {} ->", conn.getAutoCommit());
         }
@@ -647,10 +710,13 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         boolean autoCommit = conn.getAutoCommit();
         if (autoCommit) {
             detachMetaDb(conn);
-            if (sql instanceof GrantStatement | sql instanceof RevokeStatement) {
-                this.server.flushPrivileges();
-            } else if (sql instanceof CreateUserStatement) {
-                this.server.flushHosts();
+            if (!sql.isTransaction()) {
+                if (sql instanceof GrantStatement 
+                        || sql instanceof RevokeStatement) {
+                    this.server.flushPrivileges();
+                } else if (sql instanceof CreateUserStatement) {
+                    this.server.flushHosts();
+                }
             }
         }
         

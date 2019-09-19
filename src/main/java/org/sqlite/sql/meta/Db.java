@@ -17,6 +17,8 @@ package org.sqlite.sql.meta;
 
 import static java.lang.String.*;
 
+import org.sqlite.util.StringUtils;
+
 /** The user privileges on DB.
  * 
  * @author little-pan
@@ -52,7 +54,12 @@ public class Db {
     public Db(String user, String host, String db) {
         this.user = user;
         this.host = host;
-        this.db = db;
+        this.db = StringUtils.toLowerEnglish(db);
+    }
+    
+    public Db(User user) {
+        this(user.getUser(), user.getHost(), 
+                (user.getDb() == null? user.getUser(): user.getDb()));
     }
     
     public String getUser() {
@@ -76,7 +83,7 @@ public class Db {
     }
 
     public void setDb(String db) {
-        this.db = db;
+        this.db = StringUtils.toLowerEnglish(db);
     }
     
     /**

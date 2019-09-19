@@ -44,6 +44,7 @@ import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.SQLiteConnection;
+import org.sqlite.sql.meta.Catalog;
 import org.sqlite.sql.meta.Db;
 import org.sqlite.sql.meta.User;
 import org.sqlite.util.IoUtils;
@@ -102,6 +103,15 @@ public class SQLiteMetaDb implements AutoCloseable {
             + "create_priv, alter_priv, drop_priv, pragma_priv, vacuum_priv, "
             + "attach_priv "
             + "from db";
+    
+    protected static final String CREATE_TABLE_CATALOG = 
+            "create table if not exists catalog("
+            + "db varchar(64) not null,"
+            + "dir varchar(256),"
+            + "size integer not null default 0,"
+            + "primary key(db))";
+    protected static final String INSERT_CATALOG = 
+            "insert into catalog(db, dir, size)values(?, ?, ?)";
     
     private volatile boolean open = true;
     protected final SQLiteServer server;
@@ -180,7 +190,41 @@ public class SQLiteMetaDb implements AutoCloseable {
         this.open = true;
     }
     
-    public User createUser(User user) throws SQLException {
+    public void initdb(User superuser) throws SQLException {
+        SQLiteConnection conn = newConnection();
+        try {
+            conn.setAutoCommit(false);
+            Statement stmt = conn.createStatement();
+            
+            createUser(conn, stmt, superuser);
+            Db db = new Db(superuser);
+            db.setAllPriv(1);
+            createDb(conn, stmt, db);
+            
+            stmt.close();
+            conn.commit();
+        } finally {
+            conn.close();
+        }
+    }
+    
+    protected Catalog createCatalog(SQLiteConnection conn, Statement stmt, Catalog catalog) 
+            throws SQLException {
+        PreparedStatement ps;
+        int i;
+        
+        stmt.executeUpdate(CREATE_TABLE_CATALOG);
+        ps = conn.prepareStatement(INSERT_CATALOG);
+        i = 0;
+        ps.setString(++i, catalog.getDb());
+        ps.setString(++i, catalog.getDir());
+        ps.setLong(++i, catalog.getSize());
+        ps.executeUpdate();
+        
+        return catalog;
+    }
+    
+    protected User createUser(SQLiteConnection conn, Statement stmt, User user) throws SQLException {
         final String opass = user.getPassword();
         if (opass != null) {
             // Generate store password
@@ -190,88 +234,65 @@ public class SQLiteMetaDb implements AutoCloseable {
             user.setPassword(storePassword);
         }
         
-        try (SQLiteConnection conn = newConnection()) {
-            boolean failed = true;
-            conn.setAutoCommit(false);
-            try (Statement stmt = conn.createStatement()) {
-                stmt.executeUpdate(CREATE_TABLE_USER);
-                
-                try (PreparedStatement ps = conn.prepareStatement(INSERT_USER)) {
-                    int i = 0;
-                    ps.setString(++i, user.getHost());
-                    ps.setString(++i, user.getUser());
-                    ps.setString(++i, user.getPassword());
-                    ps.setString(++i, user.getProtocol());
-                    ps.setString(++i, user.getAuthMethod());
-                    ps.setInt(++i, user.getSa());
-                    ps.executeUpdate();
-                }
-                
-                if (user.getDb() != null) {
-                    Db db = new Db(user.getUser(), user.getHost(), user.getDb());
-                    createDb(conn, stmt, db, user.isSa());
-                }
-                
-                conn.commit();
-                failed = false;
-                return user;
-            } finally {
-                if (failed) {
-                    user.setPassword(opass);
-                    conn.rollback();
-                    failed = false;
-                }
-            }
-        }
-    }
-    
-    public Db createDb(SQLiteConnection conn, Db db, boolean createDbFile) throws SQLException {
         boolean failed = true;
-        conn.setAutoCommit(false);
-        try (Statement stmt = conn.createStatement()) {
-            createDb(conn, stmt, db, createDbFile);
-            conn.commit();
+        try {
+            PreparedStatement ps;
+            int i = 0;
+            
+            stmt.executeUpdate(CREATE_TABLE_USER);
+            ps = conn.prepareStatement(INSERT_USER);
+            ps.setString(++i, user.getHost());
+            ps.setString(++i, user.getUser());
+            ps.setString(++i, user.getPassword());
+            ps.setString(++i, user.getProtocol());
+            ps.setString(++i, user.getAuthMethod());
+            ps.setInt(++i, user.getSa());
+            ps.executeUpdate();
+            
             failed = false;
-            return db;
+            return user;
         } finally {
             if (failed) {
-                conn.rollback();
-                failed = false;
+                user.setPassword(opass);
             }
         }
     }
     
-    protected Db createDb(SQLiteConnection conn, Statement stmt, Db db, boolean createDbFile) 
-            throws SQLException {
-        if (createDbFile) {
-            File dbFile = new File(server.getDataDir(), db.getDb());
-            if (!server.inDataDir(db.getDb())) {
-                throw new SQLException("Database name isn't a relative file name");
-            }
-            String schema = db.getDb();
-            stmt.executeUpdate(format("attach database '%s' as '%s'", dbFile, schema));
-            stmt.executeUpdate(format("detach database '%s'", schema));
+    protected Db createDb(SQLiteConnection conn, Statement stmt, Db db) throws SQLException {
+        PreparedStatement ps;
+        int i;
+        
+        // check
+        final File dbFile = new File(server.getDataDir(), db.getDb());
+        if (!server.inDataDir(db.getDb())) {
+            throw new SQLException("db name isn't a file name");
         }
         
         stmt.executeUpdate(CREATE_TABLE_DB);
-        try (PreparedStatement ps = conn.prepareStatement(INSERT_DB)) {
-            int i = 0;
-            ps.setString(++i, db.getHost());
-            ps.setString(++i, db.getDb());
-            ps.setString(++i, db.getUser());
-            ps.setInt(++i, db.getAllPriv());
-            ps.setInt(++i, db.getSelectPriv());
-            ps.setInt(++i, db.getInsertPriv());
-            ps.setInt(++i, db.getUpdatePriv());
-            ps.setInt(++i, db.getDeletePriv());
-            ps.setInt(++i, db.getCreatePriv());
-            ps.setInt(++i, db.getAlterPriv());
-            ps.setInt(++i, db.getDropPriv());
-            ps.setInt(++i, db.getPragmaPriv());
-            ps.setInt(++i, db.getVacuumPriv());
-            ps.setInt(++i, db.getAttachPriv());
-            ps.executeUpdate();
-        }
+        ps = conn.prepareStatement(INSERT_DB);
+        i = 0;
+        ps.setString(++i, db.getHost());
+        ps.setString(++i, db.getDb());
+        ps.setString(++i, db.getUser());
+        ps.setInt(++i, db.getAllPriv());
+        ps.setInt(++i, db.getSelectPriv());
+        ps.setInt(++i, db.getInsertPriv());
+        ps.setInt(++i, db.getUpdatePriv());
+        ps.setInt(++i, db.getDeletePriv());
+        ps.setInt(++i, db.getCreatePriv());
+        ps.setInt(++i, db.getAlterPriv());
+        ps.setInt(++i, db.getDropPriv());
+        ps.setInt(++i, db.getPragmaPriv());
+        ps.setInt(++i, db.getVacuumPriv());
+        ps.setInt(++i, db.getAttachPriv());
+        ps.executeUpdate();
+        
+        Catalog catalog = new Catalog(db.getDb());
+        createCatalog(conn, stmt, catalog);
+        // Do create
+        String schema = db.getDb();
+        stmt.executeUpdate(format("attach database '%s' as '%s'", dbFile, schema));
+        stmt.executeUpdate(format("detach database '%s'", schema));
         
         return db;
     }

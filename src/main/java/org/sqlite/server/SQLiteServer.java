@@ -198,7 +198,7 @@ public abstract class SQLiteServer implements AutoCloseable {
         try {
             trace(log, "initdb in {}", dataDir);
             if (!inDataDir(this.dbName)) {
-                throw new IllegalArgumentException("db must be a relative file name");
+                throw new IllegalArgumentException("db name isn't a file name");
             }
             
             User sa = User.createSuperuser(this.username, this.password);
@@ -206,14 +206,30 @@ public abstract class SQLiteServer implements AutoCloseable {
             sa.setHost(this.host);
             sa.setProtocol(this.protocol);
             sa.setDb(this.dbName);
-            this.metaDb.createUser(sa);
+            this.metaDb.initdb(sa);
         } catch (SQLException e) {
-            SQLiteErrorCode existError = SQLiteErrorCode.SQLITE_CONSTRAINT;
-            if (existError.code == e.getErrorCode()) {
+            traceError(log, "initdb fatal", e);
+            if (isUniqueViolated(e)) {
                 throw new IllegalStateException("Data dir has been initialized: " + dataDir);
             }
-            throw new IllegalStateException("Initdb fatal: " + e.getMessage(), e);
+            throw new IllegalStateException("initdb fatal: " + e.getMessage(), e);
         }
+    }
+    
+    public boolean isUniqueViolated(SQLException cause) {
+        int errorCode = cause.getErrorCode();
+        
+        if (SQLiteErrorCode.SQLITE_CONSTRAINT.code == errorCode) {
+            String errorMessage = cause.getMessage();
+            return (errorMessage != null && errorMessage.contains("UNIQUE"));
+        }
+        
+        return (SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE.code == errorCode 
+                || SQLiteErrorCode.SQLITE_CONSTRAINT_PRIMARYKEY.code == errorCode);
+    }
+    
+    public boolean isCanceled(SQLException e) {
+        return (e.getErrorCode() == SQLiteErrorCode.SQLITE_INTERRUPT.code);
     }
     
     protected void initDataDir() {
