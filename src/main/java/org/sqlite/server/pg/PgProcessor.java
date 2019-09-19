@@ -724,6 +724,7 @@ public class PgProcessor extends SQLiteProcessor {
                                 return;
                             }
                         }
+                        tryFinish(sqlStmt);
                         IoUtils.close(this.rs);
                         this.rs = null;
                         IoUtils.close(this.curStat);
@@ -760,7 +761,6 @@ public class PgProcessor extends SQLiteProcessor {
                                     resetAutoCommit();
                                 }
                             }
-                            tryFinish(sqlStmt);
                             
                             if (result) {
                                 ResultSet rs = stat.getResultSet();
@@ -777,8 +777,10 @@ public class PgProcessor extends SQLiteProcessor {
                                         return;
                                     }
                                 }
+                                tryFinish(sqlStmt);
                                 sendCommandComplete(sqlStmt, 0, result);
                             } else {
+                                tryFinish(sqlStmt);
                                 int n = stat.getUpdateCount();
                                 sendCommandComplete(sqlStmt, n, result);
                             }
