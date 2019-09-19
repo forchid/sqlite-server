@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server.meta;
+package org.sqlite.sql.meta;
 
-import org.sqlite.sql.meta.CreateUserStatement;
 
 /**
  * @author little-pan
@@ -30,10 +29,14 @@ public class User {
     private String db;
     private String protocol;
     private String authMethod;
-    private int sa = CreateUserStatement.USER;
+    private int sa;
     
     public User() {
         
+    }
+    
+    public User(String user, String password) {
+        this(user, password, 0);
     }
     
     public User(String user, String password, int sa) {
@@ -99,7 +102,15 @@ public class User {
     }
     
     public boolean isSa() {
-        return (this.sa == CreateUserStatement.SUPER);
+        return (this.sa == 1);
     }
 
+    public static int convertSa(boolean sa) {
+        return (sa? 1: 0);
+    }
+    
+    public static User createSuperuser(String user, String password) {
+        return new User(user, password, 1);
+    }
+    
 }

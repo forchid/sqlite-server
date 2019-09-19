@@ -44,8 +44,8 @@ import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.SQLiteConnection;
-import org.sqlite.server.meta.Db;
-import org.sqlite.server.meta.User;
+import org.sqlite.sql.meta.Db;
+import org.sqlite.sql.meta.User;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SecurityUtils;
 

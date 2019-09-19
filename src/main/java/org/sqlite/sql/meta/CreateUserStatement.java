@@ -33,9 +33,6 @@ import org.sqlite.sql.SQLStatement;
  */
 public class CreateUserStatement extends SQLStatement implements MetaStatement {
     
-    public static final int SUPER = 1;
-    public static final int USER  = 0;
-    
     protected String user;
     protected String host;
     protected boolean sa;
@@ -108,7 +105,7 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     @Override
     public String getMetaSQL(String metaSchema) {
         String password = this.password==null? "NULL": "'"+this.password+"'" ;
-        int sa = isSa()? SUPER: USER;
+        int sa = User.convertSa(isSa());
         String f = "insert into '%s'.user(host, user, password, protocol, auth_method, sa)"
                 + "values('%s', '%s', %s, '%s', '%s', %d)";
         String sql = format(f, metaSchema, 
@@ -131,10 +128,6 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     @Override
     public boolean needSa() {
         return true;
-    }
-    
-    public static int convertSa(boolean sa) {
-        return (sa? SUPER: USER);
     }
     
 }

@@ -107,7 +107,7 @@ public class AlterUserStatement extends SQLStatement implements MetaStatement {
             .append("set");
         boolean hasSet = false;
         if (this.sa != null) {
-            sb.append(hasSet?',':"").append(" sa = ").append(CreateUserStatement.convertSa(this.sa));
+            sb.append(hasSet?',':"").append(" sa = ").append(User.convertSa(this.sa));
             hasSet = true;
         }
         if (this.password != null) {

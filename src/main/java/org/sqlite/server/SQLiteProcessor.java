@@ -35,7 +35,6 @@ import org.sqlite.server.func.CurrentUserFunc;
 import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.UserFunc;
-import org.sqlite.server.meta.User;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
 import org.sqlite.sql.meta.AlterUserStatement;
@@ -45,6 +44,7 @@ import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.MetaStatement;
 import org.sqlite.sql.meta.RevokeStatement;
 import org.sqlite.sql.meta.ShowGrantsStatement;
+import org.sqlite.sql.meta.User;
 import org.sqlite.util.IoUtils;
 
 /**

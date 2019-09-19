@@ -15,7 +15,7 @@
  */
 package org.sqlite.server.func;
 
-import org.sqlite.server.meta.User;
+import org.sqlite.sql.meta.User;
 
 /** Function CURRENT_USER()
  * 
