@@ -125,6 +125,8 @@ public class SQLiteMetaDb implements AutoCloseable {
     protected final ConcurrentMap<String, Db> privCache;
     private final AtomicBoolean privLoading = new AtomicBoolean();
     private volatile boolean flushPrivs = true;
+    /** db -> catalog */
+    protected final ConcurrentMap<String, Catalog> catalogCache;
     
     public SQLiteMetaDb(SQLiteServer server, File metaFile) {
         this.server = server;
@@ -132,6 +134,7 @@ public class SQLiteMetaDb implements AutoCloseable {
         this.hostsCache = new ConcurrentHashMap<>();
         this.reslvCache = new ConcurrentHashMap<>();
         this.privCache = new ConcurrentHashMap<>();
+        this.catalogCache = new ConcurrentHashMap<>();
     }
     
     public boolean isInited() {
@@ -336,7 +339,7 @@ public class SQLiteMetaDb implements AutoCloseable {
         return (d.hasPriv(command));
     }
     
-    public int selectUserCount(SQLiteConnection conn) throws SQLException {
+    protected int selectUserCount(SQLiteConnection conn) throws SQLException {
         int n = 0;
         try (Statement stmt = conn.createStatement()) {
             if (!tableExists(stmt, "user")) {
@@ -352,6 +355,31 @@ public class SQLiteMetaDb implements AutoCloseable {
         }
         
         return n;
+    }
+    
+    public Catalog selectCatalog(String db) throws SQLException {
+        Catalog catalog = this.catalogCache.get(db);
+        if (catalog != null) {
+            return catalog;
+        }
+        
+        this.server.trace(log, "Load '{}' catalog", db);
+        try (SQLiteConnection conn = newConnection()) {
+            String sql = "select db, dir, size from catalog where db = ?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setString(1, db);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                catalog = new Catalog(rs.getString(1), rs.getString(2));
+                catalog.setSize(rs.getLong(3));
+                this.server.trace(log, "Load '{}' catalog OK", db);
+            }
+        }
+        
+        if (catalog != null) {
+            this.catalogCache.put(db, catalog);
+        }
+        return catalog;
     }
     
     public User selectUser(String host, String protocol, String user, String db) 
@@ -569,6 +597,10 @@ public class SQLiteMetaDb implements AutoCloseable {
             this.reslvCache.put(h, new Resolution(false));
             return false;
         }
+    }
+    
+    public void flushCatalogs() {
+        this.catalogCache.clear();
     }
     
     public void flushHosts() {

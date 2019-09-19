@@ -44,6 +44,7 @@ import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.pg.PgServer;
+import org.sqlite.sql.meta.Catalog;
 import org.sqlite.sql.meta.User;
 import org.sqlite.util.IoUtils;
 
@@ -575,15 +576,16 @@ public abstract class SQLiteServer implements AutoCloseable {
         return (!this.isStopped());
     }
     
-    public SQLiteConnection newSQLiteConnection(String databaseName, boolean createDb)
-            throws SQLException {
-        String url = "jdbc:sqlite:"+databaseName;
-        if (!":memory:".equals(databaseName) && !"".equals(databaseName)/* temporary */) {
-            if (!createDb && !dbExists(databaseName)) {
+    public SQLiteConnection newSQLiteConnection(String dbName) throws SQLException {
+        String url = "jdbc:sqlite:"+dbName;
+        if (!":memory:".equals(dbName) && !"".equals(dbName)/* temporary */) {
+            Catalog catalog = this.metaDb.selectCatalog(dbName);
+            if (catalog == null || !dbFileExists(dbName, catalog.getDir())) {
+                trace(log, "Database '{}' {} not exists", dbName, (catalog == null? "catalog": "file"));
                 SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
                 throw new SQLException(error.message, "08001", error.code);
             }
-            url = String.format("jdbc:sqlite:%s", getDbFile(databaseName));
+            url = String.format("jdbc:sqlite:%s", getDbFile(dbName, catalog.getDir()));
         }
         trace(log, "SQLite connection {}", url);
         
@@ -625,8 +627,16 @@ public abstract class SQLiteServer implements AutoCloseable {
         return this.dataDir;
     }
     
+    public File getDbFile(String dbName, String dataDir) {
+        File dirFile = this.dataDir;
+        if (dataDir != null) {
+            dirFile = new File(dataDir);
+        }
+        return new File(dirFile, dbName);
+    }
+    
     public File getDbFile(String dbName) {
-        return new File(getDataDir(), dbName);
+        return new File(this.dataDir, dbName);
     }
     
     protected SQLiteMetaDb getMetaDb() {
@@ -654,14 +664,31 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public boolean inDataDir(String filename) {
+        return inDataDir(filename, this.dataDir);
+    }
+    
+    public boolean inDataDir(String filename, File dataDir) {
         File dbFile = new File(dataDir, filename);
         return (dbFile.getParentFile().equals(dataDir) 
                 && dbFile.getName().equals(filename));
     }
     
-    public boolean dbExists(String filename) {
+    public boolean dbFileExists(String filename) {
+        return (dbFileExists(filename, this.dataDir));
+    }
+    
+    public boolean dbFileExists(String filename, File dataDir) {
         File dbFile = new File(dataDir, filename);
-        return (inDataDir(filename) && dbFile.isFile());
+        return (inDataDir(filename, dataDir) && dbFile.isFile());
+    }
+    
+    public boolean dbFileExists(String filename, String dataDir) {
+        File dirFile = this.dataDir;
+        if (dataDir != null) {
+            dirFile = new File(dataDir);
+        }
+        File dbFile = new File(dirFile, filename);
+        return (inDataDir(filename, dirFile) && dbFile.isFile());
     }
     
     public String getAuthMethod() {
@@ -686,6 +713,10 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public long getStartNanos() {
         return this.startNanos;
+    }
+    
+    public void flushCatalogs() {
+        this.metaDb.flushCatalogs();
     }
     
     public void flushHosts() {

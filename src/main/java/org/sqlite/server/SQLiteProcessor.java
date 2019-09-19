@@ -708,15 +708,15 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         }
         
         boolean autoCommit = conn.getAutoCommit();
-        if (autoCommit) {
+        if (autoCommit && sql.isMetaStatement()) {
             detachMetaDb(conn);
-            if (!sql.isTransaction()) {
-                if (sql instanceof GrantStatement 
-                        || sql instanceof RevokeStatement) {
-                    this.server.flushPrivileges();
-                } else if (sql instanceof CreateUserStatement) {
-                    this.server.flushHosts();
-                }
+            if (sql instanceof GrantStatement 
+                    || sql instanceof RevokeStatement) {
+                this.server.flushPrivileges();
+            } else if (sql instanceof CreateUserStatement) {
+                this.server.flushHosts();
+            } else if (sql instanceof CreateDatabaseStatement) {
+                this.server.flushCatalogs();
             }
         }
         
