@@ -32,6 +32,7 @@ import org.sqlite.sql.meta.CreateUserStatement;
 import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.RevokeStatement;
+import org.sqlite.sql.meta.ShowDatabasesStatement;
 import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 
@@ -534,6 +535,12 @@ public class SQLParserTest extends TestBase {
         txBeginTest("begIn;/*tx*/begin/*tx*/--;", 2);
         txBeginTest("begIn transaction;/*tx*/begin/*tx*/--;", 2);
         
+        showDatabasesTest("show databases", 1, false);
+        showDatabasesTest(" Show DATABASES", 1, false);
+        showDatabasesTest(" Show all DATABASES", 1, true);
+        showDatabasesTest(" Show ALL DATABASES;", 1, true);
+        showDatabasesTest(" Show ALL DATABASES ;", 1, true);
+        
         showGrantsTest("show grants for test@localhost", 
                 1, "localhost", "test", false, true);
         showGrantsTest("show grants for 'test' @ 'localhost'", 
@@ -941,6 +948,25 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showDatabasesTest(String sqls, int stmts, boolean all) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW DATABASES %s", stmt);
+            assertTrue("SHOW DATABASES".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowDatabasesStatement s = (ShowDatabasesStatement)stmt;
+            assertTrue(s.isMetaStatement());
+            assertTrue(all == s.isAll());
             ++i;
             parser.remove();
         }

@@ -31,6 +31,7 @@ import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.MetaStatement;
 import org.sqlite.sql.meta.RevokeStatement;
+import org.sqlite.sql.meta.ShowDatabasesStatement;
 import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.StringUtils;
@@ -660,45 +661,66 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         nextString("ow");
         skipIgnorable();
         if (nextStringIf("grants") != -1) {
-            ShowGrantsStatement stmt = new ShowGrantsStatement(this.sql);
-            if (nextEnd()) {
-                stmt.setCurrentUser(true);
-            } else {
-                nextString("for");
-                skipIgnorable();
-                if (nextStringIf("current_user") != -1) {
-                    if (nextEnd()) {
-                        stmt.setCurrentUser(true);
-                    } else {
-                        skipIgnorableIf();
-                        nextChar('(');
-                        skipIgnorableIf();
-                        nextChar(')');
-                        if (nextEnd()) {
-                            stmt.setCurrentUser(true);
-                        } else {
-                            throw syntaxError();
-                        }
-                    }
-                } else {
-                    String user = nextString();
-                    if (!nextEnd()) {
-                        nextChar('@');
-                        skipIgnorableIf();
-                        String host = nextString();
-                        if (nextEnd()) {
-                            stmt.setHost(host);
-                        } else {
-                            throw syntaxError();
-                        }
-                    }
-                    stmt.setUser(user);
-                }
-            }
+            return parseShowGrants();
+        } else if (nextStringIf("databases") != -1) {
+            return parseShowDatabases(false);
+        } else if (nextStringIf("all") != -1) {
+            skipIgnorable();
+            nextString("databases");
+            return parseShowDatabases(true);
+        }
+        
+        throw syntaxError();
+    }
+    
+    protected SQLStatement parseShowDatabases(boolean all) {
+        if (nextEnd()) {
+            ShowDatabasesStatement stmt = new ShowDatabasesStatement(this.sql);
+            stmt.setAll(all);
             return stmt;
         }
         
         throw syntaxError();
+    }
+    
+    protected SQLStatement parseShowGrants() {
+        ShowGrantsStatement stmt = new ShowGrantsStatement(this.sql);
+        if (nextEnd()) {
+            stmt.setCurrentUser(true);
+        } else {
+            nextString("for");
+            skipIgnorable();
+            if (nextStringIf("current_user") != -1) {
+                if (nextEnd()) {
+                    stmt.setCurrentUser(true);
+                } else {
+                    skipIgnorableIf();
+                    nextChar('(');
+                    skipIgnorableIf();
+                    nextChar(')');
+                    if (nextEnd()) {
+                        stmt.setCurrentUser(true);
+                    } else {
+                        throw syntaxError();
+                    }
+                }
+            } else {
+                String user = nextString();
+                if (!nextEnd()) {
+                    nextChar('@');
+                    skipIgnorableIf();
+                    String host = nextString();
+                    if (nextEnd()) {
+                        stmt.setHost(host);
+                    } else {
+                        throw syntaxError();
+                    }
+                }
+                stmt.setUser(user);
+            }
+        }
+        
+        return stmt;
     }
 
     protected SQLStatement parseRelease() {

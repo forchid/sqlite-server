@@ -45,6 +45,7 @@ import org.sqlite.sql.meta.DropUserStatement;
 import org.sqlite.sql.meta.GrantStatement;
 import org.sqlite.sql.meta.MetaStatement;
 import org.sqlite.sql.meta.RevokeStatement;
+import org.sqlite.sql.meta.ShowDatabasesStatement;
 import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.sql.meta.User;
 import org.sqlite.util.IoUtils;
@@ -258,11 +259,16 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     protected void checkPerm(SQLStatement stmt) throws SQLException {
         final User user = this.user;
         if (user.isSa() || stmt.isTransaction() || stmt.isEmpty()) {
-            if (stmt instanceof ShowGrantsStatement) {
-                ShowGrantsStatement s = (ShowGrantsStatement)stmt;
-                if (s.isCurrentUser()) {
-                    s.setHost(user.getHost());
-                    s.setUser(user.getUser());
+            if (stmt.isMetaStatement()) {
+                if (stmt instanceof ShowGrantsStatement) {
+                    ShowGrantsStatement s = (ShowGrantsStatement)stmt;
+                    if (s.isCurrentUser()) {
+                        s.setHost(user.getHost());
+                        s.setUser(user.getUser());
+                    }
+                } else if (stmt instanceof ShowDatabasesStatement) {
+                    ShowDatabasesStatement s = (ShowDatabasesStatement)stmt;
+                    s.setSa(user.isSa());
                 }
             }
             return;
@@ -303,6 +309,9 @@ public abstract class SQLiteProcessor implements AutoCloseable {
                 } else {
                     throw convertError(SQLiteErrorCode.SQLITE_PERM);
                 }
+            } else if (stmt instanceof ShowDatabasesStatement) {
+                ShowDatabasesStatement s = (ShowDatabasesStatement)stmt;
+                s.setUser(user);
             }
         } else {
             String command = stmt.getCommand();
