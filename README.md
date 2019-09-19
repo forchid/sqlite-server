@@ -6,6 +6,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + High performance(insert 50,000 ~ 100,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
 + Add a feature of user, privilege and database management for SQLite server engine
 + Use NIO infrastructure for supporting many connections by a few threads, SQLite server workers is default CPU cores
++ Added SQL statements that include CREATE USER, ALTER USER, DROP USER, GRANT, REVOKE, SHOW GRANTS for administrative purposes
 
 # Examples
 1. Standalone SQLite server
