@@ -65,7 +65,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     static final int maxWriteBuffer = getInteger("org.sqlite.server.procssor.maxWriteBuffer", 1<<12);
     
     protected final InetSocketAddress remoteAddress;
-    protected final SocketChannel channel;
+    protected SocketChannel channel;
     protected Selector selector;
     protected ByteBuffer readBuffer;
     protected Deque<ByteBuffer> writeQueue;
@@ -84,7 +84,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     private SQLiteConnection connection;
     private String metaSchema = null;
-    protected final Stack<TransactionStatement> savepointStack;
+    protected Stack<TransactionStatement> savepointStack;
     
     protected SQLiteProcessor(SocketChannel channel, int processId, SQLiteServer server)
             throws NetworkException {
@@ -155,14 +155,19 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
     }
     
-    protected void detachMetaDb() throws SQLException {
+    protected void detachMetaDb() throws IllegalStateException {
         SQLiteConnection conn = getConnection();
-        if (this.metaSchema == null || !conn.getAutoCommit()) {
+        if (this.metaSchema == null || !isAutoCommit()) {
             return;
         }
-        getMetaDb().detachFrom(conn, this.metaSchema);
-        trace(log, "detach {}", this.metaSchema);
-        this.metaSchema = null;
+        
+        try {
+            getMetaDb().detachFrom(conn, this.metaSchema);
+            trace(log, "detach {}", this.metaSchema);
+            this.metaSchema = null;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Detach metaDb error", e);
+        }
     }
     
     public SQLiteAuthMethod newAuthMethod(String protocol, String authMethod) {
@@ -292,13 +297,8 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             }
         }
         
-        try {
-            if (isAutoCommit()) {
-                detachMetaDb();
-            }
-        } catch (SQLException e) {
-            traceError(log, "Detach metaDb fatal", e);
-            this.worker.close(this);
+        if (isAutoCommit()) {
+            detachMetaDb();
         }
     }
     
@@ -403,9 +403,12 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     protected void read() {
         try {
             process();
-        } catch (IOException e) {
+        } catch (Exception e) {
             this.server.traceError(log, "process error", e);
             this.worker.close(this);
+        } catch (OutOfMemoryError e) {
+            this.worker.close(this);
+            log.error("No memory", e);
         }
     }
     
@@ -462,9 +465,12 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     protected void write() {
         try {
             flush();
-        } catch (IOException |SQLException e) {
+        } catch (Exception e) {
             this.server.traceError(log, "flush error", e);
             this.worker.close(this);
+        } catch (OutOfMemoryError e) {
+            this.worker.close(this);
+            log.error("No memory", e);
         }
     }
     
@@ -677,8 +683,17 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
         this.open = false;
         
+        // release buffers
+        this.readBuffer = null;
+        this.writeQueue = null;
+        this.savepointStack = null;
+        
+        // release connections
         IoUtils.close(this.channel);
+        this.channel = null;
         IoUtils.close(this.connection);
+        this.connection = null;
+        
         this.server.trace(log, "Close: id {}", this.id);
     }
     

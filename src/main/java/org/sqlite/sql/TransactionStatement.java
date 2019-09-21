@@ -78,7 +78,7 @@ public class TransactionStatement extends SQLStatement {
     }
     
     @Override
-    public void postResult() throws SQLException {
+    public void postResult() throws IllegalStateException {
         String command = this.command;
         switch (command) {
         case "COMMIT":

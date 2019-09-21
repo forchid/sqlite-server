@@ -67,7 +67,7 @@ public class CreateDatabaseStatement extends MetaStatement {
     }
     
     @Override
-    public void postResult() throws SQLException {
+    public void postResult() {
         super.postResult();
         SQLiteProcessor proc = getContext();
         proc.getServer().flushCatalogs();

@@ -15,9 +15,7 @@
  */
 package org.sqlite.server.sql.meta;
 
-import static java.lang.String.*;
-
-import java.sql.SQLException;
+import static java.lang.String.format;
 
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteAuthMethod;
@@ -108,7 +106,7 @@ public class CreateUserStatement extends MetaStatement {
     }
     
     @Override
-    public void postResult() throws SQLException {
+    public void postResult() {
         super.postResult();
         SQLiteProcessor proc = getContext();
         proc.getServer().flushHosts();

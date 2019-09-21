@@ -68,7 +68,7 @@ public abstract class MetaStatement extends SQLStatement {
     }
     
     @Override
-    public void postResult() throws SQLException {
+    public void postResult() throws IllegalStateException {
         if (this.context.isAutoCommit()) {
             SQLiteProcessor proc = getContext();
             proc.detachMetaDb();

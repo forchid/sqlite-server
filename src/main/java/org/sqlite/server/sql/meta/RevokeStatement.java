@@ -15,7 +15,6 @@
  */
 package org.sqlite.server.sql.meta;
 
-import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -154,7 +153,7 @@ public class RevokeStatement extends MetaStatement {
     }
     
     @Override
-    public void postResult() throws SQLException {
+    public void postResult() {
         super.postResult();
         SQLiteProcessor proc = getContext();
         proc.getServer().flushPrivileges();

@@ -165,7 +165,7 @@ public class SQLiteWorker implements Runnable {
             procsUnlock();
         }
         
-        IoUtils.close(processor);
+        processor.close();
     }
 
     @Override

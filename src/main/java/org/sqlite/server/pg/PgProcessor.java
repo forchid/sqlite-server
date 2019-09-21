@@ -580,14 +580,10 @@ public class PgProcessor extends SQLiteProcessor {
                         CreateDatabaseStatement s = (CreateDatabaseStatement)sqlStmt;
                         if (s.isQuite()) {
                             this.server.traceError(log, "Database existing", e);
-                            try {
-                                sqlStmt.postResult();
-                                sendCommandComplete(sqlStmt, 0, false);
-                                this.xQueryFailed = false;
-                                break;
-                            } catch (SQLException cause) {
-                                e = cause;
-                            }
+                            sqlStmt.postResult();
+                            sendCommandComplete(sqlStmt, 0, false);
+                            this.xQueryFailed = false;
+                            break;
                         }
                     }
                     if (this.server.isCanceled(e)) {

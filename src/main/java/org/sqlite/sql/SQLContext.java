@@ -46,8 +46,17 @@ public abstract class SQLContext {
     
     public abstract void traceError(Logger log, String tag, String message, Throwable cause);
     
-    public boolean isAutoCommit() throws SQLException {
-        return (getConnection().getAutoCommit());
+    /**Query the autoCommit flag in this SQL context.
+     * 
+     * @return true if autoCommit, otherwise false
+     * @throws IllegalStateException if this SQL context closed
+     */
+    public boolean isAutoCommit() throws IllegalStateException {
+        try {
+            return (getConnection().getAutoCommit());
+        } catch (SQLException e) {
+            throw new IllegalStateException("SQL context closed", e);
+        }
     }
     
     protected abstract void prepareTransaction(TransactionStatement txSql);

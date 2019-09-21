@@ -15,9 +15,8 @@
  */
 package org.sqlite.server.sql.meta;
 
-import static java.lang.String.*;
+import static java.lang.String.format;
 
-import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -132,7 +131,7 @@ public class GrantStatement extends MetaStatement {
     }
     
     @Override
-    public void postResult() throws SQLException {
+    public void postResult() {
         super.postResult();
         SQLiteProcessor proc = getContext();
         proc.getServer().flushPrivileges();
