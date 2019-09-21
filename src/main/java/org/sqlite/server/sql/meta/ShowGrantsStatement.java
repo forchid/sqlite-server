@@ -13,10 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
 import static java.lang.String.*;
 
+import java.sql.SQLException;
+
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.MetaStatement;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -27,7 +31,7 @@ import org.sqlite.sql.SQLStatement;
  * @since 2019-09-18
  *
  */
-public class ShowGrantsStatement extends SQLStatement implements MetaStatement {
+public class ShowGrantsStatement extends MetaStatement {
     
     protected String host = "%";
     protected String user;
@@ -40,6 +44,11 @@ public class ShowGrantsStatement extends SQLStatement implements MetaStatement {
 
     @Override
     public String getMetaSQL(String metaSchema) throws SQLParseException {
+        if (isCurrentUser()) {
+            User metaUser = getMetaUser();
+            setHost(metaUser.getHost());
+            setUser(metaUser.getUser());
+        }
         if (this.user == null) {
             throw new SQLParseException("No 'user' specified");
         }
@@ -57,7 +66,7 @@ public class ShowGrantsStatement extends SQLStatement implements MetaStatement {
     }
 
     @Override
-    public boolean needSa() {
+    public boolean isNeedSa() {
         return (!currentUser);
     }
     
@@ -78,7 +87,7 @@ public class ShowGrantsStatement extends SQLStatement implements MetaStatement {
     }
 
     public boolean isCurrentUser() {
-        return currentUser;
+        return this.currentUser;
     }
 
     public void setCurrentUser(boolean currentUser) {
@@ -91,6 +100,20 @@ public class ShowGrantsStatement extends SQLStatement implements MetaStatement {
         } else {
             return (host.equals(this.host) && user.equals(this.user));
         }
+    }
+    
+    @Override
+    protected void checkPermission() throws SQLException {
+        User metaUser = getMetaUser();
+        if (metaUser.isSa() || !isNeedSa()) {
+            return;
+        }
+        
+        if (isCurrentUser(metaUser.getHost(), metaUser.getUser())) {
+            return;
+        }
+        
+        throw convertError(SQLiteErrorCode.SQLITE_PERM);
     }
     
 }

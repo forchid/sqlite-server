@@ -15,7 +15,14 @@
  */
 package org.sqlite.sql;
 
-import org.sqlite.sql.meta.MetaStatement;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.sqlite.util.IoUtils;
 
 /**SQL statement.
  * 
@@ -23,10 +30,16 @@ import org.sqlite.sql.meta.MetaStatement;
  * @since 2019-09-04
  *
  */
-public class SQLStatement {
+public class SQLStatement implements AutoCloseable {
+    static final Logger log = LoggerFactory.getLogger(SQLStatement.class);
     
     protected final String command;
     protected final String sql;
+    
+    protected SQLContext context;
+    protected Statement jdbcStatement;
+    protected boolean prepared;
+    private boolean open = true;
     
     protected boolean query;
     protected boolean comment;
@@ -52,6 +65,10 @@ public class SQLStatement {
         return this.sql;
     }
     
+    public String getExecutableSQL() throws SQLException {
+        return getSQL();
+    }
+    
     public String getCommand() {
         return this.command;
     }
@@ -65,7 +82,7 @@ public class SQLStatement {
     }
     
     public boolean isTransaction() {
-        return (this instanceof TransactionStatement);
+        return false;
     }
     
     public boolean isComment() {
@@ -76,6 +93,14 @@ public class SQLStatement {
         this.comment = comment;
     }
     
+    public SQLContext getContext() {
+        return this.context;
+    }
+    
+    public void setContext(SQLContext context) {
+        this.context = context;
+    }
+    
     public boolean isEmpty() {
         return this.empty;
     }
@@ -84,13 +109,119 @@ public class SQLStatement {
         this.empty = empty;
     }
     
-    public boolean isMetaStatement() {
-        return (this instanceof MetaStatement);
+    public boolean isPrepared() {
+        return this.prepared;
+    }
+    
+    public void setPrepared(boolean prepared) {
+        this.prepared = prepared;
+    }
+    
+    public PreparedStatement prepare() throws SQLException, IllegalStateException {
+        if (this.jdbcStatement != null) {
+            throw new IllegalStateException(this.command + " statement prepared");
+        }
+        if (this.empty) {
+            throw new IllegalStateException("Empty statement can't be prepared");
+        }
+        checkPermission();
+        
+        Connection conn = this.context.getConnection();
+        String sql = getExecutableSQL();
+        PreparedStatement ps = conn.prepareStatement(sql);
+        this.jdbcStatement = ps;
+        this.prepared = true;
+        return ps;
+    }
+    
+    public Statement getJdbcStatement() {
+        return this.jdbcStatement;
+    }
+    
+    public PreparedStatement getPreparedStatement() {
+        return (PreparedStatement)this.jdbcStatement;
+    }
+    
+    protected void checkPermission() throws SQLException {
+        if (this.isEmpty()) {
+            return;
+        }
+        
+        this.context.checkPermission(this);
+    }
+    
+    protected void preExecute(int maxRows) throws SQLException, IllegalStateException {
+        if (this.prepared) {
+            PreparedStatement ps = getPreparedStatement();
+            ps.setMaxRows(maxRows);
+        } else {
+            if (this.jdbcStatement != null) {
+                throw new IllegalStateException(this.command + " statement has been executed");
+            }
+            checkPermission();
+            
+            Connection conn = this.context.getConnection();
+            this.jdbcStatement = conn.createStatement();
+        }
+    }
+    
+    public boolean execute(int maxRows) throws SQLException, IllegalStateException {
+        if (!this.open) {
+            throw new IllegalStateException(this.command + " statement closed");
+        }
+        
+        preExecute(maxRows);
+        boolean rs = doExecute(maxRows);
+        postExecute(rs);
+        
+        return rs;
+    }
+    
+    protected boolean doExecute(int maxRows) throws SQLException {
+        boolean resultSet;
+        
+        if (this.context.isTrace()) {
+            Connection conn = this.context.getConnection();
+            this.context.trace(log, "tx: autocommit {} ->", conn.getAutoCommit()); 
+        }
+        
+        if (this.prepared) {
+            PreparedStatement ps = getPreparedStatement();
+            resultSet = ps.execute();
+        } else {
+            String sql = getExecutableSQL();
+            resultSet = this.jdbcStatement.execute(sql);
+        }
+        
+        return resultSet;
+    }
+    
+    protected void postExecute(boolean resultSet) throws SQLException {
+        
+    }
+    
+    public void postResult() throws SQLException {
+        if (this.context.isTrace()) {
+            Connection conn = this.context.getConnection();
+            this.context.trace(log, "tx: autocommit {} <-", conn.getAutoCommit()); 
+        }
+    }
+    
+    public boolean isOpen() {
+        return this.open;
     }
     
     @Override
     public String toString() {
         return this.sql;
+    }
+
+    @Override
+    public void close() {
+        IoUtils.close(jdbcStatement);
+        this.jdbcStatement = null;
+        this.context = null;
+        this.open = false;
     }
     
 }

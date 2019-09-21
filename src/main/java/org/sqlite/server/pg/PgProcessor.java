@@ -32,7 +32,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
@@ -46,15 +45,15 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
+import org.sqlite.server.MetaStatement;
 import org.sqlite.server.NetworkException;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteWorker;
+import org.sqlite.server.sql.meta.CreateDatabaseStatement;
+import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
-import org.sqlite.sql.TransactionStatement;
-import org.sqlite.sql.meta.CreateDatabaseStatement;
-import org.sqlite.sql.meta.User;
 import org.sqlite.util.DateTimeUtils;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SecurityUtils;
@@ -382,6 +381,7 @@ public class PgProcessor extends SQLiteProcessor {
                     for (; parser.hasNext(); ) {
                         SQLStatement next = parser.next();
                         if (sqlStmt.isEmpty()) {
+                            IoUtils.close(sqlStmt);
                             sqlStmt = next;
                             continue;
                         }
@@ -390,6 +390,7 @@ public class PgProcessor extends SQLiteProcessor {
                             throw new SQLParseException(sqlStmt.getSQL()+"^");
                         }
                     }
+                    sqlStmt.setContext(this);
                     p.sql = sqlStmt;
                     server.trace(log, "named '{}' SQL: {}", p.name, p.sql);
                     if (UNNAMED.equals(p.name)) {
@@ -398,7 +399,7 @@ public class PgProcessor extends SQLiteProcessor {
                     int paramTypesCount = readShort();
                     int[] paramTypes = null;
                     if (paramTypesCount > 0) {
-                        if (sqlStmt.isMetaStatement()) {
+                        if (sqlStmt instanceof MetaStatement) {
                             String message = "Meta statement can't be parameterized";
                             throw convertError(SQLiteErrorCode.SQLITE_PERM, message);
                         }
@@ -408,12 +409,11 @@ public class PgProcessor extends SQLiteProcessor {
                         }
                     }
                     
+                    // Prepare SQL
                     if (!sqlStmt.isEmpty()) {
-                        checkPerm(sqlStmt);
-                        String sql = getSQL(sqlStmt);
-                        p.prep = getConnection().prepareStatement(sql);
-                        if (!sqlStmt.isMetaStatement()) {
-                            ParameterMetaData meta = p.prep.getParameterMetaData();
+                        PreparedStatement prep = sqlStmt.prepare();
+                        if (!(sqlStmt instanceof MetaStatement)) {
+                            ParameterMetaData meta = prep.getParameterMetaData();
                             p.paramType = new int[meta.getParameterCount()];
                             for (int i = 0; i < p.paramType.length; i++) {
                                 int type;
@@ -457,8 +457,9 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 int paramCount = readShort();
                 try {
+                    PreparedStatement ps = prep.sql.getPreparedStatement();
                     for (int i = 0; i < paramCount; i++) {
-                        setParameter(prep.prep, prep.paramType[i], i, formatCodes);
+                        setParameter(ps, prep.paramType[i], i, formatCodes);
                     }
                 } catch (SQLException e) {
                     sendErrorResponse(e);
@@ -504,10 +505,11 @@ public class PgProcessor extends SQLiteProcessor {
                             ParameterMetaData paramMeta = null;
                             ResultSetMetaData rsMeta = null;
                             if (!p.sql.isEmpty()) {
-                                if (!p.sql.isMetaStatement()) {
-                                    paramMeta = p.prep.getParameterMetaData();
+                                PreparedStatement ps = p.sql.getPreparedStatement();
+                                if (!(p.sql instanceof MetaStatement)) {
+                                    paramMeta = ps.getParameterMetaData();
                                 }
-                                rsMeta = p.prep.getMetaData();
+                                rsMeta = ps.getMetaData();
                             }
                             sendParameterDescription(paramMeta, p.paramType);
                             sendRowDescription(rsMeta);
@@ -521,10 +523,11 @@ public class PgProcessor extends SQLiteProcessor {
                     if (p == null) {
                         sendErrorResponse("Portal not found: " + name);
                     } else {
-                        PreparedStatement prep = p.prep.prep;
+                        SQLStatement sqlStmt = p.prep.sql;
+                        PreparedStatement prep = sqlStmt.getPreparedStatement();
                         try {
                             ResultSetMetaData meta = null;
-                            if (!p.prep.sql.isEmpty()) {
+                            if (!sqlStmt.isEmpty()) {
                                 meta = prep.getMetaData();
                             }
                             sendRowDescription(meta);
@@ -550,56 +553,36 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 int maxRows = readShort();
                 Prepared prepared = p.prep;
-                SQLStatement sql = prepared.sql;
-                server.trace(log, "execute SQL: {}", sql);
+                SQLStatement sqlStmt = prepared.sql;
+                server.trace(log, "execute SQL: {}", sqlStmt);
                 
                 // check empty statement
-                if (sql.isEmpty()) {
-                    server.trace(log, "query string empty: {}", sql);
+                if (sqlStmt.isEmpty()) {
+                    server.trace(log, "query string empty: {}", sqlStmt);
                     sendEmptyQueryResponse();
                     this.xQueryFailed = false;
                     break;
                 }
                 
                 try {
-                    PreparedStatement prep = prepared.prep;
-                    prep.setMaxRows(maxRows);
-                    // Set correct autoCommit for transaction status 
-                    // in readyForQuery() response
-                    boolean txBegin = tryBegin(sql);
-                    boolean exeFail = true, result = false;
-                    try {
-                        result = prep.execute();
-                        if (!txBegin && sql.isTransaction()) {
-                            TransactionStatement txSql = (TransactionStatement)sql;
-                            if (txSql.isSavepoint()) {
-                                this.savepointStack.push(txSql);
-                            }
-                        }
-                        exeFail= false;
-                    } finally {
-                        if (exeFail && txBegin) {
-                            resetAutoCommit();
-                        }
-                    }
-                    
-                    if (result) {
+                    boolean resultSet = sqlStmt.execute(maxRows);
+                    if (resultSet) {
                         processResultSet(p);
                     } else {
-                        tryFinish(sql);
-                        n = prep.getUpdateCount();
-                        sendCommandComplete(sql, n, result);
+                        int count = sqlStmt.getJdbcStatement().getUpdateCount();
+                        sqlStmt.postResult();
+                        sendCommandComplete(sqlStmt, count, resultSet);
                         this.xQueryFailed = false;
                     }
                 } catch (SQLException e) {
-                    if ((sql instanceof CreateDatabaseStatement)
+                    if ((sqlStmt instanceof CreateDatabaseStatement)
                             && this.server.isUniqueViolated(e)) {
-                        CreateDatabaseStatement s = (CreateDatabaseStatement)sql;
+                        CreateDatabaseStatement s = (CreateDatabaseStatement)sqlStmt;
                         if (s.isQuite()) {
                             this.server.traceError(log, "Database existing", e);
                             try {
-                                tryFinish(sql);
-                                sendCommandComplete(sql, 0, false);
+                                sqlStmt.postResult();
+                                sendCommandComplete(sqlStmt, 0, false);
                                 this.xQueryFailed = false;
                                 break;
                             } catch (SQLException cause) {
@@ -648,53 +631,11 @@ public class PgProcessor extends SQLiteProcessor {
         } while(!this.needFlush && rem >= 5);
     }
     
-    protected void processResultSet(final Portal p) {
+    protected void processResultSet(Portal p) {
         if (this.writeTask != null) {
             throw new IllegalStateException("A write task already exists");
         }
-        this.writeTask = new WriteTask(this) {
-            final PgProcessor self = (PgProcessor)this.proc;
-            final PreparedStatement prep = p.prep.prep;
-            final SQLStatement sql = p.prep.sql;
-            ResultSet rs;
-            
-            @Override
-            protected void write() throws IOException {
-                boolean resetTask = true;
-                try {
-                    if (this.rs == null) {
-                        this.rs = prep.getResultSet();
-                    }
-                    // the meta-data is sent in the prior 'Describe'
-                    for (; this.rs.next(); ) {
-                        sendDataRow(this.rs, p.resultColumnFormat);
-                        if (canFlush()) {
-                            enableWrite();
-                            resetTask = false;
-                            return;
-                        }
-                    }
-                    
-                    // detach only after resultSet finished
-                    tryFinish(sql);
-                    
-                    sendCommandComplete(sql, 0, true);
-                    self.xQueryFailed = false;
-                } catch (SQLException e) {
-                    if (self.server.isCanceled(e)) {
-                        sendCancelQueryResponse();
-                    } else {
-                        sendErrorResponse(e);
-                    }
-                } finally {
-                    if (resetTask) {
-                        self.writeTask = null;
-                        IoUtils.close(this.rs);
-                    }
-                }
-            }
-        };
-        
+        this.writeTask = new XQueryTask(this, p);
         this.writeTask.run();
     }
     
@@ -703,166 +644,7 @@ public class PgProcessor extends SQLiteProcessor {
             throw new IllegalStateException("A write task already exists");
         }
         
-        this.writeTask = new WriteTask(this) {
-            final PgProcessor self = (PgProcessor)this.proc;
-            final SQLParser parser = newSQLParser(query);
-            final SQLiteConnection conn = getConnection();
-            
-            // ResultSet remaining state
-            SQLStatement curStmt;
-            Statement curStat;
-            ResultSet rs;
-
-            @Override
-            protected void write() throws IOException {
-                boolean resetTask = true;
-                try {
-                    SQLStatement sqlStmt = null;
-                    boolean next = true;
-                    
-                    if (this.rs == null) {
-                        // check empty query string
-                        for (; sqlStmt == null;) {
-                            if (this.parser.hasNext()) {
-                                SQLStatement s = this.parser.next();
-                                if (s.isEmpty()) {
-                                    continue;
-                                }
-                                sqlStmt = s;
-                            }
-                            break;
-                        }
-                        if (sqlStmt == null) {
-                            server.trace(log, "query string empty: {}", query);
-                            self.needFlush = true;
-                            sendEmptyQueryResponse();
-                            return;
-                        }
-                    } else {
-                        // Continue write remaining resultSet
-                        for (; this.rs.next(); ) {
-                            sendDataRow(this.rs, null);
-                            if (canFlush()) {
-                                enableWrite();
-                                resetTask = false;
-                                return;
-                            }
-                        }
-                        tryFinish(sqlStmt);
-                        IoUtils.close(this.rs);
-                        this.rs = null;
-                        IoUtils.close(this.curStat);
-                        this.curStat = null;
-                        sendCommandComplete(this.curStmt, 0, true);
-                        
-                        // try next
-                        if (next=this.parser.hasNext()) {
-                            sqlStmt = this.parser.next();
-                        }
-                    }
-                    
-                    for (; next; ) {
-                        Statement stat = null;
-                        try {
-                            checkPerm(sqlStmt);
-                            // execute SQL
-                            String sql = getSQL(sqlStmt);
-                            server.trace(log, "execute SQL: {}", sql);
-                            boolean txBegin = tryBegin(sqlStmt);
-                            boolean exeFail = true, result = false;
-                            try {
-                                stat = conn.createStatement();
-                                result = stat.execute(sql);
-                                if (!txBegin && sqlStmt.isTransaction()) {
-                                    TransactionStatement txSql = (TransactionStatement)sqlStmt;
-                                    if (txSql.isSavepoint()) {
-                                        self.savepointStack.push(txSql);
-                                    }
-                                }
-                                exeFail= false;
-                            } finally {
-                                if (txBegin && exeFail) {
-                                    resetAutoCommit();
-                                }
-                            }
-                            
-                            if (result) {
-                                ResultSet rs = stat.getResultSet();
-                                ResultSetMetaData meta = rs.getMetaData();
-                                sendRowDescription(meta);
-                                for (; rs.next(); ) {
-                                    sendDataRow(rs, null);
-                                    if (canFlush()) {
-                                        this.curStmt = sqlStmt;
-                                        this.curStat = stat;
-                                        this.rs = rs;
-                                        enableWrite();
-                                        resetTask = false;
-                                        return;
-                                    }
-                                }
-                                tryFinish(sqlStmt);
-                                sendCommandComplete(sqlStmt, 0, result);
-                            } else {
-                                tryFinish(sqlStmt);
-                                int n = stat.getUpdateCount();
-                                sendCommandComplete(sqlStmt, n, result);
-                            }
-                            
-                            // try next
-                            if (next=this.parser.hasNext()) {
-                                sqlStmt = this.parser.next();
-                            }
-                        } catch (SQLException e) {
-                            if ((sqlStmt instanceof CreateDatabaseStatement)
-                                    && self.server.isUniqueViolated(e)) {
-                                CreateDatabaseStatement s = (CreateDatabaseStatement)sqlStmt;
-                                if (s.isQuite()) {
-                                    self.server.traceError(log, "Database existing", e);
-                                    tryFinish(sqlStmt);
-                                    sendCommandComplete(sqlStmt, 0, false);
-                                    // try next
-                                    if (next=this.parser.hasNext()) {
-                                        sqlStmt = this.parser.next();
-                                    }
-                                } else {
-                                    throw e;
-                                }
-                            } else {
-                                throw e;
-                            }
-                        } finally {
-                            if (resetTask) {
-                                IoUtils.close(stat);
-                            }
-                        }
-                    } // For statements
-                } catch (SQLParseException e) {
-                    sendErrorResponse(e);
-                } catch (SQLException e) {
-                    if (self.server.isCanceled(e)) {
-                        sendCancelQueryResponse();
-                    } else {
-                        sendErrorResponse(e);
-                    }
-                } finally {
-                    if (resetTask) {
-                        self.writeTask = null;
-                        IoUtils.close(this.rs);
-                        this.rs = null;
-                        IoUtils.close(this.curStat);
-                        this.curStat = null;
-                        IoUtils.close(parser);
-                    }
-                }
-                
-                if (resetTask) {
-                    self.needFlush = true;
-                    sendReadyForQuery();
-                }
-            }
-        };
-        
+        this.writeTask = new QueryTask(this, query);
         this.writeTask.run();  
     }
     
@@ -873,8 +655,8 @@ public class PgProcessor extends SQLiteProcessor {
             this.authMethod = null;
             
             conn = server.newSQLiteConnection(this.databaseName);
-            if (server.isTrace()) {
-                server.trace(log, "sqliteConn init: autocommit {}", conn.getAutoCommit());
+            if (isTrace()) {
+                trace(log, "sqlite init: autocommit {}", conn.getAutoCommit());
             }
             setConnection(conn);
             sendAuthenticationOk();
@@ -883,7 +665,7 @@ public class PgProcessor extends SQLiteProcessor {
         } catch (SQLException cause) {
             sendErrorResponse(cause);
             stop();
-            server.traceError(log, "Can't init database", cause);
+            traceError(log, "Can't init database", cause);
             return false;
         } finally {
             if(failed) {
@@ -900,7 +682,7 @@ public class PgProcessor extends SQLiteProcessor {
         Prepared p = prepared.remove(name);
         if (p != null) {
             server.trace(log, "Destroy the named '{}' prepared and it's any portal", name);
-            IoUtils.close(p.prep);
+            IoUtils.close(p.sql);
             // Need to close all generated portals by this prepared
             Iterator<Entry<String, Portal>> i;
             for (i = portals.entrySet().iterator(); i.hasNext(); ) {
@@ -1012,8 +794,8 @@ public class PgProcessor extends SQLiteProcessor {
         sendMessage();
     }
     
-    private void sendCommandComplete(SQLStatement sql, int updateCount, boolean resultSet)
-            throws IOException {
+    private void sendCommandComplete(SQLStatement sql, int updateCount, boolean resultSet) 
+        throws IOException {
         String command = sql.getCommand();
         
         startMessage('C');
@@ -1191,7 +973,7 @@ public class PgProcessor extends SQLiteProcessor {
                 // in a transaction block
                 c = 'T';
             }
-            server.trace(log, "sqliteConn ready: autocommit {}", autocommit);
+            trace(log, "sqlite ready: autocommit {}", autocommit);
         } catch (SQLException e) {
             // failed transaction block
             c = 'E';
@@ -1447,11 +1229,6 @@ public class PgProcessor extends SQLiteProcessor {
         SQLStatement sql;
 
         /**
-         * The prepared statement.
-         */
-        PreparedStatement prep;
-
-        /**
          * The list of parameter types (if set).
          */
         int[] paramType;
@@ -1478,4 +1255,193 @@ public class PgProcessor extends SQLiteProcessor {
         Prepared prep;
     }
     
+    static class XQueryTask extends WriteTask {
+        final Portal p;
+        ResultSet rs;
+        
+        XQueryTask(PgProcessor proc, Portal p) {
+            super(proc);
+            this.p = p;
+        }
+            
+        @Override
+        protected void write() throws IOException {
+            PgProcessor self = (PgProcessor)this.proc;
+            SQLStatement stmt = p.prep.sql;
+            boolean resetTask = true;
+            try {
+                if (this.rs == null) {
+                    this.rs = stmt.getJdbcStatement().getResultSet();
+                }
+                // the meta-data is sent in the prior 'Describe'
+                for (; this.rs.next(); ) {
+                    self.sendDataRow(this.rs, this.p.resultColumnFormat);
+                    if (self.canFlush()) {
+                        self.enableWrite();
+                        resetTask = false;
+                        return;
+                    }
+                }
+                
+                // detach only after resultSet finished
+                stmt.postResult();
+                self.sendCommandComplete(stmt, 0, true);
+                self.xQueryFailed = false;
+            } catch (SQLException e) {
+                if (self.server.isCanceled(e)) {
+                    self.sendCancelQueryResponse();
+                } else {
+                    self.sendErrorResponse(e);
+                }
+            } finally {
+                if (resetTask) {
+                    self.writeTask = null;
+                    IoUtils.close(this.rs);
+                }
+            }
+        }
+    }
+    
+    static class QueryTask extends WriteTask {
+        final SQLParser parser;
+        final String query;
+        
+        // ResultSet remaining state
+        SQLStatement curStmt;
+        ResultSet rs;
+        
+        QueryTask(PgProcessor proc, String query) {
+            super(proc);
+            this.query = query;
+            this.parser = proc.newSQLParser(query);
+        }
+        
+        @Override
+        protected void write() throws IOException {
+            PgProcessor self = (PgProcessor)this.proc;
+            boolean resetTask = true;
+            try {
+                SQLStatement sqlStmt = null;
+                boolean next = true;
+                
+                if (this.rs == null) {
+                    // check empty query string
+                    for (; sqlStmt == null;) {
+                        if (this.parser.hasNext()) {
+                            SQLStatement s = this.parser.next();
+                            if (s.isEmpty()) {
+                                continue;
+                            }
+                            sqlStmt = s;
+                        }
+                        break;
+                    }
+                    if (sqlStmt == null) {
+                        self.server.trace(log, "query string empty: {}", query);
+                        self.needFlush = true;
+                        self.sendEmptyQueryResponse();
+                        return;
+                    }
+                } else {
+                    // Continue write remaining resultSet
+                    for (; this.rs.next(); ) {
+                        self.sendDataRow(this.rs, null);
+                        if (self.canFlush()) {
+                            self.enableWrite();
+                            resetTask = false;
+                            return;
+                        }
+                    }
+                    this.curStmt.postResult();
+                    IoUtils.close(this.curStmt);
+                    this.rs = null;
+                    self.sendCommandComplete(this.curStmt, 0, true);
+                    
+                    // try next
+                    if (next=this.parser.hasNext()) {
+                        sqlStmt = this.parser.next();
+                    }
+                }
+                
+                for (; next; ) {
+                    try {
+                        sqlStmt.setContext(self);
+                        boolean result = sqlStmt.execute(0);
+                        if (result) {
+                            ResultSet rs = sqlStmt.getJdbcStatement().getResultSet();
+                            ResultSetMetaData meta = rs.getMetaData();
+                            self.sendRowDescription(meta);
+                            for (; rs.next(); ) {
+                                self.sendDataRow(rs, null);
+                                if (self.canFlush()) {
+                                    this.curStmt = sqlStmt;
+                                    this.rs = rs;
+                                    self.enableWrite();
+                                    return;
+                                }
+                            }
+                            sqlStmt.postResult();
+                            IoUtils.close(sqlStmt);
+                            this.rs = null;
+                            this.curStmt = null;
+                            self.sendCommandComplete(sqlStmt, 0, result);
+                        } else {
+                            int count = sqlStmt.getJdbcStatement().getUpdateCount();
+                            sqlStmt.postResult();
+                            self.sendCommandComplete(sqlStmt, count, result);
+                        }
+                        
+                        // try next
+                        if (next=this.parser.hasNext()) {
+                            sqlStmt = this.parser.next();
+                        }
+                    } catch (SQLException e) {
+                        if ((sqlStmt instanceof CreateDatabaseStatement)
+                                && self.server.isUniqueViolated(e)) {
+                            CreateDatabaseStatement s = (CreateDatabaseStatement)sqlStmt;
+                            if (s.isQuite()) {
+                                self.server.traceError(log, "Database existing", e);
+                                sqlStmt.postResult();
+                                self.sendCommandComplete(sqlStmt, 0, false);
+                                // try next
+                                if (next=this.parser.hasNext()) {
+                                    sqlStmt = this.parser.next();
+                                }
+                            } else {
+                                throw e;
+                            }
+                        } else {
+                            throw e;
+                        }
+                    } finally {
+                        if (resetTask) {
+                            IoUtils.close(sqlStmt);
+                        }
+                    }
+                } // For statements
+            } catch (SQLParseException e) {
+                self.sendErrorResponse(e);
+            } catch (SQLException e) {
+                if (self.server.isCanceled(e)) {
+                    self.sendCancelQueryResponse();
+                } else {
+                    self.sendErrorResponse(e);
+                }
+            } finally {
+                if (resetTask) {
+                    self.writeTask = null;
+                    IoUtils.close(this.curStmt);
+                    this.rs = null;
+                    IoUtils.close(parser);
+                }
+            }
+            
+            if (resetTask) {
+                self.needFlush = true;
+                self.sendReadyForQuery();
+            }
+        }
+        
+    }
+
 }

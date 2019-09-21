@@ -13,10 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
 import static java.lang.String.*;
 
+import java.sql.SQLException;
+
+import org.sqlite.server.MetaStatement;
+import org.sqlite.server.SQLiteAuthMethod;
+import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -31,7 +36,7 @@ import org.sqlite.sql.SQLStatement;
  * @since 2019-09-11
  *
  */
-public class CreateUserStatement extends SQLStatement implements MetaStatement {
+public class CreateUserStatement extends MetaStatement {
     
     protected String user;
     protected String host;
@@ -101,9 +106,24 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
     public void setPasswordSet(boolean passwordSet) {
         this.passwordSet = passwordSet;
     }
+    
+    @Override
+    public void postResult() throws SQLException {
+        super.postResult();
+        SQLiteProcessor proc = getContext();
+        proc.getServer().flushHosts();
+    }
 
     @Override
     public String getMetaSQL(String metaSchema) {
+        if (getPassword() != null && !isPasswordSet()) {
+            String proto = getProtocol(), method = getAuthMethod();
+            SQLiteAuthMethod authMethod = getContext().newAuthMethod(proto, method);
+            String p = authMethod.genStorePassword(getUser(), getPassword());
+            setPassword(p);
+            setPasswordSet(true);
+        }
+        
         String password = this.password==null? "NULL": "'"+this.password+"'" ;
         int sa = User.convertSa(isSa());
         String f = "insert into '%s'.user(host, user, password, protocol, auth_method, sa)"
@@ -123,11 +143,6 @@ public class CreateUserStatement extends SQLStatement implements MetaStatement {
             
             throw new SQLParseException(getSQL());
         }
-    }
-
-    @Override
-    public boolean needSa() {
-        return true;
     }
     
 }

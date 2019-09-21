@@ -24,15 +24,15 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-import org.sqlite.sql.meta.AlterUserStatement;
-import org.sqlite.sql.meta.CreateDatabaseStatement;
-import org.sqlite.sql.meta.CreateUserStatement;
-import org.sqlite.sql.meta.DropUserStatement;
-import org.sqlite.sql.meta.GrantStatement;
-import org.sqlite.sql.meta.MetaStatement;
-import org.sqlite.sql.meta.RevokeStatement;
-import org.sqlite.sql.meta.ShowDatabasesStatement;
-import org.sqlite.sql.meta.ShowGrantsStatement;
+import org.sqlite.server.MetaStatement;
+import org.sqlite.server.sql.meta.AlterUserStatement;
+import org.sqlite.server.sql.meta.CreateDatabaseStatement;
+import org.sqlite.server.sql.meta.CreateUserStatement;
+import org.sqlite.server.sql.meta.DropUserStatement;
+import org.sqlite.server.sql.meta.GrantStatement;
+import org.sqlite.server.sql.meta.RevokeStatement;
+import org.sqlite.server.sql.meta.ShowDatabasesStatement;
+import org.sqlite.server.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.StringUtils;
 
@@ -287,44 +287,22 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     
     protected SQLStatement parseAlterUser() {
         AlterUserStatement stmt = new AlterUserStatement(this.sql);
-        
-        stmt.setUser(nextString());
-        skipIgnorableIf();
-        nextChar('@');
-        skipIgnorableIf();
-        stmt.setHost(nextString());
-        
-        skipIgnorable();
-        if (nextStringIf("with") != -1) {
+        boolean failed = true;
+        try {
+            stmt.setUser(nextString());
+            skipIgnorableIf();
+            nextChar('@');
+            skipIgnorableIf();
+            stmt.setHost(nextString());
+            
             skipIgnorable();
-        }
-        
-        for (;;) {
-            if (nextStringIf("superuser") != -1) {
-                stmt.setSa(true);
-                if (skipIgnorableIf() != -1) {
-                    continue;
-                }
-                if (nextEnd()) {
-                    break;
-                }
-                throw syntaxError();
-            }
-            if (nextStringIf("nosuperuser") != -1) {
-                stmt.setSa(false);
-                if (skipIgnorableIf() != -1) {
-                    continue;
-                }
-                if (nextEnd()) {
-                    break;
-                }
-                throw syntaxError();
-            }
-            if (nextStringIf("identified") != -1) {
+            if (nextStringIf("with") != -1) {
                 skipIgnorable();
-                if (nextStringIf("by") != -1) {
-                    skipIgnorable();
-                    stmt.setPassword(nextString());
+            }
+            
+            for (;;) {
+                if (nextStringIf("superuser") != -1) {
+                    stmt.setSa(true);
                     if (skipIgnorableIf() != -1) {
                         continue;
                     }
@@ -332,40 +310,69 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                         break;
                     }
                     throw syntaxError();
-                } else {
-                    nextString("with");
-                    skipIgnorable();
-                    String proto = "pg";
-                    nextString(proto);
-                    stmt.setProtocol(proto);
-                    if (skipIgnorableIf() == -1 || nextEnd()) {
+                }
+                if (nextStringIf("nosuperuser") != -1) {
+                    stmt.setSa(false);
+                    if (skipIgnorableIf() != -1) {
+                        continue;
+                    }
+                    if (nextEnd()) {
                         break;
                     }
-                    for (String auth: authMethods.get(proto)) {
-                        if (nextStringIf(auth) != -1) {
-                            stmt.setAuthMethod(auth);
-                            if (skipIgnorableIf() != -1 || nextEnd()) {
-                                break;
-                            }
-                            throw syntaxError();
-                        }
-                    }
-                    continue;
+                    throw syntaxError();
                 }
+                if (nextStringIf("identified") != -1) {
+                    skipIgnorable();
+                    if (nextStringIf("by") != -1) {
+                        skipIgnorable();
+                        stmt.setPassword(nextString());
+                        if (skipIgnorableIf() != -1) {
+                            continue;
+                        }
+                        if (nextEnd()) {
+                            break;
+                        }
+                        throw syntaxError();
+                    } else {
+                        nextString("with");
+                        skipIgnorable();
+                        String proto = "pg";
+                        nextString(proto);
+                        stmt.setProtocol(proto);
+                        if (skipIgnorableIf() == -1 || nextEnd()) {
+                            break;
+                        }
+                        for (String auth: authMethods.get(proto)) {
+                            if (nextStringIf(auth) != -1) {
+                                stmt.setAuthMethod(auth);
+                                if (skipIgnorableIf() != -1 || nextEnd()) {
+                                    break;
+                                }
+                                throw syntaxError();
+                            }
+                        }
+                        continue;
+                    }
+                }
+                
+                if (nextEnd()) {
+                    break;
+                }
+                
+                throw syntaxError();
             }
             
-            if (nextEnd()) {
-                break;
+            if (stmt.getPassword() != null && !"pg".equals(stmt.getProtocol())) {
+                throw syntaxError("Unknown auth protocol: " + stmt.getProtocol());
             }
             
-            throw syntaxError();
+            failed = false;
+            return stmt;
+        } finally {
+            if (failed) {
+                stmt.close();
+            }
         }
-        
-        if (stmt.getPassword() != null && !"pg".equals(stmt.getProtocol())) {
-            throw syntaxError("Unknown auth protocol: " + stmt.getProtocol());
-        }
-        
-        return stmt;
     }
     
     protected SQLStatement parseAnalyze() {
@@ -445,74 +452,82 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     
     protected SQLStatement parseCreateUser() {
         CreateUserStatement stmt = new CreateUserStatement(this.sql);
-        stmt.setUser(nextString());
-        skipIgnorableIf();
-        nextChar('@');
-        skipIgnorableIf();
-        stmt.setHost(nextString());
-        
-        skipIgnorable();
-        if (nextStringIf("with") != -1) {
+        boolean failed = true;
+        try {
+            stmt.setUser(nextString());
+            skipIgnorableIf();
+            nextChar('@');
+            skipIgnorableIf();
+            stmt.setHost(nextString());
+            
             skipIgnorable();
-        }
-        for (;;) {
-            if (nextStringIf("superuser") != -1) {
-                skipIgnorableIf();
-                stmt.setSa(true);
-                continue;
-            }
-            if (nextStringIf("nosuperuser") != -1) {
-                skipIgnorableIf();
-                stmt.setSa(false);
-                continue;
-            }
-            if (nextStringIf("identified") != -1) {
+            if (nextStringIf("with") != -1) {
                 skipIgnorable();
-                if (nextStringIf("by") != -1) {
-                    skipIgnorable();
-                    stmt.setPassword(nextString());
-                } else {
-                    nextString("with");
-                    skipIgnorable();
-                    String proto = "pg";
-                    nextString(proto);
-                    stmt.setProtocol(proto);
-                    skipIgnorable();
-                    // authentication method
-                    boolean hasAuth = false;
-                    for (String auth: authMethods.get(proto)) {
-                        if (nextStringIf(auth) != -1) {
-                            stmt.setAuthMethod(auth);
-                            hasAuth = true;
-                            break;
-                        }
-                    }
-                    if (!hasAuth) {
-                        throw syntaxError();
-                    }
-                }
-                if (skipIgnorableIf() != -1) {
+            }
+            for (;;) {
+                if (nextStringIf("superuser") != -1) {
+                    skipIgnorableIf();
+                    stmt.setSa(true);
                     continue;
                 }
+                if (nextStringIf("nosuperuser") != -1) {
+                    skipIgnorableIf();
+                    stmt.setSa(false);
+                    continue;
+                }
+                if (nextStringIf("identified") != -1) {
+                    skipIgnorable();
+                    if (nextStringIf("by") != -1) {
+                        skipIgnorable();
+                        stmt.setPassword(nextString());
+                    } else {
+                        nextString("with");
+                        skipIgnorable();
+                        String proto = "pg";
+                        nextString(proto);
+                        stmt.setProtocol(proto);
+                        skipIgnorable();
+                        // authentication method
+                        boolean hasAuth = false;
+                        for (String auth: authMethods.get(proto)) {
+                            if (nextStringIf(auth) != -1) {
+                                stmt.setAuthMethod(auth);
+                                hasAuth = true;
+                                break;
+                            }
+                        }
+                        if (!hasAuth) {
+                            throw syntaxError();
+                        }
+                    }
+                    if (skipIgnorableIf() != -1) {
+                        continue;
+                    }
+                    if (nextEnd()) {
+                        break;
+                    }
+                    throw syntaxError();
+                }
+                
                 if (nextEnd()) {
                     break;
                 }
                 throw syntaxError();
             }
             
-            if (nextEnd()) {
-                break;
+            // check
+            if (stmt.getPassword() == null && !"trust".equals(stmt.getAuthMethod())) {
+                String proto = stmt.getProtocol(), auth = stmt.getAuthMethod();
+                throw syntaxError("No password when identified with %s %s", proto, auth);
             }
-            throw syntaxError();
+            
+            failed = false;
+            return stmt;
+        } finally {
+            if (failed) {
+                stmt.close();
+            }
         }
-        
-        // check
-        if (stmt.getPassword() == null && !"trust".equals(stmt.getAuthMethod())) {
-            String proto = stmt.getProtocol(), auth = stmt.getAuthMethod();
-            throw syntaxError("No password when identified with %s %s", proto, auth);
-        }
-        
-        return stmt;
     }
     
     protected SQLStatement parseDrop() {

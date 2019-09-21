@@ -36,19 +36,14 @@ import org.sqlite.server.func.CurrentUserFunc;
 import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.UserFunc;
+import org.sqlite.server.sql.meta.CreateDatabaseStatement;
+import org.sqlite.server.sql.meta.User;
+import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
-import org.sqlite.sql.meta.AlterUserStatement;
-import org.sqlite.sql.meta.CreateDatabaseStatement;
-import org.sqlite.sql.meta.CreateUserStatement;
-import org.sqlite.sql.meta.DropUserStatement;
-import org.sqlite.sql.meta.GrantStatement;
-import org.sqlite.sql.meta.MetaStatement;
-import org.sqlite.sql.meta.RevokeStatement;
-import org.sqlite.sql.meta.ShowDatabasesStatement;
-import org.sqlite.sql.meta.ShowGrantsStatement;
-import org.sqlite.sql.meta.User;
 import org.sqlite.util.IoUtils;
+
+import static java.lang.Integer.*;
 
 /**
  * The SQLite server protocol handler.
@@ -57,17 +52,17 @@ import org.sqlite.util.IoUtils;
  * @since 2019-09-01
  *
  */
-public abstract class SQLiteProcessor implements AutoCloseable {
+public abstract class SQLiteProcessor extends SQLContext implements AutoCloseable {
     
     static final Logger log = LoggerFactory.getLogger(SQLiteProcessor.class);
     
     // Read settings
-    static final int initReadBuffer = Integer.getInteger("org.sqlite.server.procssor.initReadBuffer", 1<<12);
-    static final int maxReadBuffer  = Integer.getInteger("org.sqlite.server.procssor.maxReadBuffer",  1<<16);
+    static final int initReadBuffer = getInteger("org.sqlite.server.procssor.initReadBuffer", 1<<12);
+    static final int maxReadBuffer  = getInteger("org.sqlite.server.procssor.maxReadBuffer",  1<<16);
     // Write settings
-    static final int maxWriteTimes  = Integer.getInteger("org.sqlite.server.procssor.maxWriteTimes",  1<<10);
-    static final int maxWriteQueue  = Integer.getInteger("org.sqlite.server.procssor.maxWriteQueue",  1<<10);
-    static final int maxWriteBuffer = Integer.getInteger("org.sqlite.server.procssor.maxWriteBuffer", 1<<12);
+    static final int maxWriteTimes  = getInteger("org.sqlite.server.procssor.maxWriteTimes",  1<<10);
+    static final int maxWriteQueue  = getInteger("org.sqlite.server.procssor.maxWriteQueue",  1<<10);
+    static final int maxWriteBuffer = getInteger("org.sqlite.server.procssor.maxWriteBuffer", 1<<12);
     
     protected final InetSocketAddress remoteAddress;
     protected final SocketChannel channel;
@@ -120,6 +115,10 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         return this.server;
     }
     
+    protected User getUser() {
+        return this.user;
+    }
+    
     protected SocketChannel getChannel() {
         return this.channel;
     }
@@ -148,55 +147,26 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         return this.metaSchema;
     }
     
-    protected void attachMetaDb(SQLiteConnection conn) throws SQLException {
+    protected void attachMetaDb() throws SQLException {
         if (this.metaSchema == null) {
+            SQLiteConnection conn = getConnection();
             this.metaSchema = getMetaDb().attachTo(conn);
-            this.server.trace(log, "attach {}", this.metaSchema);
+            trace(log, "attach {}", this.metaSchema);
         }
     }
     
-    protected void detachMetaDb(SQLiteConnection conn) throws SQLException {
+    protected void detachMetaDb() throws SQLException {
+        SQLiteConnection conn = getConnection();
         if (this.metaSchema == null || !conn.getAutoCommit()) {
             return;
         }
         getMetaDb().detachFrom(conn, this.metaSchema);
-        this.server.trace(log, "detach {}", this.metaSchema);
+        trace(log, "detach {}", this.metaSchema);
         this.metaSchema = null;
     }
     
-    protected String getSQL(SQLStatement stmt) throws SQLException {
-        if (stmt.isMetaStatement()) {
-            attachMetaDb(getConnection());
-            String schema = getMetaSchema();
-            MetaStatement metaStmt = (MetaStatement)stmt;
-            switch (stmt.getCommand()) {
-            case "ALTER USER":
-                AlterUserStatement auStmt = (AlterUserStatement)stmt;
-                if (auStmt.getPassword() != null && !auStmt.isPasswordSet()) {
-                    String proto = auStmt.getProtocol(), method = auStmt.getAuthMethod();
-                    SQLiteAuthMethod authMethod = this.server.newAuthMethod(proto, method);
-                    String p = authMethod.genStorePassword(auStmt.getUser(), auStmt.getPassword());
-                    auStmt.setPassword(p);
-                    auStmt.setPasswordSet(true);
-                }
-                break;
-            case "CREATE USER":
-                CreateUserStatement cuStmt = (CreateUserStatement)stmt;
-                if (cuStmt.getPassword() != null && !cuStmt.isPasswordSet()) {
-                    String proto = cuStmt.getProtocol(), method = cuStmt.getAuthMethod();
-                    SQLiteAuthMethod authMethod = this.server.newAuthMethod(proto, method);
-                    String p = authMethod.genStorePassword(cuStmt.getUser(), cuStmt.getPassword());
-                    cuStmt.setPassword(p);
-                    cuStmt.setPasswordSet(true);
-                }
-                break;
-            }
-            String metaSQL = metaStmt.getMetaSQL(schema);
-            this.server.trace(log, "meta SQL: {}", metaSQL);
-            return metaSQL;
-        }
-        
-        return stmt.getSQL();
+    public SQLiteAuthMethod newAuthMethod(String protocol, String authMethod) {
+        return (this.server.newAuthMethod(protocol, authMethod));
     }
     
     public void setConnection(SQLiteConnection connection) throws SQLException {
@@ -241,9 +211,116 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         Function.create(connection, timestampFunc.getName(), timestampFunc);
     }
     
+    // SQLContext methods
+    @Override
     public SQLiteConnection getConnection() {
         return this.connection;
     }
+    
+    @Override
+    public boolean isTrace() {
+        return this.server.isTrace();
+    }
+    
+    @Override
+    public void trace(Logger log, String message) {
+        this.server.trace(log, message);
+    }
+    
+    @Override
+    public void trace(Logger log, String format, Object ... args) {
+        this.server.trace(log, format, args);
+    }
+    
+    @Override
+    public void traceError(Logger log, String message, Throwable cause) {
+        this.server.traceError(log, message, cause);
+    }
+    
+    @Override
+    public void traceError(Logger log, String tag, String message, Throwable cause) {
+        this.traceError(log, tag, message, cause);
+    }
+    
+    @Override
+    protected void prepareTransaction(TransactionStatement txSql) {
+        this.server.trace(log, "tx: begin");
+        this.savepointStack.clear();
+        SQLiteConnection conn = getConnection();
+        conn.getConnectionConfig().setAutoCommit(false);
+        this.savepointStack.push(txSql);
+    }
+    
+    @Override
+    protected void pushSavepoint(TransactionStatement txSql) {
+        this.savepointStack.push(txSql);
+    }
+    
+    @Override
+    protected void resetAutoCommit() {
+        getConnection().getConnectionConfig()
+        .setAutoCommit(true);
+        this.savepointStack.clear();
+    }
+    
+    @Override
+    protected void releaseTransaction(TransactionStatement txSql, boolean finished) {
+        SQLiteConnection conn = getConnection();
+        if (finished) {
+            conn.getConnectionConfig().setAutoCommit(true);
+            this.savepointStack.clear();
+            trace(log, "tx: finished");
+        } else {
+            boolean autoCommit = this.savepointStack.isEmpty();
+            String savepoint = txSql.getSavepointName();
+            for (; !this.savepointStack.isEmpty(); ) {
+                TransactionStatement spSql = this.savepointStack.peek();
+                if (spSql.isBegin()) {
+                    break;
+                }
+                this.savepointStack.pop();
+                String target = spSql.getSavepointName();
+                trace(log, "tx: release savepoint {}", target);
+                if (target.equalsIgnoreCase(savepoint)) {
+                    autoCommit = this.savepointStack.isEmpty();
+                    break;
+                }
+            }
+            if (autoCommit) {
+                conn.getConnectionConfig().setAutoCommit(true);
+                trace(log, "tx: finished");
+            }
+        }
+        
+        try {
+            if (isAutoCommit()) {
+                detachMetaDb();
+            }
+        } catch (SQLException e) {
+            traceError(log, "Detach metaDb fatal", e);
+            this.worker.close(this);
+        }
+    }
+    
+    @Override
+    protected boolean hasPrivilege(SQLStatement s) throws SQLException {
+        if (this.user.isSa()) {
+            return true;
+        }
+        
+        String command = s.getCommand();
+        return this.server.hasPrivilege(this.user, command);
+    }
+    
+    @Override
+    protected void checkPermission(SQLStatement s) throws SQLException {
+        if (hasPrivilege(s)) {
+            return;
+        }
+        
+        throw convertError(SQLiteErrorCode.SQLITE_PERM);
+    }
+    // SQLContext methods
     
     public InetSocketAddress getRemoteAddress() {
         return this.remoteAddress;
@@ -253,73 +330,6 @@ public abstract class SQLiteProcessor implements AutoCloseable {
         SQLiteConnection conn = getConnection();
         if (conn != null && isOpen()) {
             conn.getDatabase().interrupt();
-        }
-    }
-    
-    protected void checkPerm(SQLStatement stmt) throws SQLException {
-        final User user = this.user;
-        if (user.isSa() || stmt.isTransaction() || stmt.isEmpty()) {
-            if (stmt.isMetaStatement()) {
-                if (stmt instanceof ShowGrantsStatement) {
-                    ShowGrantsStatement s = (ShowGrantsStatement)stmt;
-                    if (s.isCurrentUser()) {
-                        s.setHost(user.getHost());
-                        s.setUser(user.getUser());
-                    }
-                } else if (stmt instanceof ShowDatabasesStatement) {
-                    ShowDatabasesStatement s = (ShowDatabasesStatement)stmt;
-                    s.setSa(user.isSa());
-                }
-            }
-            return;
-        }
-        
-        if (stmt.isMetaStatement()) {
-            MetaStatement metaStmt = (MetaStatement)stmt;
-            if (metaStmt.needSa()) {
-                // Modify my user information myself?
-                switch (stmt.getCommand()) {
-                case "ALTER USER":
-                    AlterUserStatement as = (AlterUserStatement)stmt;
-                    if (as.isUser(user.getHost(), user.getUser(), user.getProtocol())) {
-                        // Pass
-                        return;
-                    }
-                    break;
-                case "DROP USER":
-                    DropUserStatement ds = (DropUserStatement)stmt;
-                    if (ds.exists(user.getHost(), user.getUser(), user.getProtocol())) {
-                        // Pass
-                        return;
-                    }
-                case "SHOW GRANTS":
-                    ShowGrantsStatement ss = (ShowGrantsStatement)stmt;
-                    if (ss.isCurrentUser(user.getHost(), user.getUser())) {
-                        break;
-                    }
-                default:
-                    throw convertError(SQLiteErrorCode.SQLITE_PERM);
-                }
-                // no SA
-            } else if (stmt instanceof ShowGrantsStatement) {
-                ShowGrantsStatement s = (ShowGrantsStatement)stmt;
-                if (s.isCurrentUser()) {
-                    s.setHost(user.getHost());
-                    s.setUser(user.getUser());
-                } else {
-                    throw convertError(SQLiteErrorCode.SQLITE_PERM);
-                }
-            } else if (stmt instanceof ShowDatabasesStatement) {
-                ShowDatabasesStatement s = (ShowDatabasesStatement)stmt;
-                s.setUser(user);
-            }
-        } else {
-            String command = stmt.getCommand();
-            if (this.server.hasPrivilege(user, command)) {
-                return;
-            }
-            
-            throw convertError(SQLiteErrorCode.SQLITE_PERM);
         }
     }
     
@@ -595,7 +605,7 @@ public abstract class SQLiteProcessor implements AutoCloseable {
     
     protected abstract void interalError() throws IOException;
     
-    protected void createDbFile(CreateDatabaseStatement stmt) throws SQLException {
+    public void createDbFile(CreateDatabaseStatement stmt) throws SQLException {
         String dir = stmt.getDir();
         if (dir == null) {
             dir = this.server.getDataDir().getAbsolutePath();
@@ -645,99 +655,6 @@ public abstract class SQLiteProcessor implements AutoCloseable {
             SQLiteErrorCode error = SQLiteErrorCode.SQLITE_IOERR;
             throw convertError(error, "Can't create database file");
         }
-    }
-    
-    protected boolean tryBegin(SQLStatement sql) throws SQLException {
-        boolean success = false;
-        SQLiteConnection conn = getConnection();
-        if (sql.isTransaction() && conn.getAutoCommit()) {
-            TransactionStatement txSql = (TransactionStatement)sql;
-            if (txSql.isBegin() || txSql.isSavepoint()) {
-                server.trace(log, "tx: begin");
-                this.savepointStack.clear();
-                conn.getConnectionConfig().setAutoCommit(false);
-                this.savepointStack.push(txSql);
-                success = true;
-            } 
-        }
-        
-        if (!sql.isTransaction()) {
-            if (sql instanceof CreateDatabaseStatement) {
-                // It's necessary that creating dbFile before SQL execution
-                CreateDatabaseStatement s = (CreateDatabaseStatement)sql;
-                createDbFile(s);
-            }
-        }
-        
-        if (server.isTrace()) {
-            server.trace(log, "sqliteConn execute: autocommit {} ->", conn.getAutoCommit());
-        }
-        
-        return success;
-    }
-    
-    protected void tryFinish(SQLStatement sql) throws SQLException {
-        SQLiteConnection conn = getConnection();
-        if (sql.isTransaction()) {
-            TransactionStatement txSql = (TransactionStatement)sql;
-            String command = sql.getCommand();
-            switch (command) {
-            case "COMMIT":
-            case "END":
-            case "ROLLBACK":
-                if (txSql.hasSavepoint()) {
-                    break;
-                }
-                conn.getConnectionConfig().setAutoCommit(true);
-                this.savepointStack.clear();
-                server.trace(log, "tx: finish");
-                break;
-            case "RELEASE":
-                boolean autoCommit = this.savepointStack.isEmpty();
-                String savepoint = txSql.getSavepointName();
-                for (; !this.savepointStack.isEmpty(); ) {
-                    TransactionStatement spSql = this.savepointStack.peek();
-                    if (spSql.isBegin()) {
-                        break;
-                    }
-                    this.savepointStack.pop();
-                    String target = spSql.getSavepointName();
-                    server.trace(log, "tx: release savepoint {}", target);
-                    if (target.equalsIgnoreCase(savepoint)) {
-                        autoCommit = this.savepointStack.isEmpty();
-                        break;
-                    }
-                }
-                if (autoCommit) {
-                    conn.getConnectionConfig().setAutoCommit(true);
-                    server.trace(log, "tx: finish");
-                }
-                break;
-            }
-        }
-        
-        boolean autoCommit = conn.getAutoCommit();
-        if (autoCommit && sql.isMetaStatement()) {
-            detachMetaDb(conn);
-            if (sql instanceof GrantStatement 
-                    || sql instanceof RevokeStatement) {
-                this.server.flushPrivileges();
-            } else if (sql instanceof CreateUserStatement) {
-                this.server.flushHosts();
-            } else if (sql instanceof CreateDatabaseStatement) {
-                this.server.flushCatalogs();
-            }
-        }
-        
-        if (server.isTrace()) {
-            server.trace(log, "sqliteConn execute: autocommit {} <-", autoCommit);
-        }
-    }
-    
-    protected void resetAutoCommit() {
-        getConnection().getConnectionConfig()
-        .setAutoCommit(true);
-        this.savepointStack.clear();
     }
     
     public void stop() {

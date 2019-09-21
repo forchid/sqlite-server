@@ -13,8 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
+import java.sql.SQLException;
+
+import org.sqlite.server.MetaStatement;
+import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -25,7 +29,7 @@ import org.sqlite.sql.SQLStatement;
  * @since 2019-09-19
  *
  */
-public class CreateDatabaseStatement extends SQLStatement implements MetaStatement {
+public class CreateDatabaseStatement extends MetaStatement {
     
     protected final Catalog catalog = new Catalog();
     private boolean quite; // true: if not exists
@@ -61,6 +65,21 @@ public class CreateDatabaseStatement extends SQLStatement implements MetaStateme
     public void setDir(String dir) {
         this.catalog.setDir(dir);
     }
+    
+    @Override
+    public void postResult() throws SQLException {
+        super.postResult();
+        SQLiteProcessor proc = getContext();
+        proc.getServer().flushCatalogs();
+    }
+    
+    @Override
+    protected void preExecute(int maxRows) throws SQLException {
+        super.preExecute(maxRows);
+        
+        SQLiteProcessor proc = getContext();
+        proc.createDbFile(this);
+    }
 
     @Override
     public String getMetaSQL(String metaSchema) throws SQLParseException {
@@ -87,11 +106,6 @@ public class CreateDatabaseStatement extends SQLStatement implements MetaStateme
         } catch (SQLParseException e){}
         
         throw new SQLParseException(getSQL());
-    }
-
-    @Override
-    public boolean needSa() {
-        return true;
     }
     
 }

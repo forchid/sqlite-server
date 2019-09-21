@@ -43,10 +43,10 @@ import org.sqlite.SQLiteConfig;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
+import org.sqlite.server.sql.meta.Catalog;
+import org.sqlite.server.sql.meta.Db;
+import org.sqlite.server.sql.meta.User;
 import org.sqlite.SQLiteConnection;
-import org.sqlite.sql.meta.Catalog;
-import org.sqlite.sql.meta.Db;
-import org.sqlite.sql.meta.User;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SecurityUtils;
 

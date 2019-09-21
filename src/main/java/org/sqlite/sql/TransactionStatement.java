@@ -15,6 +15,8 @@
  */
 package org.sqlite.sql;
 
+import java.sql.SQLException;
+
 /**Transaction statement:
  * BEGIN, COMMIT/ROLLBACK etc
  * 
@@ -25,6 +27,7 @@ package org.sqlite.sql;
 public class TransactionStatement extends SQLStatement {
     
     protected String savepointName;
+    protected boolean txPrepared;
     
     public TransactionStatement(String sql, String command) {
         super(sql, command);
@@ -33,6 +36,65 @@ public class TransactionStatement extends SQLStatement {
     public TransactionStatement(String sql, String command, String savepointName) {
         this(sql, command);
         this.savepointName = savepointName;
+    }
+    
+    @Override
+    public boolean isTransaction() {
+        return true;
+    }
+    
+    @Override
+    protected void checkPermission() throws SQLException {
+        // All transaction statements PASS
+    }
+    
+    @Override
+    protected void preExecute(int maxRows) throws SQLException, IllegalStateException {
+        super.preExecute(maxRows);
+        
+        if (this.context.isAutoCommit() && (isBegin() || isSavepoint())) {
+            this.context.prepareTransaction(this);
+            this.txPrepared = true;
+        }
+    }
+    
+    @Override
+    protected boolean doExecute(int maxRows) throws SQLException {
+        boolean prepared = this.txPrepared;
+        boolean failed = true;
+        try {
+            boolean resultSet = super.doExecute(maxRows);
+            
+            if (!prepared && isSavepoint()) {
+                this.context.pushSavepoint(this);
+            }
+            failed = false;
+            return resultSet;
+        } finally {
+            if (failed && prepared) {
+                this.context.resetAutoCommit();
+            }
+        }
+    }
+    
+    @Override
+    public void postResult() throws SQLException {
+        String command = this.command;
+        switch (command) {
+        case "COMMIT":
+        case "END":
+        case "ROLLBACK":
+            if (hasSavepoint()) {
+                break;
+            }
+            this.context.releaseTransaction(this, true);
+            break;
+        case "RELEASE":
+            this.context.releaseTransaction(this, false);
+            break;
+        }
+        
+        super.postResult();
     }
     
     public String getSavepointName() {

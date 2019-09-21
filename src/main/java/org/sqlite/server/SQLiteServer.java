@@ -44,8 +44,8 @@ import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.pg.PgServer;
-import org.sqlite.sql.meta.Catalog;
-import org.sqlite.sql.meta.User;
+import org.sqlite.server.sql.meta.Catalog;
+import org.sqlite.server.sql.meta.User;
 import org.sqlite.util.IoUtils;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 

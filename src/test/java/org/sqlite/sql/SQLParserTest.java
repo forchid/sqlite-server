@@ -19,6 +19,15 @@ import java.sql.SQLException;
 import java.util.NoSuchElementException;
 
 import org.sqlite.TestBase;
+import org.sqlite.server.MetaStatement;
+import org.sqlite.server.sql.meta.AlterUserStatement;
+import org.sqlite.server.sql.meta.CreateDatabaseStatement;
+import org.sqlite.server.sql.meta.CreateUserStatement;
+import org.sqlite.server.sql.meta.DropUserStatement;
+import org.sqlite.server.sql.meta.GrantStatement;
+import org.sqlite.server.sql.meta.RevokeStatement;
+import org.sqlite.server.sql.meta.ShowDatabasesStatement;
+import org.sqlite.server.sql.meta.ShowGrantsStatement;
 import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.DetachStatement;
 import org.sqlite.sql.PragmaStatement;
@@ -26,14 +35,6 @@ import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
-import org.sqlite.sql.meta.AlterUserStatement;
-import org.sqlite.sql.meta.CreateDatabaseStatement;
-import org.sqlite.sql.meta.CreateUserStatement;
-import org.sqlite.sql.meta.DropUserStatement;
-import org.sqlite.sql.meta.GrantStatement;
-import org.sqlite.sql.meta.RevokeStatement;
-import org.sqlite.sql.meta.ShowDatabasesStatement;
-import org.sqlite.sql.meta.ShowGrantsStatement;
 import org.sqlite.util.IoUtils;
 
 /**
@@ -789,7 +790,7 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
-            assertTrue(stmt.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             assertTrue(metaSQL.equals(s.getMetaSQL(metaSchema)));
             assertTrue(user.equalsIgnoreCase(s.getUser()));
             assertTrue(host.equals(s.getHost()));
@@ -813,7 +814,7 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
-            assertTrue(stmt.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             assertTrue(dbname.equals(s.getDb()));
             assertTrue((location == null && location == s.getDir()) || location.equals(s.getDir()));
             assertTrue(quiet == s.isQuite());
@@ -834,7 +835,7 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
-            assertTrue(stmt.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             assertTrue(user.equalsIgnoreCase(s.getUser()));
             assertTrue(host.equals(s.getHost()));
             assertTrue(password == null || password.equals(s.getPassword()));
@@ -857,7 +858,7 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
-            assertTrue(stmt.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             
             for (String[] user: users) {
                 assertTrue(s.exists(user[0], user[1], user[2]));
@@ -892,7 +893,7 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
-            assertTrue(stmt.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             
             for (String priv: privs) {
                 assertTrue(s.hasPrivilege(priv));
@@ -921,7 +922,7 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isTransaction());
-            assertTrue(stmt.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             
             for (String priv: privs) {
                 assertTrue(s.hasPrivilege(priv));
@@ -965,7 +966,7 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
             ShowDatabasesStatement s = (ShowDatabasesStatement)stmt;
-            assertTrue(s.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             assertTrue(all == s.isAll());
             ++i;
             parser.remove();
@@ -985,11 +986,11 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
             ShowGrantsStatement s = (ShowGrantsStatement)stmt;
-            assertTrue(s.isMetaStatement());
+            assertTrue(stmt instanceof MetaStatement);
             assertTrue(host.equals(host));
             assertTrue(user == null || user.equals(user));
             assertTrue(currentUser == s.isCurrentUser());
-            assertTrue(needSa == s.needSa());
+            assertTrue(needSa == s.isNeedSa());
             ++i;
             parser.remove();
         }

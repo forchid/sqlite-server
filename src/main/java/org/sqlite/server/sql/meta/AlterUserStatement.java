@@ -13,8 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
+import java.sql.SQLException;
+
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.MetaStatement;
+import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -29,7 +34,7 @@ import org.sqlite.sql.SQLStatement;
  * @since 2019-09-12
  *
  */
-public class AlterUserStatement extends SQLStatement implements MetaStatement {
+public class AlterUserStatement extends MetaStatement {
     
     protected String user;
     protected String host;
@@ -99,6 +104,34 @@ public class AlterUserStatement extends SQLStatement implements MetaStatement {
     public void setPasswordSet(boolean passwordSet) {
         this.passwordSet = passwordSet;
     }
+    
+    @Override
+    protected void checkPermission() throws SQLException {
+        User user = getMetaUser();
+        if (user.isSa() || !isNeedSa()) {
+            initPassword();
+            return;
+        }
+        
+        String host = user.getHost();
+        String proto = user.getProtocol();
+        if (isUser(host, user.getUser(), proto)) {
+            initPassword();
+            return;
+        }
+        
+        throw convertError(SQLiteErrorCode.SQLITE_PERM);
+    }
+    
+    protected void initPassword() {
+        if (getPassword() != null && !isPasswordSet()) {
+            String proto = getProtocol(), method = getAuthMethod();
+            SQLiteAuthMethod authMethod = getContext().newAuthMethod(proto, method);
+            String p = authMethod.genStorePassword(getUser(), getPassword());
+            setPassword(p);
+            setPasswordSet(true);
+        }
+    }
 
     @Override
     public String getMetaSQL(String metaSchema) {
@@ -139,11 +172,6 @@ public class AlterUserStatement extends SQLStatement implements MetaStatement {
         }
         
         throw new SQLParseException(getSQL());
-    }
-
-    @Override
-    public boolean needSa() {
-        return true;
     }
     
     public boolean isUser(String host, String user, String protocol) {

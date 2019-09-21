@@ -13,13 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
 import static java.lang.String.*;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.MetaStatement;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -31,7 +34,7 @@ import org.sqlite.sql.SQLStatement;
  * @since 2019-09-16
  *
  */
-public class DropUserStatement extends SQLStatement implements MetaStatement {
+public class DropUserStatement extends MetaStatement {
     
     protected List<DroppedUser> users = new ArrayList<>(2);
     
@@ -66,11 +69,6 @@ public class DropUserStatement extends SQLStatement implements MetaStatement {
         
         throw new SQLParseException(getSQL());
     }
-
-    @Override
-    public boolean needSa() {
-        return true;
-    }
     
     public void addUser(String host, String user, String protocol) {
         DroppedUser u = new DroppedUser(host, user, protocol);
@@ -82,15 +80,23 @@ public class DropUserStatement extends SQLStatement implements MetaStatement {
     }
     
     public boolean exists(String host, String user, String protocol) {
-        for (DroppedUser u : this.users) {
-            if ((u.host.equals(host))
-                    && (u.user.equals(user)) 
-                    && (u.protocol.equalsIgnoreCase(protocol))) {
-                return true;
-            }
+        DroppedUser du = new DroppedUser(host, user, protocol);
+        return (this.users.contains(du));
+    }
+    
+    @Override
+    protected void checkPermission() throws SQLException {
+        User user = getMetaUser();
+        if (user.isSa() || !isNeedSa()) {
+            return;
         }
         
-        return false;
+        String host = user.getHost(), proto = user.getProtocol();
+        if ((1 == getUserCount()) && exists(host, user.getUser(), proto)) {
+            return;
+        }
+        
+        throw convertError(SQLiteErrorCode.SQLITE_PERM);
     }
     
     static class DroppedUser {
@@ -102,6 +108,28 @@ public class DropUserStatement extends SQLStatement implements MetaStatement {
             this.host = host;
             this.user = user;
             this.protocol = protocol;
+        }
+        
+        @Override
+        public boolean equals(Object o) {
+            if (o == this) {
+                return true;
+            }
+            
+            if (o instanceof DroppedUser) {
+                DroppedUser u = (DroppedUser)o;
+                return (this.host.equals(u.host) 
+                        && this.user.equals(u.user) 
+                        && this.protocol.equalsIgnoreCase(u.protocol));
+            }
+            
+            return false;
+        }
+        
+        @Override
+        public int hashCode() {
+            return (this.host.hashCode() 
+                    ^ this.user.hashCode() ^ this.protocol.hashCode());
         }
         
     }

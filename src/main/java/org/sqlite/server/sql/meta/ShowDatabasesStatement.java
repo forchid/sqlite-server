@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
+import org.sqlite.server.MetaStatement;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -25,7 +26,7 @@ import org.sqlite.sql.SQLStatement;
  * @since 2019-09-19
  *
  */
-public class ShowDatabasesStatement extends SQLStatement implements MetaStatement {
+public class ShowDatabasesStatement extends MetaStatement {
     
     protected boolean sa;
     protected boolean all;
@@ -73,6 +74,13 @@ public class ShowDatabasesStatement extends SQLStatement implements MetaStatemen
 
     @Override
     public String getMetaSQL(String metaSchema) throws SQLParseException {
+        User metaUser = getMetaUser();
+        if (metaUser.isSa()) {
+            setSa(true);
+        } else {
+            setUser(metaUser);
+        }
+        
         String sql;
         if (this.all) {
             sql = String.format("select db, dir from '%s'.catalog", metaSchema);
@@ -97,7 +105,7 @@ public class ShowDatabasesStatement extends SQLStatement implements MetaStatemen
     }
 
     @Override
-    public boolean needSa() {
+    public boolean isNeedSa() {
         return (this.all || this.sa);
     }
 

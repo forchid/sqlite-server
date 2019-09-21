@@ -13,13 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
 import static java.lang.String.*;
 
+import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.sqlite.server.MetaStatement;
+import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -35,7 +38,7 @@ import org.sqlite.util.StringUtils;
  * @since 2019-09-16
  *
  */
-public class GrantStatement extends SQLStatement implements MetaStatement {
+public class GrantStatement extends MetaStatement {
     static String[] PRIVS = {"ALL", "SELECT", "INSERT", "UPDATE", "DELETE",
             "CREATE", "ALTER", "DROP", "PRAGMA", "VACUUM", "ATTACH"};
     
@@ -95,11 +98,6 @@ public class GrantStatement extends SQLStatement implements MetaStatement {
         
         throw new SQLParseException(getSQL());
     }
-
-    @Override
-    public boolean needSa() {
-        return true;
-    }
     
     public boolean hasPrivilege(String privilege) {
         privilege = StringUtils.toUpperEnglish(privilege);
@@ -131,6 +129,13 @@ public class GrantStatement extends SQLStatement implements MetaStatement {
     
     protected int priv(String command) {
         return (this.privileges.contains(command)? 1: 0);
+    }
+    
+    @Override
+    public void postResult() throws SQLException {
+        super.postResult();
+        SQLiteProcessor proc = getContext();
+        proc.getServer().flushPrivileges();
     }
     
     public static String[] getPrivileges() {

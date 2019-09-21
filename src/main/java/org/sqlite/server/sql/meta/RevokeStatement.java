@@ -13,15 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.sql.meta;
+package org.sqlite.server.sql.meta;
 
+import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.sqlite.server.MetaStatement;
+import org.sqlite.server.SQLiteProcessor;
+import org.sqlite.server.sql.meta.GrantStatement.Grantee;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
-import org.sqlite.sql.meta.GrantStatement.Grantee;
 import org.sqlite.util.StringUtils;
 
 /**REVOKE {ALL [PRIVILEGES] [, SELECT | INSERT | UPDATE | DELETE
@@ -33,7 +36,7 @@ import org.sqlite.util.StringUtils;
  * @since 2019-09-18
  *
  */
-public class RevokeStatement extends SQLStatement implements MetaStatement {
+public class RevokeStatement extends MetaStatement {
     
     protected final Set<String> privileges = new HashSet<>();
     protected final Set<String> revokeds = new HashSet<>();
@@ -150,13 +153,15 @@ public class RevokeStatement extends SQLStatement implements MetaStatement {
         this.revokeAll = revokeAll;
     }
     
+    @Override
+    public void postResult() throws SQLException {
+        super.postResult();
+        SQLiteProcessor proc = getContext();
+        proc.getServer().flushPrivileges();
+    }
+    
     public static String[] getPrivileges() {
         return GrantStatement.getPrivileges();
-    }
-
-    @Override
-    public boolean needSa() {
-        return true;
     }
 
 }

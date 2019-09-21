@@ -15,7 +15,7 @@
  */
 package org.sqlite.server.func;
 
-import org.sqlite.sql.meta.User;
+import org.sqlite.server.sql.meta.User;
 
 /** Function USER()
  * 
