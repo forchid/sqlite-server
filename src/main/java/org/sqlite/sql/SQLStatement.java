@@ -211,6 +211,15 @@ public class SQLStatement implements AutoCloseable {
         }
     }
     
+    /**
+     * Handle SQL execution exception
+     * @param e SQLException when SQL execution
+     * @return true if the execution exception handled, otherwise false
+     */
+    public boolean executionException(SQLException e) {
+        return false;
+    }
+    
     public boolean isOpen() {
         return this.open;
     }

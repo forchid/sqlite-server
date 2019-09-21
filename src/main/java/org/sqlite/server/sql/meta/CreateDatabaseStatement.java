@@ -17,6 +17,8 @@ package org.sqlite.server.sql.meta;
 
 import java.sql.SQLException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
@@ -30,6 +32,7 @@ import org.sqlite.sql.SQLStatement;
  *
  */
 public class CreateDatabaseStatement extends MetaStatement {
+    static final Logger log = LoggerFactory.getLogger(CreateDatabaseStatement.class);
     
     protected final Catalog catalog = new Catalog();
     private boolean quite; // true: if not exists
@@ -79,6 +82,19 @@ public class CreateDatabaseStatement extends MetaStatement {
         
         SQLiteProcessor proc = getContext();
         proc.createDbFile(this);
+    }
+    
+    @Override
+    public boolean executionException(SQLException e) {
+        if (!isQuite()) {
+            return false;
+        }
+        
+        boolean duplicated = getContext().isUniqueViolated(e);
+        if (duplicated && this.context.isTrace()) {
+            this.context.trace(log, "Database '{}' existing", getDb());
+        }
+        return duplicated;
     }
 
     @Override

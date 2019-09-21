@@ -49,7 +49,6 @@ import org.sqlite.server.MetaStatement;
 import org.sqlite.server.NetworkException;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteWorker;
-import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
@@ -575,21 +574,16 @@ public class PgProcessor extends SQLiteProcessor {
                         this.xQueryFailed = false;
                     }
                 } catch (SQLException e) {
-                    if ((sqlStmt instanceof CreateDatabaseStatement)
-                            && this.server.isUniqueViolated(e)) {
-                        CreateDatabaseStatement s = (CreateDatabaseStatement)sqlStmt;
-                        if (s.isQuite()) {
-                            this.server.traceError(log, "Database existing", e);
-                            sqlStmt.postResult();
-                            sendCommandComplete(sqlStmt, 0, false);
-                            this.xQueryFailed = false;
-                            break;
-                        }
-                    }
-                    if (this.server.isCanceled(e)) {
-                        sendCancelQueryResponse();
+                    if (sqlStmt.executionException(e)) {
+                        sqlStmt.postResult();
+                        sendCommandComplete(sqlStmt, 0, false);
+                        this.xQueryFailed = false;
                     } else {
-                        sendErrorResponse(e);
+                        if (this.server.isCanceled(e)) {
+                            sendCancelQueryResponse();
+                        } else {
+                            sendErrorResponse(e);
+                        } 
                     }
                 }
                 break;
@@ -1392,19 +1386,12 @@ public class PgProcessor extends SQLiteProcessor {
                             sqlStmt = this.parser.next();
                         }
                     } catch (SQLException e) {
-                        if ((sqlStmt instanceof CreateDatabaseStatement)
-                                && self.server.isUniqueViolated(e)) {
-                            CreateDatabaseStatement s = (CreateDatabaseStatement)sqlStmt;
-                            if (s.isQuite()) {
-                                self.server.traceError(log, "Database existing", e);
-                                sqlStmt.postResult();
-                                self.sendCommandComplete(sqlStmt, 0, false);
-                                // try next
-                                if (next=this.parser.hasNext()) {
-                                    sqlStmt = this.parser.next();
-                                }
-                            } else {
-                                throw e;
+                        if (sqlStmt.executionException(e)) {
+                            sqlStmt.postResult();
+                            self.sendCommandComplete(sqlStmt, 0, false);
+                            // try next
+                            if (next=this.parser.hasNext()) {
+                                sqlStmt = this.parser.next();
                             }
                         } else {
                             throw e;

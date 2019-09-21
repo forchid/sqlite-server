@@ -71,4 +71,6 @@ public abstract class SQLContext {
     
     protected abstract void checkPermission(SQLStatement s) throws SQLException;
     
+    public abstract boolean isUniqueViolated(SQLException cause);
+    
 }

@@ -320,6 +320,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         
         throw convertError(SQLiteErrorCode.SQLITE_PERM);
     }
+    
+    @Override
+    public boolean isUniqueViolated(SQLException cause) {
+        return (this.server.isUniqueViolated(cause));
+    }
     // SQLContext methods
     
     public InetSocketAddress getRemoteAddress() {
