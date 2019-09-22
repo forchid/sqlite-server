@@ -23,6 +23,7 @@ import org.sqlite.server.MetaStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
+import org.sqlite.server.sql.meta.DropDatabaseStatement;
 import org.sqlite.server.sql.meta.DropUserStatement;
 import org.sqlite.server.sql.meta.GrantStatement;
 import org.sqlite.server.sql.meta.RevokeStatement;
@@ -320,6 +321,13 @@ public class SQLParserTest extends TestBase {
         deleteTest("/*sql*/delete/*;*/from t /*'*/where id=1;", 1);
         deleteTest("/*sql*/delete/*;*/ from t where id=1-- sql", 1);
         deleteTest("/*sql*/delete/*;*/from t where id=1; DeleTe from t /*\"*/ where id=2-- sql", 2);
+        
+        dropDatabaseTest("drop database test;", 1, "test", false);
+        dropDatabaseTest("drop database Test ;", 1, "test", false);
+        dropDatabaseTest("drop database if exists Test", 1, "test", true);
+        dropDatabaseTest(" DROP Schema if exists Test", 1, "test", true);
+        dropDatabaseTest("DROP Schema if exists Test ; drop database if exists test", 2, "test", true);
+        dropDatabaseTest("DROP Schema TEST ; drop database test", 2, "test", false);
         
         dropUserTest("drop user test@localhost;", 1, "meta_", new String[][]{{"localhost", "test", "pg"}});
         dropUserTest("drop user 'test' @/**/'localhost' ;", 1, "meta_", new String[][]{{"localhost", "test", "pg"}});
@@ -842,6 +850,29 @@ public class SQLParserTest extends TestBase {
             assertTrue(protocol.equalsIgnoreCase(s.getProtocol()));
             assertTrue(authMethod.equalsIgnoreCase(s.getAuthMethod()));
             assertTrue(sa == s.isSa());
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void dropDatabaseTest(String sqls, int stmts, String dbname, boolean quiet) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            
+            assertTrue(!stmt.isComment());
+            assertTrue("DROP DATABASE".equals(stmt.getCommand()));
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(stmt instanceof MetaStatement);
+            
+            DropDatabaseStatement s = (DropDatabaseStatement)stmt;
+            assertTrue(dbname.equals(s.getDb()));
+            assertTrue(quiet == s.isQuiet());
+            assertTrue(s.isNeedSa());
+            
             ++i;
         }
         overTest(parser, i, stmts);

@@ -39,6 +39,7 @@ public class StatementTest extends TestDbBase {
         alterUserTest();
         createTableTest();
         createUserTest();
+        databaseDDLTest();
         dropUserTest();
         nestedBlockCommentTest();
         simpleScalarQueryTest();
@@ -108,6 +109,77 @@ public class StatementTest extends TestDbBase {
             conn.setAutoCommit(true);
             n = ps.executeUpdate();
             assertTrue(1 == n);
+        }
+    }
+    
+    private void databaseDDLTest() throws SQLException {
+        try (Connection conn = getConnection("test")) {
+            fail("'test' database not exists");
+        } catch (SQLException e) {
+            if (!"08001".equals(e.getSQLState())) {
+                throw e;
+            }
+        }
+        
+        // test-1: Database in default data directory
+        // create database test
+        try (Connection conn = getConnection()) {
+            Statement s = conn.createStatement();
+            int n = s.executeUpdate("drop schema if exists test");
+            assertTrue(0 == n);
+            n =s.executeUpdate("create database test");
+            assertTrue(1 == n);
+            n =s.executeUpdate("create database if not exists test");
+            assertTrue(0 == n);
+        }
+        // connect to the new database test and try to drop
+        try (Connection conn = getConnection("test")) {
+            Statement s = conn.createStatement();
+            try {
+                s.executeUpdate("drop database test");
+                fail("Database 'test' in use");
+            } catch (SQLException e) {
+                // OK
+            }
+        }
+        // drop database test
+        try (Connection conn = getConnection()) {
+            Statement s = conn.createStatement();
+            int n = s.executeUpdate("drop schema test");
+            assertTrue(1 == n);
+            n = s.executeUpdate("drop database if exists test");
+            assertTrue(0 == n);
+        }
+        
+        // test-2: Database in dbDDLTest data directory
+        // create database test
+        String dataDir = getDataDir("dbDDLTest");
+        try (Connection conn = getConnection()) {
+            Statement s = conn.createStatement();
+            int n = s.executeUpdate("drop schema if exists test");
+            assertTrue(0 == n);
+            n =s.executeUpdate("create database test location '" +dataDir+"'");
+            assertTrue(1 == n);
+            n =s.executeUpdate("create database if not exists test directory '" +dataDir+"'");
+            assertTrue(0 == n);
+        }
+        // connect to the new database test and try to drop
+        try (Connection conn = getConnection("test")) {
+            Statement s = conn.createStatement();
+            try {
+                s.executeUpdate("drop database test");
+                fail("Database 'test' in use");
+            } catch (SQLException e) {
+                // OK
+            }
+        }
+        // drop database test
+        try (Connection conn = getConnection()) {
+            Statement s = conn.createStatement();
+            int n = s.executeUpdate("drop schema test");
+            assertTrue(1 == n);
+            n = s.executeUpdate("drop database if exists test");
+            assertTrue(0 == n);
         }
     }
     

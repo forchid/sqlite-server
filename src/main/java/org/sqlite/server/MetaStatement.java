@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLStatement;
 
 /**The SQLite meta database operation statement.
@@ -91,7 +92,7 @@ public abstract class MetaStatement extends SQLStatement {
         return metaSQL;
     }
 
-    public abstract String getMetaSQL(String metaSchema);
+    public abstract String getMetaSQL(String metaSchema) throws SQLParseException;
     
     public boolean isNeedSa() {
         return true;

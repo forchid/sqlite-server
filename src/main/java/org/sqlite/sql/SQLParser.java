@@ -28,6 +28,7 @@ import org.sqlite.server.MetaStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
+import org.sqlite.server.sql.meta.DropDatabaseStatement;
 import org.sqlite.server.sql.meta.DropUserStatement;
 import org.sqlite.server.sql.meta.GrantStatement;
 import org.sqlite.server.sql.meta.RevokeStatement;
@@ -536,9 +537,36 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         if (nextStringIf("user") != -1) {
             skipIgnorable();
             return parseDropUser();
+        } else if (nextStringIf("database") != -1 || nextStringIf("schema") != -1) {
+            skipIgnorable();
+            return parseDropDatabase();
         }
         
         return new SQLStatement(this.sql, "DROP");
+    }
+    
+    protected SQLStatement parseDropDatabase() {
+        DropDatabaseStatement stmt = new DropDatabaseStatement(this.sql);
+        boolean failed = true;
+        try {
+            if (nextStringIf("if") != -1) {
+                skipIgnorable();
+                nextString("exists");
+                skipIgnorable();
+                stmt.setQuiet(true);
+            }
+            stmt.setDb(nextString());
+            if (!nextEnd()) {
+                throw syntaxError();
+            }
+            
+            failed = false;
+            return stmt;
+        } finally {
+            if (failed) {
+                stmt.close();
+            }
+        }
     }
     
     protected SQLStatement parseDropUser() {

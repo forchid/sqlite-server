@@ -36,7 +36,9 @@ import org.sqlite.server.func.CurrentUserFunc;
 import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.UserFunc;
+import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
+import org.sqlite.server.sql.meta.DropDatabaseStatement;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLStatement;
@@ -338,15 +340,15 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
     }
     
-    protected SQLException convertError(SQLiteErrorCode error) {
+    public SQLException convertError(SQLiteErrorCode error) {
         return convertError(error, null, null);
     }
     
-    protected SQLException convertError(SQLiteErrorCode error, String message) {
+    public SQLException convertError(SQLiteErrorCode error, String message) {
         return convertError(error, message, null);
     }
     
-    protected SQLException convertError(SQLiteErrorCode error, String message, String sqlState) {
+    public SQLException convertError(SQLiteErrorCode error, String message, String sqlState) {
         if (sqlState == null) {
             if (SQLiteErrorCode.SQLITE_AUTH.code            == error.code) {
                 sqlState = "28000";
@@ -666,6 +668,44 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             SQLiteErrorCode error = SQLiteErrorCode.SQLITE_IOERR;
             throw convertError(error, "Can't create database file");
         }
+    }
+    
+    public void deleteDbFile(DropDatabaseStatement stmt) throws SQLException {
+        String db = stmt.getDb();
+        Catalog catalog = getMetaDb().selectCatalog(db);
+        if (catalog == null) {
+            if (stmt.isQuiet()) {
+                return;
+            }
+            String message = String.format("Database catalog of '%s' not exists", db);
+            throw convertError(SQLiteErrorCode.SQLITE_ERROR, message);
+        }
+        
+        final String dir = catalog.getDir();
+        final File dbFile = this.server.getDbFile(db, dir);
+        if (!dbFile.isFile()) {
+            if (stmt.isQuiet()) {
+                return;
+            }
+            String message = String.format("Database file of '%s' not exists", db);
+            throw convertError(SQLiteErrorCode.SQLITE_ERROR, message);
+        }
+        
+        // Do delete
+        if (!dbFile.delete()) {
+            String message = String.format("Can't delete database file of '%s'", db);
+            trace(log, "{}: {}", message, dbFile);
+            throw convertError(SQLiteErrorCode.SQLITE_IOERR, message);
+        }
+        for (String ext: new String[] {"-wal", "-shm", "-journal"}) {
+            final File extFile = this.server.getDbFile(db+ext, dir);
+            if (extFile.isFile() && !extFile.delete()) {
+                String message = String.format("Can't delete database extension file of '%s'", db);
+                log.error("{}: {}", message, extFile);
+                throw convertError(SQLiteErrorCode.SQLITE_IOERR, message);
+            }
+        }
+        // OK
     }
     
     public void stop() {

@@ -58,8 +58,18 @@ public abstract class TestDbBase extends TestBase {
         return ("jdbc:postgresql://localhost:"+port+"/"+path);
     }
     
+    protected Connection getConnection(String url) throws SQLException {
+        if (!url.startsWith("jdbc:")) {
+            url = getUrl(getPortDefault(), url);
+        }
+        return (DriverManager.getConnection(url, user, password));
+    }
+    
     protected Connection getConnection(String url, String user, String password) 
             throws SQLException {
+        if (!url.startsWith("jdbc:")) {
+            url = getUrl(getPortDefault(), url);
+        }
         return (DriverManager.getConnection(url, user, password));
     }
     
