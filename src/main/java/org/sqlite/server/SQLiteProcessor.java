@@ -40,6 +40,7 @@ import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.DropDatabaseStatement;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
@@ -107,10 +108,6 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     public int getId() {
         return this.id;
-    }
-    
-    public String getMetaDbName() {
-        return (getMetaDb().getDbName());
     }
     
     public String getName() {
@@ -229,6 +226,16 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     @Override
+    public File getDataDir() {
+        return this.server.getDataDir();
+    }
+    
+    @Override
+    public String getMetaDbName() {
+        return (getMetaDb().getDbName());
+    }
+    
+    @Override
     public boolean isTrace() {
         return this.server.isTrace();
     }
@@ -315,7 +322,26 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
         
         String command = s.getCommand();
-        return this.server.hasPrivilege(this.user, command);
+        if (s instanceof AttachStatement) {
+            // ATTACH is special!
+            final AttachStatement stmt = (AttachStatement)s;
+            String dbName = stmt.getFileName(), dataDir = stmt.getDirPath();
+            try {
+                File dbFile = new File(dataDir, dbName).getCanonicalFile();
+                if (dbFile.getParentFile().equals(getDataDir())) {
+                    // Default data directory
+                    dataDir = null;
+                }
+            } catch (IOException e) {
+                String message = "Database file path illegal";
+                traceError(log, message, e);
+                throw convertError(SQLiteErrorCode.SQLITE_ERROR, message);
+            }
+            final String host = this.user.getHost(), user = this.user.getUser();
+            return this.server.hasPrivilege(host, user, dbName, command, dataDir);
+        } else {
+            return this.server.hasPrivilege(this.user, command);
+        }
     }
     
     @Override
@@ -364,6 +390,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
                 sqlState = "58005";
             } else if (SQLiteErrorCode.SQLITE_IOERR.code    == error.code) {
                 sqlState = "58030";
+            } else if (SQLiteErrorCode.SQLITE_CONSTRAINT.code == error.code) {
+                sqlState = "23514";
+            } else if (SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE.code == error.code) {
+                sqlState = "23505";
             }
             if (sqlState == null) {
                 sqlState = "HY000";
@@ -625,10 +655,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     public void createDbFile(CreateDatabaseStatement stmt) throws SQLException {
         String dir = stmt.getDir();
         if (dir == null) {
-            dir = this.server.getDataDir().getAbsolutePath();
+            dir = getDataDir().getAbsolutePath();
         } else {
             File dirFile = new File(dir);
-            if (dirFile.equals(this.server.getDataDir())) {
+            if (dirFile.equals(getDataDir())) {
                 stmt.setDir(null);
             }
         }
@@ -639,9 +669,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             dbDir = dbDir.getCanonicalFile();
         } catch (IOException e) {
             SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
-            throw convertError(error, "Data directory format illegal");
+            throw convertError(error, "Data directory path illegal");
         }
-        stmt.setDir(dbDir.getAbsolutePath());
+        if (stmt.getDir() != null) {
+            stmt.setDir(dbDir.getAbsolutePath());
+        }
         
         File dbFile = new File(dbDir, db);
         if (!dbFile.getName().equals(db)) {

@@ -15,6 +15,7 @@
  */
 package org.sqlite.sql;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.SQLException;
 
@@ -72,5 +73,9 @@ public abstract class SQLContext {
     protected abstract void checkPermission(SQLStatement s) throws SQLException;
     
     public abstract boolean isUniqueViolated(SQLException cause);
+    
+    public abstract String getMetaDbName();
+    
+    public abstract File getDataDir();
     
 }

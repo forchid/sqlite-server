@@ -731,6 +731,11 @@ public abstract class SQLiteServer implements AutoCloseable {
         return (this.metaDb.hasPrivilege(user, command));
     }
     
+    public boolean hasPrivilege(String host, String user, String db, String command, String dataDir) 
+            throws SQLException {
+        return (this.metaDb.hasPrivilege(host, user, db, command, dataDir));
+    }
+    
     public void trace(Logger log, String message) {
         if (isTrace()) {
             log.info(message);
@@ -859,5 +864,5 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  boot    Bootstap SQLite server\n" +
                 "  help    Show this help message";
     }
-
+    
 }

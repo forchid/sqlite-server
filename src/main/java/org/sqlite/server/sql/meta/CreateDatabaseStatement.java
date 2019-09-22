@@ -37,6 +37,7 @@ public class CreateDatabaseStatement extends MetaStatement {
     
     protected final Catalog catalog = new Catalog();
     private boolean quite; // true: if not exists
+    private boolean created;
 
     public CreateDatabaseStatement(String sql) {
         super(sql, "CREATE DATABASE");
@@ -78,20 +79,6 @@ public class CreateDatabaseStatement extends MetaStatement {
     }
     
     @Override
-    protected void preExecute(int maxRows) throws SQLException {
-        super.preExecute(maxRows);
-        
-        SQLiteProcessor proc = getContext();
-        if (proc.getMetaDbName().equals(getDb())) {
-            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
-            String message = "Can't create a database named by meta db's name";
-            throw proc.convertError(error, message);
-        }
-        
-        proc.createDbFile(this);
-    }
-    
-    @Override
     public boolean executionException(SQLException e) {
         if (!isQuite()) {
             return false;
@@ -105,10 +92,21 @@ public class CreateDatabaseStatement extends MetaStatement {
     }
 
     @Override
-    public String getMetaSQL(String metaSchema) throws SQLParseException {
+    public String getMetaSQL(String metaSchema) throws SQLException, SQLParseException {
         String db = getDb(), dir, sql;
         if (db == null) {
             throw new SQLParseException("No dbname specified");
+        }
+        if (!this.created) {
+            SQLiteProcessor proc = getContext();
+            if (proc.getMetaDbName().equals(getDb())) {
+                SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
+                String message = "Can't create a database named by meta db's name";
+                throw proc.convertError(error, message);
+            }
+            
+            proc.createDbFile(this);
+            this.created = true;
         }
         
         dir = getDir();

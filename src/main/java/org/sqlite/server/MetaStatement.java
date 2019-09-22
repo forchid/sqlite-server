@@ -92,7 +92,8 @@ public abstract class MetaStatement extends SQLStatement {
         return metaSQL;
     }
 
-    public abstract String getMetaSQL(String metaSchema) throws SQLParseException;
+    public abstract String getMetaSQL(String metaSchema)
+            throws SQLException, SQLParseException;
     
     public boolean isNeedSa() {
         return true;

@@ -15,6 +15,11 @@
  */
 package org.sqlite.sql;
 
+import java.io.File;
+import java.sql.SQLException;
+
+import org.sqlite.util.StringUtils;
+
 /**The ATTACh statement: 
  * ATTACH [DATABASE] expr AS schema-name
  * 
@@ -55,6 +60,69 @@ public class AttachStatement extends SQLStatement {
     public boolean isTemporary() {
         String db = getDbName();
         return ("".equals(db));
+    }
+    
+    @Override
+    protected void checkPermission() throws SQLException {
+        if (isMemory() || isTemporary()) {
+            return;
+        }
+        
+        final String metaDb = this.context.getMetaDbName();
+        final String fileName = getFileName();
+        if (metaDb.equals(fileName)) {
+            String message = "Can't attach a database file named by meta db's name";
+            throw new SQLException(message, "42000", 1);
+        }
+        
+        final String dirPath = getDirPath();
+        final File dbFile;
+        if (dirPath == null) {
+            dbFile = new File(this.context.getDataDir(), fileName);
+        } else {
+            dbFile = new File(dirPath, fileName);
+        }
+        setDbName(dbFile.getAbsolutePath());
+        
+        this.context.checkPermission(this);
+    }
+    
+    @Override
+    public String getExecutableSQL() throws SQLException {
+        String f = "attach database '%s' as '%s'";
+        String sql = String.format(f, getDbName(), getSchemaName());
+        
+        // check
+        try (SQLParser parser = new SQLParser(sql)) {
+            SQLStatement stmt = parser.next();
+            if ("ATTACH".equals(stmt.getCommand()) && !parser.hasNext()) {
+                return stmt.getSQL();
+            }
+        }
+        
+        throw new SQLParseException(getSQL());
+    }
+    
+    public String getFileName() {
+        if (isMemory() || isTemporary()) {
+            return getDbName();
+        }
+        File dbFile = new File(getDbName());
+        return (StringUtils.toLowerEnglish(dbFile.getName()));
+    }
+    
+    public String getDirPath() {
+        if (isMemory() || isTemporary()) {
+            return null;
+        }
+        
+        String dbName = getDbName();
+        File dbFile = new File(dbName);
+        if (dbFile.getName().equalsIgnoreCase(dbName)) {
+            return null;
+        }
+        
+        return (dbFile.getParentFile().getAbsolutePath());
     }
     
 }

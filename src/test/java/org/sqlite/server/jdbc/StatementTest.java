@@ -15,6 +15,7 @@
  */
 package org.sqlite.server.jdbc;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -37,6 +38,7 @@ public class StatementTest extends TestDbBase {
     @Override
     public void test() throws SQLException {
         alterUserTest();
+        attachTest();
         createTableTest();
         createUserTest();
         databaseDDLTest();
@@ -66,6 +68,69 @@ public class StatementTest extends TestDbBase {
                     + "balance decimal(12,1) not null)");
             assertTrue(0 == n);
             stmt.close();
+        }
+    }
+    
+    private void attachTest() throws SQLException {
+        doAttachTest(null);
+        doAttachTest(getExtraDir());
+    }
+    
+    private void doAttachTest(String dataDir) throws SQLException {
+        try (Connection conn = getConnection()) {
+            Statement s = conn.createStatement();
+            int n;
+            try {
+                s.executeUpdate("attach database 'sqlite3.meta' as m");
+                fail("Can't attach meta db");
+            } catch (SQLException e) {
+                // OK
+            }
+            
+            // init
+            n = s.executeUpdate("create user test@localhost identified by '123'");
+            assertTrue(1 == n);
+            n = s.executeUpdate("grant select, insert, create on '"+getDbDefault()+"' to test@localhost");
+            assertTrue(1 == n);
+            s.executeUpdate("drop database if exists 'attach.db'");
+            if (dataDir == null) {
+                n = s.executeUpdate("create database 'attach.db'");
+            } else {
+                n = s.executeUpdate("create database 'attach.db' location '" + dataDir +"'");
+            }
+            assertTrue(1 == n);
+            n = s.executeUpdate("grant attach on 'attach.db' to test@localhost");
+            assertTrue(1 == n);
+            // do test
+            try (Connection c = getConnection("test", "123")) {
+                Statement sa = c.createStatement();
+                connectionTest(c, "select 1", "1");
+                if (dataDir == null) {
+                    n = sa.executeUpdate("attach database 'attach.db' as a");
+                } else {
+                    n = sa.executeUpdate("attach database '"+dataDir+File.separator+"attach.db' as a");
+                }
+                assertTrue(0 == n);
+                sa.executeUpdate("create table a.test(id int primary key, name varchar(20))");
+                n = sa.executeUpdate("insert into a.test(name)values('ABC')");
+                assertTrue(1 == n);
+                ResultSet rs = sa.executeQuery("select count(*) from a.test");
+                assertTrue(rs.next());
+                assertTrue(1 == rs.getInt(1));
+                rs = sa.executeQuery("select name from a.test where name='ABC'");
+                assertTrue(rs.next());
+                assertTrue("ABC".equals(rs.getString(1)));
+                n = sa.executeUpdate("detach database a");
+                assertTrue(1 == n);
+            }
+            // cleanup
+            n = s.executeUpdate("revoke attach on 'attach.db' from test@localhost");
+            assertTrue(1 == n);
+            n = s.executeUpdate("drop database 'attach.db'");
+            assertTrue(1 == n);
+            n = s.executeUpdate("revoke all on '"+getDbDefault()+"' from test@localhost");
+            assertTrue(1 == n);
+            n = s.executeUpdate("drop user test@localhost");
         }
     }
     
@@ -153,7 +218,7 @@ public class StatementTest extends TestDbBase {
         
         // test-2: Database in dbDDLTest data directory
         // create database test
-        String dataDir = getDataDir("dbDDLTest");
+        String dataDir = getExtraDir();
         try (Connection conn = getConnection()) {
             Statement s = conn.createStatement();
             int n = s.executeUpdate("drop schema if exists test");

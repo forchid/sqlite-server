@@ -48,7 +48,7 @@ public abstract class TestDbBase extends TestBase {
         server.initdb(initArgs);
         IoUtils.close(server);
         
-        String[] bootArgs = {"-D", dataDir, 
+        String[] bootArgs = {"-D", dataDir,// "-T",
                 "--worker-count", getWorkCount()+"", "--max-conns", maxConns+""};
         server = SQLiteServer.create(bootArgs);
         server.bootAsync(bootArgs);
@@ -117,6 +117,10 @@ public abstract class TestDbBase extends TestBase {
             dataDir = "sqlite3Test";
         }
         return ("data"+File.separator+dataDir);
+    }
+    
+    protected static String getExtraDir() {
+        return getDataDir("extraTest");
     }
     
     protected static void deleteDataDir(String dataDir) {

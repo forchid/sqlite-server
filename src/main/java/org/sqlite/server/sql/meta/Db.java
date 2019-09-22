@@ -266,8 +266,9 @@ public class Db {
         case "VACUUM":
             return (1 == getVacuumPriv());
         case "ATTACH":
-        case "DETACH":
             return (1 == getAttachPriv());
+        case "DETACH":
+            return true;
         default:
             return false;
         }

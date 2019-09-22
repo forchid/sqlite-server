@@ -323,6 +323,28 @@ public class SQLiteMetaDb implements AutoCloseable {
         return (this.file.getName());
     }
     
+    public boolean hasPrivilege(String host, String user, String db, String command, String dataDir) 
+            throws SQLException {
+        if (!hasPrivilege(host, user, db, command)) {
+            return false;
+        }
+        
+        Catalog catalog = selectCatalog(db);
+        if (catalog == null) {
+            return false;
+        }
+        
+        String dir = catalog.getDir();
+        if (dir == null) {
+            if (dataDir == null) {
+                return true;
+            }
+            return false;
+        }
+        
+        return (dir.equals(dataDir));
+    }
+    
     public boolean hasPrivilege(String host, String user, String db, String command) 
             throws SQLException {
         Db d = selectDb(host, user, db);
@@ -766,5 +788,5 @@ public class SQLiteMetaDb implements AutoCloseable {
             return this.success;
         }
     }
-
+    
 }
