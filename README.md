@@ -3,10 +3,11 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Inherit all characteristics of SQLite that is small, fast, self-contained, high-reliability, full-featured, and ACID complete SQL database engine
 + Implement a subset(PgServer) of [postgreSQL frontend/backend protocol](https://www.postgresql.org/docs/8.2/protocol.html) for supporting [pgjdbc](https://github.com/pgjdbc/pgjdbc) , psql, or ODBC
 + Support md5(default), password and trust authentication methods in PgServer
-+ High performance(insert 50,000 ~ 100,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
++ High performance("select count(*)... where NON_INDEX_COLUMN condition" returns in 1s on 10000000+ rows table, insert 50,000 ~ 100,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
 + Add a feature of user, privilege and database management for SQLite server engine
 + Use NIO infrastructure for supporting many connections by a few threads, SQLite server workers is default CPU cores
 + Added some SQL statements that include CREATE USER, ALTER USER, DROP USER, GRANT, REVOKE, SHOW GRANTS, CREATE DATABASE, SHOW DATABASES, DROP DATABASE for administrative purposes
++ Added some SQL functions such as USER(), CURRENT_USER(), VERSION(), SERVER_VERSION(), DATABASE(), CURRENT_DATABASE(), START_TIME(), SYSDATE(), CLOCK_TIMESTAMP()
 
 # Examples
 1. Standalone SQLite server
