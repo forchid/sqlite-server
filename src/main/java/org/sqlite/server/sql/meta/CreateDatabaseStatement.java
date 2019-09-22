@@ -19,6 +19,7 @@ import java.sql.SQLException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
@@ -81,6 +82,12 @@ public class CreateDatabaseStatement extends MetaStatement {
         super.preExecute(maxRows);
         
         SQLiteProcessor proc = getContext();
+        if (proc.getMetaDbName().equals(getDb())) {
+            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
+            String message = "Can't create a database named by meta db's name";
+            throw proc.convertError(error, message);
+        }
+        
         proc.createDbFile(this);
     }
     

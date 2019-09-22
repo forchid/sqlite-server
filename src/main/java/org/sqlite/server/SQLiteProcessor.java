@@ -109,6 +109,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         return this.id;
     }
     
+    public String getMetaDbName() {
+        return (getMetaDb().getDbName());
+    }
+    
     public String getName() {
         return this.name;
     }

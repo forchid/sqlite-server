@@ -181,6 +181,26 @@ public class StatementTest extends TestDbBase {
             n = s.executeUpdate("drop database if exists test");
             assertTrue(0 == n);
         }
+        
+        // test-3: try to create a database named with meta db's name
+        try (Connection conn = getConnection()) {
+            Statement s = conn.createStatement();
+            s.executeUpdate("create database 'sqlite3.meta'");
+            fail("Can't create a database named by meta db's name");
+        } catch (SQLException e) {
+            if (!"42000".equals(e.getSQLState())) {
+                throw e;
+            }
+        }
+        try (Connection conn = getConnection()) {
+            Statement s = conn.createStatement();
+            s.executeUpdate("create database 'SQLite3.META'");
+            fail("Can't create a database named by meta db's name");
+        } catch (SQLException e) {
+            if (!"42000".equals(e.getSQLState())) {
+                throw e;
+            }
+        }
     }
     
     private void dropUserTest() throws SQLException {

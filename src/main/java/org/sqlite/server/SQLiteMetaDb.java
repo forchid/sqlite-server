@@ -316,6 +316,13 @@ public class SQLiteMetaDb implements AutoCloseable {
         return null;
     }
     
+    /**
+     * @return this metaDb file name
+     */
+    public String getDbName() {
+        return (this.file.getName());
+    }
+    
     public boolean hasPrivilege(String host, String user, String db, String command) 
             throws SQLException {
         Db d = selectDb(host, user, db);
