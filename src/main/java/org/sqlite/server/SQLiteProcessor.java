@@ -765,4 +765,9 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         protected abstract void write() throws IOException;
     }
     
+    public void statisticsCatalogs() throws SQLException {
+        File dataDir = getServer().getDataDir();
+        getMetaDb().statisticsCatalogs(dataDir);
+    }
+    
 }

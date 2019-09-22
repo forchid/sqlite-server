@@ -15,7 +15,10 @@
  */
 package org.sqlite.server.sql.meta;
 
+import java.sql.SQLException;
+
 import org.sqlite.server.MetaStatement;
+import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -83,13 +86,14 @@ public class ShowDatabasesStatement extends MetaStatement {
         
         String sql;
         if (this.all) {
-            sql = String.format("select db, dir from '%s'.catalog", metaSchema);
+            String f = "select db, dir, size from '%s'.catalog order by db asc";
+            sql = String.format(f, metaSchema);
         } else {
             if (this.sa) {
-                sql = String.format("select db from '%s'.catalog", metaSchema);
+                sql = String.format("select db from '%s'.catalog order by db asc", metaSchema);
             } else {
-                sql = String.format("select db from '%s'.db where host = '%s' and user = '%s'", 
-                        metaSchema, this.host, this.user);
+                String f = "select db from '%s'.db where host = '%s' and user = '%s' order by db asc";
+                sql = String.format(f, metaSchema, this.host, this.user);
             }
         }
         
@@ -107,6 +111,13 @@ public class ShowDatabasesStatement extends MetaStatement {
     @Override
     public boolean isNeedSa() {
         return (this.all || this.sa);
+    }
+    
+    @Override
+    protected void preExecute(int maxRows) throws SQLException, IllegalStateException {
+        super.preExecute(maxRows);
+        SQLiteProcessor proc = getContext();
+        proc.statisticsCatalogs();
     }
 
 }

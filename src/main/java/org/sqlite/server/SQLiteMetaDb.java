@@ -572,6 +572,51 @@ public class SQLiteMetaDb implements AutoCloseable {
         return n;
     }
     
+    public List<Catalog> statisticsCatalogs(File dataDir) throws SQLException {
+        List<Catalog> catalogs = new ArrayList<>();
+        try (SQLiteConnection conn = newConnection()) {
+            Statement s = conn.createStatement();
+            String sql = "select db, dir from catalog order by db asc";
+            ResultSet rs = s.executeQuery(sql);
+            for (; rs.next(); ) {
+                Catalog c = new Catalog();
+                c.setDb(rs.getString(1));
+                c.setDir(rs.getString(2));
+                catalogs.add(c);
+            }
+        }
+        
+        // Do statistics
+        for (Catalog c : catalogs) {
+            String dir = c.getDir();
+            File dirFile = dataDir;
+            if (dir != null) {
+                dirFile = new File(dir);
+            }
+            File dbFile = new File(dirFile, c.getDb());
+            long size = dbFile.length();
+            File walFile= new File(dirFile, c.getDb()+"-wal");
+            if (walFile.isFile()) {
+                size += walFile.length();
+            }
+            c.setSize(size);
+        }
+        
+        // Store
+        try (SQLiteConnection conn = newConnection()) {
+            String sql = "update catalog set size = ? where db = ?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            for (Catalog c: catalogs) {
+                ps.setLong(1, c.getSize());
+                ps.setString(2, c.getDb());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+        
+        return catalogs;
+    }
+    
     protected boolean resolveHost(String h) {
         Resolution reslv = this.reslvCache.get(h);
         if (reslv != null && !reslv.isExpired()) {
@@ -714,5 +759,5 @@ public class SQLiteMetaDb implements AutoCloseable {
             return this.success;
         }
     }
-    
+
 }
