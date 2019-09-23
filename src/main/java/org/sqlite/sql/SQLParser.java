@@ -310,6 +310,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                     if (nextEnd()) {
                         break;
                     }
+                    stmt.close();
                     throw syntaxError();
                 }
                 if (nextStringIf("nosuperuser") != -1) {
@@ -320,6 +321,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                     if (nextEnd()) {
                         break;
                     }
+                    stmt.close();
                     throw syntaxError();
                 }
                 if (nextStringIf("identified") != -1) {
@@ -333,6 +335,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                         if (nextEnd()) {
                             break;
                         }
+                        stmt.close();
                         throw syntaxError();
                     } else {
                         nextString("with");
@@ -349,6 +352,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                                 if (skipIgnorableIf() != -1 || nextEnd()) {
                                     break;
                                 }
+                                stmt.close();
                                 throw syntaxError();
                             }
                         }
@@ -360,6 +364,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                     break;
                 }
                 
+                stmt.close();
                 throw syntaxError();
             }
             
@@ -498,6 +503,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                             }
                         }
                         if (!hasAuth) {
+                            stmt.close();
                             throw syntaxError();
                         }
                     }
@@ -507,12 +513,14 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                     if (nextEnd()) {
                         break;
                     }
+                    stmt.close();
                     throw syntaxError();
                 }
                 
                 if (nextEnd()) {
                     break;
                 }
+                stmt.close();
                 throw syntaxError();
             }
             
@@ -700,6 +708,79 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         return new TransactionStatement(this.sql, "SAVEPOINT", savepointName);
     }
     
+    protected SQLStatement parseSelect() {
+        nextString("lect");
+        if (skipIgnorableIf() != -1) {
+            // Parse for supporting simple sleep()
+            char bc = 0, lc = 0, qc = 0;
+            int deep = 0;
+            boolean next = true;
+            for (; next;) {
+                char c = nextChar();
+                switch (c) {
+                case '/':
+                    if ('*' == nextChar() && lc == 0 && qc == 0) {
+                        if (bc == 0) {
+                            bc = '/';
+                        }
+                        ++deep;
+                    }
+                    break;
+                case '*':
+                    if ('/' == nextChar() && bc != 0) {
+                        --deep;
+                        if (deep == 0) {
+                            bc = 0;
+                        }
+                    }
+                    break;
+                case '-':
+                    if ('-' == nextChar() && bc == 0 && qc == 0) {
+                        lc = '-';
+                    }
+                    break;
+                case '\n':
+                    if (lc != 0) {
+                        lc = 0;
+                    }
+                    break;
+                case '\'':
+                case '"':
+                    if (bc == 0 && lc == 0) {
+                        if (qc == 0) {
+                            qc = c;
+                        } else if (qc == c) {
+                            qc = 0;
+                        }
+                    }
+                    break;
+                case 's':
+                case 'S':
+                    if ((bc == 0 && lc == 0 && qc == 0) && (nextStringIf("leep") != -1)) {
+                        skipIgnorableIf();
+                        nextChar('(');
+                        skipIgnorableIf();
+                        nextExpr(); // Here loosely parse: sleep() check
+                        skipIgnorableIf();
+                        nextChar(')');
+                        if(!nextEnd()) {
+                            throw syntaxError();
+                        }
+                        // OK
+                        next = false;
+                    }
+                    break;
+                default:
+                    break;
+                }
+                
+                if (next) next = !nextEnd();
+            }
+        }
+        
+        return new SQLStatement(this.sql, "SELECT", true);
+    }
+    
     protected SQLStatement parseShow() {
         nextString("ow");
         skipIgnorable();
@@ -880,11 +961,6 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     protected SQLStatement parseUpdate() {
         nextString("pdate");
         return new SQLStatement(this.sql, "UPDATE");
-    }
-
-    protected SQLStatement parseSelect() {
-        nextString("lect");
-        return new SQLStatement(this.sql, "SELECT", true);
     }
 
     protected SQLStatement parseReplace() {

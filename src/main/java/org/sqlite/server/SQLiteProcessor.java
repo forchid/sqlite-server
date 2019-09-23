@@ -33,6 +33,7 @@ import org.sqlite.Function;
 import org.sqlite.SQLiteConnection;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.func.CurrentUserFunc;
+import org.sqlite.server.func.SleepFunc;
 import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.UserFunc;
@@ -88,6 +89,8 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     private SQLiteConnection connection;
     private String metaSchema = null;
     protected Stack<TransactionStatement> savepointStack;
+    
+    protected SQLiteBusyContext busyContext;
     
     protected SQLiteProcessor(SocketChannel channel, int processId, SQLiteServer server)
             throws NetworkException {
@@ -217,6 +220,8 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         Function.create(connection, timestampFunc.getName(), timestampFunc);
         timestampFunc = this.server.sysdateFunc;
         Function.create(connection, timestampFunc.getName(), timestampFunc);
+        
+        Function.create(connection, "sleep", new SleepFunc(this));
     }
     
     // SQLContext methods
@@ -744,6 +749,19 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         // OK
     }
     
+    public SQLiteBusyContext getBusyContext() {
+        return this.busyContext;
+    }
+    
+    public void setBusyContext(SQLiteBusyContext busyContext) {
+        this.busyContext = busyContext;
+    }
+    
+    public void statisticsCatalogs() throws SQLException {
+        File dataDir = getServer().getDataDir();
+        getMetaDb().statisticsCatalogs(dataDir);
+    }
+    
     public void stop() {
         this.stopped = true;
     }
@@ -799,11 +817,6 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
         
         protected abstract void write() throws IOException;
-    }
-    
-    public void statisticsCatalogs() throws SQLException {
-        File dataDir = getServer().getDataDir();
-        getMetaDb().statisticsCatalogs(dataDir);
     }
     
 }

@@ -501,6 +501,42 @@ public class SQLParserTest extends TestBase {
         selectTest("/*sql*/select/*;*/ 1-- sql", 1);
         selectTest("/*sql*/select/*;*/ 1;select/*\"*/ 2-- sql", 2);
         selectTest("/*select 1;/*select 2;*/select 3;*/ select 1", 1);
+        // function sleep() test
+        selectTest("select sleep(1)", 1);
+        selectTest("select sleep( 1/**/) ;", 1);
+        selectTest("select sleep(0x10/**/) ;", 1);
+        try {
+            selectTest("select sleep(1), sleep(2);", 1);
+            fail("Only support \"select sleep(N);\"");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        selectTest("select 1, sleep(1) ;", 1);
+        selectTest("select 1, sleep(1) -- sleep(2);", 1);
+        selectTest("select 1, sleep(1) /*sleep(2)*/;", 1);
+        selectTest("select 1, sleep(1) \n -- ;", 1);
+        selectTest("select /*sleep(0)*/1, Sleep(1) ;", 1);
+        selectTest("select 'sleep(0)', 1, SLEEP(1) ;", 1);
+        selectTest("select \"sleep(0)\", 1, sleep(1) ;", 1);
+        selectTest("select \"SLEEP(0)\", 1, -- sleep(0)\nsleep(1) ;", 1);
+        try {
+            selectTest("select sleep(1), 1 ;", 1);
+            fail("Only support \"select [expr,] sleep(N);\"");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        try {
+            selectTest("select 1, Sleep(1), sleep(2);", 1);
+            fail("Only support \"select [expr,] sleep(N);\"");
+        } catch (SQLParseException e) {
+            // OK
+        }
+        try {
+            selectTest("select sleep(1) from t;", 1);
+            fail("Only support \"select [expr,] sleep(N);\"");
+        } catch (SQLParseException e) {
+            // OK
+        }
         
         updateTest("update t set a = 1", 1);
         updateTest("Update t set a = 1", 1);
