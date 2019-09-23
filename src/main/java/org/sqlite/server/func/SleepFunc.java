@@ -52,17 +52,13 @@ public class SleepFunc extends Function {
         
         SQLiteBusyContext busyContext = this.processor.getBusyContext();
         if (second == 0 || (busyContext != null && busyContext.isReady())) {
-            this.processor.setBusyContext(null);
             super.result(0);
             return;
         }
-        
-        // Calculate the execute time
         if (busyContext == null) {
-            busyContext = new SQLiteBusyContext();
-            busyContext.setExecuteTime(busyContext.getStartTime() + second * 1000L);
-            this.processor.setBusyContext(busyContext);
+            throw new IllegalStateException("No busy context set");
         }
+        
         SQLiteErrorCode error = SQLiteErrorCode.SQLITE_BUSY;
         throw new SQLException("Non-blocking execution", "57019", error.code);
     }

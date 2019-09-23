@@ -23,17 +23,28 @@ import org.sqlite.sql.SQLStatement;
  * @since 2019-09-23
  *
  */
-public class SQLiteBusyContext {
+public class SQLiteBusyContext implements Runnable {
     
     protected SQLStatement statement;
     protected long startTime;
     protected long executeTime;
     
+    protected SQLiteBusyTask task;
+    
     public SQLiteBusyContext() {
-        this(0L);
+        this(null, 0L);
+    }
+    
+    public SQLiteBusyContext(SQLiteBusyTask task) {
+        this(task, 0L);
     }
     
     public SQLiteBusyContext(long executeTime) {
+        this(null, executeTime);
+    }
+    
+    public SQLiteBusyContext(SQLiteBusyTask task, long executeTime) {
+        this.task = task;
         this.executeTime = executeTime;
         this.startTime = System.currentTimeMillis();
     }
@@ -68,6 +79,27 @@ public class SQLiteBusyContext {
         }
         long curMillis = System.currentTimeMillis();
         return (this.executeTime <= curMillis);
+    }
+    
+    public SQLiteBusyTask getTask() {
+        return task;
+    }
+    
+    public void setTask(SQLiteBusyTask task) throws IllegalStateException {
+        if (this.task != null && task != null) {
+            throw new IllegalStateException("Task has been set");
+        }
+        
+        this.task = task;
+    }
+    
+    @Override
+    public void run() {
+        SQLiteBusyTask task = this.task;
+        if (task != null) {
+            this.task = null;
+            task.run();
+        }
     }
     
 }

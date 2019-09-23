@@ -217,6 +217,29 @@ public abstract class SQLiteServer implements AutoCloseable {
         }
     }
     
+    public boolean isBusy(SQLException e) {
+        final int busyCode = SQLiteErrorCode.SQLITE_BUSY.code;
+        
+        for (; e != null;) {
+            int errorCode = e.getErrorCode();
+            trace(log, "SQL errorCode: {}", errorCode);
+            if (busyCode == errorCode) {
+                return true;
+            }
+            Throwable cause = e.getCause();
+            if (cause instanceof SQLException) {
+                e = (SQLException)cause;
+            } else {
+                e = null;
+            }
+        }
+        return false;
+    }
+    
+    public boolean isCanceled(SQLException e) {
+        return (e.getErrorCode() == SQLiteErrorCode.SQLITE_INTERRUPT.code);
+    }
+    
     public boolean isUniqueViolated(SQLException cause) {
         int errorCode = cause.getErrorCode();
         
@@ -227,10 +250,6 @@ public abstract class SQLiteServer implements AutoCloseable {
         
         return (SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE.code == errorCode 
                 || SQLiteErrorCode.SQLITE_CONSTRAINT_PRIMARYKEY.code == errorCode);
-    }
-    
-    public boolean isCanceled(SQLException e) {
-        return (e.getErrorCode() == SQLiteErrorCode.SQLITE_INTERRUPT.code);
     }
     
     protected void initDataDir() {

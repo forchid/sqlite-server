@@ -47,6 +47,8 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.NetworkException;
+import org.sqlite.server.SQLiteBusyContext;
+import org.sqlite.server.SQLiteBusyTask;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteWorker;
 import org.sqlite.server.sql.meta.User;
@@ -545,14 +547,14 @@ public class PgProcessor extends SQLiteProcessor {
                 server.trace(log, "Execute");
                 this.xQueryFailed = true;
                 String name = readString();
-                Portal p = portals.get(name);
+                final Portal p = portals.get(name);
                 if (p == null) {
                     sendErrorResponse("Portal not found: " + name);
                     break;
                 }
-                int maxRows = readShort();
+                final int maxRows = readShort();
                 Prepared prepared = p.prep;
-                SQLStatement sqlStmt = prepared.sql;
+                final SQLStatement sqlStmt = prepared.sql;
                 server.trace(log, "execute SQL: {}", sqlStmt);
                 
                 // check empty statement
@@ -562,30 +564,52 @@ public class PgProcessor extends SQLiteProcessor {
                     this.xQueryFailed = false;
                     break;
                 }
-                
-                try {
-                    boolean resultSet = sqlStmt.execute(maxRows);
-                    if (resultSet) {
-                        processResultSet(p);
-                    } else {
-                        int count = sqlStmt.getJdbcStatement().getUpdateCount();
-                        sqlStmt.postResult();
-                        sendCommandComplete(sqlStmt, count, resultSet);
-                        this.xQueryFailed = false;
+                // Maybe busy
+                (new SQLiteBusyTask(this) {
+                    @Override
+                    protected void execute() throws IOException {
+                        PgProcessor processor = (PgProcessor)this.proc;
+                        try {
+                            boolean resultSet = sqlStmt.execute(maxRows);
+                            if (resultSet) {
+                                processResultSet(p);
+                                return;
+                            }
+                            
+                            int count = sqlStmt.getJdbcStatement().getUpdateCount();
+                            sqlStmt.postResult();
+                            sendCommandComplete(sqlStmt, count, resultSet);
+                            processor.xQueryFailed = false;
+                        } catch (SQLException e) {
+                            if (processor.server.isBusy(e)) {
+                                SQLiteBusyContext context = processor.getBusyContext();
+                                if (context == null) {
+                                    context = new SQLiteBusyContext(this);
+                                    processor.setBusyContext(context);
+                                }
+                                context.setTask(this);
+                                processor.getWorker().offerBusy(processor);
+                                return;
+                            }
+                            
+                            if (sqlStmt.executionException(e)) {
+                                sqlStmt.postResult();
+                                sendCommandComplete(sqlStmt, 0, false);
+                                processor.xQueryFailed = false;
+                            } else {
+                                if (processor.server.isCanceled(e)) {
+                                    sendCancelQueryResponse();
+                                } else {
+                                    sendErrorResponse(e);
+                                } 
+                            }
+                        }
+                        if (processor.getBusyContext() != null) {
+                            processor.setBusyContext(null);
+                            processor.process();
+                        }
                     }
-                } catch (SQLException e) {
-                    if (sqlStmt.executionException(e)) {
-                        sqlStmt.postResult();
-                        sendCommandComplete(sqlStmt, 0, false);
-                        this.xQueryFailed = false;
-                    } else {
-                        if (this.server.isCanceled(e)) {
-                            sendCancelQueryResponse();
-                        } else {
-                            sendErrorResponse(e);
-                        } 
-                    }
-                }
+                }).run();
                 break;
             }
             case 'S': {
@@ -618,7 +642,7 @@ public class PgProcessor extends SQLiteProcessor {
             this.dataBuf = null;
             this.inSize = -1;
             rem = resetReadBuffer();
-        } while(!this.needFlush && rem >= 5);
+        } while(!this.needFlush && rem >= 5 && getBusyContext() == null);
     }
     
     protected void processResultSet(Portal p) {
@@ -1288,6 +1312,12 @@ public class PgProcessor extends SQLiteProcessor {
                     self.writeTask = null;
                     IoUtils.close(this.rs);
                 }
+            }
+            // Sync
+            if (self.getBusyContext() != null) {
+                self.trace(log, "next maybe sync");
+                self.setBusyContext(null);
+                self.process();
             }
         }
     }

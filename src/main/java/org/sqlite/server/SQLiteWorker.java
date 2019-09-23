@@ -18,9 +18,11 @@ package org.sqlite.server;
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -49,6 +51,8 @@ public class SQLiteWorker implements Runnable {
         ioRatio = i;
     }
     
+    protected final SQLiteServer server;
+    
     protected final AtomicBoolean open = new AtomicBoolean();
     protected final AtomicBoolean wakeup = new AtomicBoolean();
     protected Selector selector;
@@ -63,13 +67,16 @@ public class SQLiteWorker implements Runnable {
     private int conns;
     protected final AtomicBoolean procsLock = new AtomicBoolean();
     private final Map<Integer, SQLiteProcessor> processors;
+    private final PriorityQueue<SQLiteProcessor> busyQueue;
     
     public SQLiteWorker(SQLiteServer server, int id) {
+        this.server = server;
         this.id = id;
         this.name = server.getName() + " worker-"+this.id;
         this.maxConns = server.getMaxConns();
         this.procQueue = new ArrayBlockingQueue<>(maxConns);
         this.processors= new HashMap<>();
+        this.busyQueue = new PriorityQueue<>(this.maxConns, busyQueueCmp);
     }
     
     public int getId() {
@@ -172,23 +179,31 @@ public class SQLiteWorker implements Runnable {
     public void run() {
         try {
             for (; !isStopped() || this.processors.size() > 0;) {
-                int n = this.selector.select();
+                long timeout = minSelectTimeout();
+                int n;
+                if (timeout < 0L) {
+                    n = this.selector.select();
+                } else if (timeout == 0L) {
+                    n = this.selector.selectNow();
+                } else {
+                    n = this.selector.select(timeout);
+                }
                 this.wakeup.set(false);
                 if (0 == n) {
-                    acceptProcs(0L);
+                    processQueues(0L);
                     continue;
                 }
                 
                 if (100 == ioRatio) {
                     processIO();
-                    acceptProcs(0L);
+                    processQueues(0L);
                     continue;
                 }
                 
                 long ioStart = System.nanoTime();
                 processIO();
                 long ioTime = System.nanoTime() - ioStart;
-                acceptProcs(ioTime * (100 - ioRatio) / ioRatio);
+                processQueues(ioTime * (100 - ioRatio) / ioRatio);
             }
         } catch (IOException e) {
             log.error("Fatal event", e);
@@ -197,13 +212,14 @@ public class SQLiteWorker implements Runnable {
         }
     }
     
-    protected void acceptProcs(long runNanos) {
+    protected void processQueues(long runNanos) {
         BlockingQueue<SQLiteProcessor> queue = this.procQueue;
         Selector selector = this.selector;
         long deadNano = System.nanoTime() + runNanos;
+        // Q1: procQueue
         for (;;) {
             if (runNanos > 0L && System.nanoTime() >= deadNano) {
-                break;
+                return;
             }
             
             SQLiteProcessor p = queue.poll();
@@ -240,6 +256,21 @@ public class SQLiteWorker implements Runnable {
                 IoUtils.close(p);
             }
         }
+        
+        // Q2: busyQueue
+        PriorityQueue<SQLiteProcessor> busyQueue = this.busyQueue;
+        for (;;) {
+            if (runNanos > 0L && System.nanoTime() >= deadNano) {
+                return;
+            }
+            SQLiteProcessor proc = busyQueue.peek();
+            if (proc == null || !proc.getBusyContext().isReady()) {
+                break;
+            }
+            this.server.trace(log, "Run busy processor: {}", proc);
+            busyQueue.poll();
+            proc.getBusyContext().run();
+        }
     }
     
     protected void processIO() {
@@ -274,7 +305,7 @@ public class SQLiteWorker implements Runnable {
         }
     }
 
-    public boolean offer (SQLiteProcessor process) {
+    public boolean offer(SQLiteProcessor process) {
         if (isStopped()) {
             return false;
         }
@@ -284,6 +315,28 @@ public class SQLiteWorker implements Runnable {
             this.selector.wakeup();
         }
         return ok;
+    }
+    
+    public boolean offerBusy(SQLiteProcessor process) {
+        if (process.isStopped() || !process.isOpen()) {
+            return false;
+        }
+        
+        this.server.trace(log, "Offer busy processor: {}", process);
+        return this.busyQueue.offer(process);
+    }
+    
+    protected long minSelectTimeout() {
+        SQLiteProcessor proc = this.busyQueue.peek();
+        if (proc == null) {
+            return -1L;
+        }
+        SQLiteBusyContext context = proc.getBusyContext();
+        if (context.isReady()) {
+            return 0L;
+        }
+        long timeout = context.getExecuteTime() - System.currentTimeMillis();
+        return (timeout <= 0L? 0L: timeout);
     }
 
     SQLiteProcessor getProcessor(int pid) {
@@ -304,5 +357,27 @@ public class SQLiteWorker implements Runnable {
     protected void procsUnlock() {
         this.procsLock.set(false);
     }
+    
+    static final Comparator<SQLiteProcessor> busyQueueCmp = new Comparator<SQLiteProcessor>() {
+        
+        @Override
+        public int compare(SQLiteProcessor a, SQLiteProcessor b) {
+            if (!a.isOpen()) {
+                return -1;
+            }
+            if (!b.isOpen()) {
+                return -1;
+            }
+            
+            long ta = a.getBusyContext().getExecuteTime();
+            long tb = b.getBusyContext().getExecuteTime();
+            if (ta == tb) {
+                return 0;
+            }
+            
+            return (ta < tb ? -1: 1);
+        }
+        
+    };
     
 }

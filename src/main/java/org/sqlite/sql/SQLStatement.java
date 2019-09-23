@@ -155,13 +155,11 @@ public class SQLStatement implements AutoCloseable {
             PreparedStatement ps = getPreparedStatement();
             ps.setMaxRows(maxRows);
         } else {
-            if (this.jdbcStatement != null) {
-                throw new IllegalStateException(this.command + " statement has been executed");
+            if (this.jdbcStatement == null) {
+                checkPermission();
+                Connection conn = this.context.getConnection();
+                this.jdbcStatement = conn.createStatement();
             }
-            checkPermission();
-            
-            Connection conn = this.context.getConnection();
-            this.jdbcStatement = conn.createStatement();
         }
     }
     

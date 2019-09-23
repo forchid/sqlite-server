@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 import org.sqlite.server.MetaStatement;
+import org.sqlite.server.sql.SelectSleepStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
@@ -757,17 +758,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                 case 's':
                 case 'S':
                     if ((bc == 0 && lc == 0 && qc == 0) && (nextStringIf("leep") != -1)) {
-                        skipIgnorableIf();
-                        nextChar('(');
-                        skipIgnorableIf();
-                        nextExpr(); // Here loosely parse: sleep() check
-                        skipIgnorableIf();
-                        nextChar(')');
-                        if(!nextEnd()) {
-                            throw syntaxError();
-                        }
-                        // OK
-                        next = false;
+                        return parseSelectSleep();
                     }
                     break;
                 default:
@@ -779,6 +770,40 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         return new SQLStatement(this.sql, "SELECT", true);
+    }
+    
+    protected SQLStatement parseSelectSleep() {
+        char c;
+        
+        skipIgnorableIf();
+        nextChar('(');
+        skipIgnorableIf();
+        c = nextSignedNumberChar();
+        String sec = nextSignedNumber(c); // Here loosely parse: sleep() check
+        skipIgnorableIf();
+        nextChar(')');
+        if(!nextEnd()) {
+            throw syntaxError();
+        }
+        // OK
+        int second;
+        try {
+            if (sec.startsWith("0x") || sec.startsWith("0X")) {
+                second = Integer.parseInt(sec.substring(2), 16);
+            } else if (sec.startsWith("+0x") || sec.startsWith("-0X")) {
+                second = Integer.parseInt(sec.substring(3), 16);
+            } else {
+                second = Integer.parseInt(sec);
+            }
+            if (second < 0) {
+                throw new SQLParseException("Incorrect arguments in call to 'sleep'");
+            }
+        } catch (NumberFormatException e) {
+            throw new SQLParseException("Incorrect arguments in call to 'sleep'", e);
+        }
+        SelectSleepStatement stmt = new SelectSleepStatement(this.sql);
+        stmt.setSecond(second);
+        return stmt;
     }
     
     protected SQLStatement parseShow() {
@@ -1128,7 +1153,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         
         if (i < len) {
             char c = s.charAt(i++);
-            if ('-' == c || '+' == c || '.' == c || (c >= '0' && c <= '9')) {
+            if (isSignedNumberPrefix(c)) {
                 this.ei = i;
                 return nextSignedNumber(c);
             } else {
@@ -1137,6 +1162,26 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         throw syntaxError();
+    }
+    
+    protected char nextSignedNumberChar() {
+        String s = this.sql;
+        int len = s.length();
+        int i = this.ei;
+        
+        if (i < len) {
+            char c = s.charAt(i++);
+            if (isSignedNumberPrefix(c)) {
+                this.ei = i;
+                return c;
+            }
+        }
+        
+        throw syntaxError();
+    }
+    
+    protected boolean isSignedNumberPrefix(char c) {
+        return ('-' == c || '+' == c || '.' == c || (c >= '0' && c <= '9'));
     }
     
     protected String nextString() {
