@@ -519,6 +519,7 @@ public class SQLParserTest extends TestBase {
         selectTest("select 'sleep(0)', 1, SLEEP(1) ;", 1);
         selectTest("select \"sleep(0)\", 1, sleep(1) ;", 1);
         selectTest("select \"SLEEP(0)\", 1, -- sleep(0)\nsleep(1) ;", 1);
+        selectTest("/***/select 1, sleep(1);", 1);
         try {
             selectTest("select sleep(1), 1 ;", 1);
             fail("Only support \"select [expr,] sleep(N);\"");

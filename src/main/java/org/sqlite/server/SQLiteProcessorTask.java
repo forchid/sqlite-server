@@ -20,35 +20,66 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** SQLite busy task that is executed by busy queue
+/** SQLite processor task that processes asynchronous logic such as busy, big result set write
+ * in SQLite processor, and handle fatal error for protecting SQLiteWorker.
  * 
  * @author little-pan
  * @since 2019-09-23
  *
  */
-public abstract class SQLiteBusyTask implements Runnable {
-    static final Logger log = LoggerFactory.getLogger(SQLiteBusyTask.class);
+public abstract class SQLiteProcessorTask implements Runnable {
+    static final Logger log = LoggerFactory.getLogger(SQLiteProcessorTask.class);
     
     protected final SQLiteProcessor proc;
+    protected boolean open = true;
+    protected boolean async;
     
-    protected SQLiteBusyTask(SQLiteProcessor proc) {
+    protected SQLiteProcessorTask(SQLiteProcessor proc) {
         this.proc = proc;
     }
     
     @Override
     public void run() {
+        boolean failed = true;
         try {
-            execute();
+            if (isOpen()) {
+                execute();
+                failed = false;
+                return;
+            }
+            
+            throw new IllegalStateException("Processor task closed");
         } catch (Exception e) {
             final SQLiteProcessor proc = this.proc;
-            proc.traceError(log, "Execute error", e);
+            proc.traceError(log, "Execute task error", e);
             proc.getWorker().close(proc);
         } catch (OutOfMemoryError e) {
             log.warn("No memory", e);
-            this.proc.getWorker().close(proc);
+            this.proc.getWorker().close(this.proc);
+        } finally {
+            if (failed) {
+                this.open = false;
+            }
         }
     }
 
     protected abstract void execute() throws IOException;
+    
+    protected void finish() throws IOException {
+        SQLiteProcessor proc = this.proc;
+        
+        this.open = false;
+        if (isAsync()) {
+            proc.process();
+        }
+    }
+    
+    public boolean isAsync() {
+        return this.async;
+    }
+    
+    public boolean isOpen() {
+        return this.open;
+    }
     
 }

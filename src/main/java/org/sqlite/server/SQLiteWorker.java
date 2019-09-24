@@ -264,12 +264,17 @@ public class SQLiteWorker implements Runnable {
                 return;
             }
             SQLiteProcessor proc = busyQueue.peek();
-            if (proc == null || !proc.getBusyContext().isReady()) {
+            if (proc == null || !proc.queryTask.isReady()) {
                 break;
             }
             this.server.trace(log, "Run busy processor: {}", proc);
             busyQueue.poll();
-            proc.getBusyContext().run();
+            try {
+                Thread.currentThread().setName(this.name + "-" + proc.getName());
+                proc.queryTask.run();
+            } finally {
+                Thread.currentThread().setName(this.name);
+            }
         }
     }
     
@@ -331,7 +336,7 @@ public class SQLiteWorker implements Runnable {
         if (proc == null) {
             return -1L;
         }
-        SQLiteBusyContext context = proc.getBusyContext();
+        SQLiteBusyContext context = proc.queryTask.getBusyContext();
         if (context.isReady()) {
             return 0L;
         }

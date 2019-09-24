@@ -7,7 +7,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Add a feature of user, privilege and database management for SQLite server engine
 + Use NIO infrastructure for supporting many connections by a few threads, SQLite server workers is default CPU cores
 + Added some SQL statements that include CREATE USER, ALTER USER, DROP USER, GRANT, REVOKE, SHOW GRANTS, CREATE DATABASE, SHOW DATABASES, DROP DATABASE for administrative purposes
-+ Added some SQL functions such as USER(), CURRENT_USER(), VERSION(), SERVER_VERSION(), DATABASE(), CURRENT_DATABASE(), START_TIME(), SYSDATE(), CLOCK_TIMESTAMP()
++ Added some SQL functions such as USER(), CURRENT_USER(), VERSION(), SERVER_VERSION(), DATABASE(), CURRENT_DATABASE(), START_TIME(), SYSDATE(), CLOCK_TIMESTAMP(), SLEEP(N)
 
 # Examples
 1. Standalone SQLite server

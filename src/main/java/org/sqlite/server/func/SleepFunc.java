@@ -55,12 +55,8 @@ public class SleepFunc extends Function {
             super.result(0);
             return;
         }
-        if (busyContext == null) {
-            throw new IllegalStateException("No busy context set");
-        }
         
-        SQLiteErrorCode error = SQLiteErrorCode.SQLITE_BUSY;
-        throw new SQLException("Non-blocking execution", "57019", error.code);
+        throw new IllegalStateException("Calling to function 'sleep' not ready");
     }
 
 }

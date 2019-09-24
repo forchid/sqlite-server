@@ -48,8 +48,9 @@ import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.NetworkException;
 import org.sqlite.server.SQLiteBusyContext;
-import org.sqlite.server.SQLiteBusyTask;
+import org.sqlite.server.SQLiteProcessorTask;
 import org.sqlite.server.SQLiteProcessor;
+import org.sqlite.server.SQLiteQueryTask;
 import org.sqlite.server.SQLiteWorker;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLParseException;
@@ -564,52 +565,7 @@ public class PgProcessor extends SQLiteProcessor {
                     this.xQueryFailed = false;
                     break;
                 }
-                // Maybe busy
-                (new SQLiteBusyTask(this) {
-                    @Override
-                    protected void execute() throws IOException {
-                        PgProcessor processor = (PgProcessor)this.proc;
-                        try {
-                            boolean resultSet = sqlStmt.execute(maxRows);
-                            if (resultSet) {
-                                processResultSet(p);
-                                return;
-                            }
-                            
-                            int count = sqlStmt.getJdbcStatement().getUpdateCount();
-                            sqlStmt.postResult();
-                            sendCommandComplete(sqlStmt, count, resultSet);
-                            processor.xQueryFailed = false;
-                        } catch (SQLException e) {
-                            if (processor.server.isBusy(e)) {
-                                SQLiteBusyContext context = processor.getBusyContext();
-                                if (context == null) {
-                                    context = new SQLiteBusyContext(this);
-                                    processor.setBusyContext(context);
-                                }
-                                context.setTask(this);
-                                processor.getWorker().offerBusy(processor);
-                                return;
-                            }
-                            
-                            if (sqlStmt.executionException(e)) {
-                                sqlStmt.postResult();
-                                sendCommandComplete(sqlStmt, 0, false);
-                                processor.xQueryFailed = false;
-                            } else {
-                                if (processor.server.isCanceled(e)) {
-                                    sendCancelQueryResponse();
-                                } else {
-                                    sendErrorResponse(e);
-                                } 
-                            }
-                        }
-                        if (processor.getBusyContext() != null) {
-                            processor.setBusyContext(null);
-                            processor.process();
-                        }
-                    }
-                }).run();
+                processXQuery(p, maxRows);
                 break;
             }
             case 'S': {
@@ -642,24 +598,38 @@ public class PgProcessor extends SQLiteProcessor {
             this.dataBuf = null;
             this.inSize = -1;
             rem = resetReadBuffer();
-        } while(!this.needFlush && rem >= 5 && getBusyContext() == null);
+        } while(!this.needFlush && rem >= 5 && !hasAsyncTask());
     }
     
-    protected void processResultSet(Portal p) {
-        if (this.writeTask != null) {
-            throw new IllegalStateException("A write task already exists");
-        }
-        this.writeTask = new XQueryTask(this, p);
-        this.writeTask.run();
+    protected boolean hasAsyncTask() {
+        return (this.queryTask != null || this.writeTask != null);
     }
     
-    protected void processQuery(final String query) throws IOException {
-        if (this.writeTask != null) {
-            throw new IllegalStateException("A write task already exists");
+    protected void processXQuery(Portal p, int maxRows) throws IllegalStateException {
+        SQLiteQueryTask queryTask = new XQueryTask(this, p, maxRows);
+        startQueryTask(queryTask);
+    }
+    
+    protected void processQuery(final String query) throws IllegalStateException {
+        SQLiteQueryTask queryTask = new QueryTask(this, query);
+        startQueryTask(queryTask);
+    }
+    
+    protected void startQueryTask (SQLiteQueryTask queryTask) throws IllegalStateException {
+        if (this.queryTask != null) {
+            throw new IllegalStateException("A query task already exists");
         }
         
-        this.writeTask = new QueryTask(this, query);
-        this.writeTask.run();  
+        this.queryTask = queryTask;
+        this.queryTask.run(); 
+    }
+    
+    protected void startWriteTask (SQLiteProcessorTask writeTask) throws IllegalStateException {
+        if (this.writeTask != null) {
+            throw new IllegalStateException("A write task already exists");
+        }
+        this.writeTask = writeTask;
+        this.writeTask.run();
     }
     
     protected boolean authOk() throws IOException {
@@ -1269,18 +1239,83 @@ public class PgProcessor extends SQLiteProcessor {
         Prepared prep;
     }
     
-    static class XQueryTask extends WriteTask {
+    static class XQueryTask extends SQLiteQueryTask {
+        final Portal p;
+        final SQLStatement sqlStmt;
+        final int maxRows;
+        
+        XQueryTask(PgProcessor proc, Portal p, int maxRows) {
+            super(proc);
+            this.p = p;
+            this.sqlStmt = p.prep.sql;
+            this.maxRows = maxRows;
+        }
+        
+        @Override
+        protected void execute() throws IOException {
+            PgProcessor proc = (PgProcessor)this.proc;
+            try {
+                boolean resultSet = this.sqlStmt.execute(maxRows);
+                if (resultSet) {
+                    boolean async = this.async;
+                    this.async = false;
+                    finish();
+                    // Hand over task to write task
+                    XQueryWriteTask writeTask = new XQueryWriteTask(proc, this.p, async);
+                    proc.startWriteTask(writeTask);
+                    return;
+                }
+                
+                int count = this.sqlStmt.getJdbcStatement().getUpdateCount();
+                this.sqlStmt.postResult();
+                proc.sendCommandComplete(this.sqlStmt, count, resultSet);
+                proc.xQueryFailed = false;
+            } catch (SQLException e) {
+                if (proc.server.isBusy(e)) {
+                    SQLiteBusyContext context = proc.getBusyContext();
+                    if (context == null) {
+                        context = new SQLiteBusyContext();
+                        proc.setBusyContext(context);
+                    }
+                    proc.getWorker().offerBusy(proc);
+                    this.async = true;
+                    return;
+                }
+                
+                if (this.sqlStmt.executionException(e)) {
+                    this.sqlStmt.postResult();
+                    proc.sendCommandComplete(this.sqlStmt, 0, false);
+                    proc.xQueryFailed = false;
+                } else {
+                    if (proc.server.isCanceled(e)) {
+                        proc.sendCancelQueryResponse();
+                    } else {
+                        proc.sendErrorResponse(e);
+                    } 
+                }
+            } // try-catch
+            
+            finish();
+        }
+    }
+    
+    static class XQueryWriteTask extends SQLiteProcessorTask {
         final Portal p;
         ResultSet rs;
         
-        XQueryTask(PgProcessor proc, Portal p) {
+        XQueryWriteTask(PgProcessor proc, Portal p, boolean async) {
             super(proc);
             this.p = p;
+            this.async = async;
+        }
+        
+        XQueryWriteTask(PgProcessor proc, Portal p) {
+            this(proc, p, false);
         }
             
         @Override
-        protected void write() throws IOException {
-            PgProcessor self = (PgProcessor)this.proc;
+        protected void execute() throws IOException {
+            PgProcessor proc = (PgProcessor)this.proc;
             SQLStatement stmt = p.prep.sql;
             boolean resetTask = true;
             try {
@@ -1289,9 +1324,10 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 // the meta-data is sent in the prior 'Describe'
                 for (; this.rs.next(); ) {
-                    self.sendDataRow(this.rs, this.p.resultColumnFormat);
-                    if (self.canFlush()) {
-                        self.enableWrite();
+                    proc.sendDataRow(this.rs, this.p.resultColumnFormat);
+                    if (proc.canFlush()) {
+                        this.async = true;
+                        proc.enableWrite();
                         resetTask = false;
                         return;
                     }
@@ -1299,32 +1335,28 @@ public class PgProcessor extends SQLiteProcessor {
                 
                 // detach only after resultSet finished
                 stmt.postResult();
-                self.sendCommandComplete(stmt, 0, true);
-                self.xQueryFailed = false;
+                proc.sendCommandComplete(stmt, 0, true);
+                proc.xQueryFailed = false;
             } catch (SQLException e) {
-                if (self.server.isCanceled(e)) {
-                    self.sendCancelQueryResponse();
+                if (proc.server.isCanceled(e)) {
+                    proc.sendCancelQueryResponse();
                 } else {
-                    self.sendErrorResponse(e);
+                    proc.sendErrorResponse(e);
                 }
             } finally {
                 if (resetTask) {
-                    self.writeTask = null;
+                    proc.writeTask = null;
                     IoUtils.close(this.rs);
                 }
             }
-            // Sync
-            if (self.getBusyContext() != null) {
-                self.trace(log, "next maybe sync");
-                self.setBusyContext(null);
-                self.process();
-            }
+            
+            finish();
         }
+        
     }
     
-    static class QueryTask extends WriteTask {
+    static class QueryTask extends SQLiteQueryTask {
         final SQLParser parser;
-        final String query;
         
         // ResultSet remaining state
         SQLStatement curStmt;
@@ -1332,16 +1364,15 @@ public class PgProcessor extends SQLiteProcessor {
         
         QueryTask(PgProcessor proc, String query) {
             super(proc);
-            this.query = query;
             this.parser = proc.newSQLParser(query);
         }
         
         @Override
-        protected void write() throws IOException {
-            PgProcessor self = (PgProcessor)this.proc;
+        protected void execute() throws IOException {
+            PgProcessor proc = (PgProcessor)this.proc;
             boolean resetTask = true;
             try {
-                SQLStatement sqlStmt = null;
+                SQLStatement sqlStmt = this.curStmt;
                 boolean next = true;
                 
                 if (this.rs == null) {
@@ -1357,17 +1388,17 @@ public class PgProcessor extends SQLiteProcessor {
                         break;
                     }
                     if (sqlStmt == null) {
-                        self.server.trace(log, "query string empty: {}", query);
-                        self.needFlush = true;
-                        self.sendEmptyQueryResponse();
-                        return;
+                        proc.server.trace(log, "query string empty");
+                        proc.needFlush = true;
+                        proc.sendEmptyQueryResponse();
+                        next = false;
                     }
                 } else {
                     // Continue write remaining resultSet
                     for (; this.rs.next(); ) {
-                        self.sendDataRow(this.rs, null);
-                        if (self.canFlush()) {
-                            self.enableWrite();
+                        proc.sendDataRow(this.rs, null);
+                        if (proc.canFlush()) {
+                            proc.enableWrite();
                             resetTask = false;
                             return;
                         }
@@ -1375,7 +1406,7 @@ public class PgProcessor extends SQLiteProcessor {
                     this.curStmt.postResult();
                     IoUtils.close(this.curStmt);
                     this.rs = null;
-                    self.sendCommandComplete(this.curStmt, 0, true);
+                    proc.sendCommandComplete(this.curStmt, 0, true);
                     
                     // try next
                     if (next=this.parser.hasNext()) {
@@ -1385,18 +1416,23 @@ public class PgProcessor extends SQLiteProcessor {
                 
                 for (; next; ) {
                     try {
-                        sqlStmt.setContext(self);
+                        sqlStmt.setContext(proc);
+                        proc.writeTask = null;
+                        proc.trace(log, "execute SQL: {}", sqlStmt);
                         boolean result = sqlStmt.execute(0);
                         if (result) {
                             ResultSet rs = sqlStmt.getJdbcStatement().getResultSet();
                             ResultSetMetaData meta = rs.getMetaData();
-                            self.sendRowDescription(meta);
+                            proc.sendRowDescription(meta);
                             for (; rs.next(); ) {
-                                self.sendDataRow(rs, null);
-                                if (self.canFlush()) {
+                                proc.sendDataRow(rs, null);
+                                if (proc.canFlush()) {
+                                    this.async = true;
                                     this.curStmt = sqlStmt;
                                     this.rs = rs;
-                                    self.enableWrite();
+                                    proc.enableWrite();
+                                    resetTask = false;
+                                    proc.startWriteTask(this);
                                     return;
                                 }
                             }
@@ -1404,11 +1440,11 @@ public class PgProcessor extends SQLiteProcessor {
                             IoUtils.close(sqlStmt);
                             this.rs = null;
                             this.curStmt = null;
-                            self.sendCommandComplete(sqlStmt, 0, result);
+                            proc.sendCommandComplete(sqlStmt, 0, result);
                         } else {
                             int count = sqlStmt.getJdbcStatement().getUpdateCount();
                             sqlStmt.postResult();
-                            self.sendCommandComplete(sqlStmt, count, result);
+                            proc.sendCommandComplete(sqlStmt, count, result);
                         }
                         
                         // try next
@@ -1416,9 +1452,21 @@ public class PgProcessor extends SQLiteProcessor {
                             sqlStmt = this.parser.next();
                         }
                     } catch (SQLException e) {
+                        if (proc.server.isBusy(e)) {
+                            this.curStmt = sqlStmt;
+                            resetTask = false;
+                            SQLiteBusyContext busyContext = proc.getBusyContext();
+                            if (busyContext == null) {
+                                busyContext = new SQLiteBusyContext();
+                                proc.setBusyContext(busyContext);
+                            }
+                            proc.getWorker().offerBusy(proc);
+                            this.async = true;
+                            return;
+                        }
                         if (sqlStmt.executionException(e)) {
                             sqlStmt.postResult();
-                            self.sendCommandComplete(sqlStmt, 0, false);
+                            proc.sendCommandComplete(sqlStmt, 0, false);
                             // try next
                             if (next=this.parser.hasNext()) {
                                 sqlStmt = this.parser.next();
@@ -1433,26 +1481,28 @@ public class PgProcessor extends SQLiteProcessor {
                     }
                 } // For statements
             } catch (SQLParseException e) {
-                self.sendErrorResponse(e);
+                proc.sendErrorResponse(e);
             } catch (SQLException e) {
-                if (self.server.isCanceled(e)) {
-                    self.sendCancelQueryResponse();
+                if (proc.server.isCanceled(e)) {
+                    proc.sendCancelQueryResponse();
                 } else {
-                    self.sendErrorResponse(e);
+                    proc.sendErrorResponse(e);
                 }
             } finally {
                 if (resetTask) {
-                    self.writeTask = null;
+                    proc.writeTask = null;
                     IoUtils.close(this.curStmt);
                     this.rs = null;
                     IoUtils.close(parser);
                 }
             }
             
+            this.async = false;
             if (resetTask) {
-                self.needFlush = true;
-                self.sendReadyForQuery();
+                proc.needFlush = true;
+                proc.sendReadyForQuery();
             }
+            finish();
         }
         
     }
