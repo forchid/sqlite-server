@@ -79,6 +79,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     protected final int id;
     protected final String name;
     protected final SQLiteServer server;
+    protected int slot = -1; // slot in SlotAllocator
     protected SQLiteWorker worker;
     protected SQLiteAuthMethod authMethod;
     protected String databaseName;
@@ -237,6 +238,17 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     public SQLiteProcessorTask getWriteTask() {
         return this.writeTask;
+    }
+    
+    public int getSlot() {
+        return slot;
+    }
+
+    public void setSlot(int slot) throws IllegalStateException {
+        if (this.slot != -1 && this.slot != slot) {
+            throw new IllegalStateException("Slot has been set");
+        }
+        this.slot = slot;
     }
     
     // SQLContext methods

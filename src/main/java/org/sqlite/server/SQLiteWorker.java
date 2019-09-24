@@ -19,9 +19,7 @@ import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -30,6 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.util.IoUtils;
+import org.sqlite.util.SlotAllocator;
 
 /**SQLite server worker thread.
  * 
@@ -64,9 +63,8 @@ public class SQLiteWorker implements Runnable {
     
     protected final BlockingQueue<SQLiteProcessor> procQueue;
     protected final int maxConns;
-    private int conns;
     protected final AtomicBoolean procsLock = new AtomicBoolean();
-    private final Map<Integer, SQLiteProcessor> processors;
+    private final SlotAllocator<SQLiteProcessor> processors;
     private final PriorityQueue<SQLiteProcessor> busyQueue;
     
     public SQLiteWorker(SQLiteServer server, int id) {
@@ -75,7 +73,7 @@ public class SQLiteWorker implements Runnable {
         this.name = server.getName() + " worker-"+this.id;
         this.maxConns = server.getMaxConns();
         this.procQueue = new ArrayBlockingQueue<>(maxConns);
-        this.processors= new HashMap<>();
+        this.processors= new SlotAllocator<>(this.maxConns);
         this.busyQueue = new PriorityQueue<>(this.maxConns, busyQueueCmp);
     }
     
@@ -140,14 +138,11 @@ public class SQLiteWorker implements Runnable {
             IoUtils.close(p);
         }
         
-        Iterator<Map.Entry<Integer, SQLiteProcessor>> procs;
         procsLock();
         try {
-            procs = this.processors.entrySet().iterator();
-            for (; procs.hasNext();) {
-                SQLiteProcessor p = procs.next().getValue();
+            for (int i = 0, n = this.processors.maxSlot(); i < n; ++i) {
+                SQLiteProcessor p = this.processors.deallocate(i);
                 IoUtils.close(p);
-                procs.remove();
             }
         } finally {
             procsUnlock();
@@ -158,21 +153,17 @@ public class SQLiteWorker implements Runnable {
         if (processor == null) {
             return;
         }
-        processor.stop();
-        
-        int id = processor.getId();
-        procsLock();
-        try {
-            SQLiteProcessor p = this.processors.get(id);
-            if (p == processor) {
-                this.processors.remove(id);
-                --this.conns;
-            }
-        } finally {
-            procsUnlock();
-        }
-        
         processor.close();
+        
+        int slot = processor.getSlot();
+        if (slot >= 0) {
+            procsLock();
+            try {
+                this.processors.deallocate(slot, processor);
+            } finally {
+                procsUnlock();
+            } 
+        }
     }
 
     @Override
@@ -212,7 +203,7 @@ public class SQLiteWorker implements Runnable {
         }
     }
     
-    protected void processQueues(long runNanos) {
+    protected void processQueues(long runNanos) throws IllegalStateException {
         BlockingQueue<SQLiteProcessor> queue = this.procQueue;
         Selector selector = this.selector;
         long deadNano = System.nanoTime() + runNanos;
@@ -230,12 +221,11 @@ public class SQLiteWorker implements Runnable {
             try {
                 p.setSelector(selector);
                 p.setWorker(this);
-                if (this.conns >= this.maxConns) {
+                if (this.processors.size() >= this.maxConns) {
                     p.tooManyConns();
                     p.stop();
                     p.enableWrite();
                 } else {
-                    int id = p.getId();
                     try {
                         p.start();
                     } catch (IllegalStateException e) {
@@ -245,11 +235,14 @@ public class SQLiteWorker implements Runnable {
                     }
                     procsLock();
                     try {
-                        this.processors.put(id, p);
+                        final int slot = this.processors.allocate(p);
+                        if (slot == -1) {
+                            throw new IllegalStateException("Processor allocator full");
+                        }
+                        p.setSlot(slot);
                     } finally {
                         procsUnlock();
                     }
-                    ++this.conns;
                 }
             } catch (IOException e) {
                 log.debug("Handle processor error", e);
@@ -347,7 +340,13 @@ public class SQLiteWorker implements Runnable {
     SQLiteProcessor getProcessor(int pid) {
         procsLock();
         try {
-            return this.processors.get(pid);
+            for (int i = 0, n = this.processors.maxSlot(); i < n; ++i) {
+                SQLiteProcessor p = this.processors.get(i);
+                if (p != null && p.getId() == pid) {
+                    return p;
+                }
+            }
+            return null;
         } finally {
             procsUnlock();
         }
