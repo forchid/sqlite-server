@@ -18,9 +18,7 @@ package org.sqlite.server;
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.Comparator;
 import java.util.Iterator;
-import java.util.PriorityQueue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -39,21 +37,13 @@ import org.sqlite.util.SlotAllocator;
 public class SQLiteWorker implements Runnable {
     static final Logger log = LoggerFactory.getLogger(SQLiteWorker.class);
     
-    protected static final int ioRatio;
-    static {
-        String prop = "org.sqlite.server.worker.ioRatio";
-        int i = Integer.getInteger(prop, 50);
-        if (i <= 0 || i > 100) {
-            String message = prop + " " + i + ", expect (0, 100]";
-            throw new ExceptionInInitializerError(message);
-        }
-        ioRatio = i;
-    }
+    protected static final int ioRatio, busyMinWait;
     
     protected final SQLiteServer server;
     
     protected final AtomicBoolean open = new AtomicBoolean();
     protected final AtomicBoolean wakeup = new AtomicBoolean();
+    protected final AtomicBoolean dbIdle = new AtomicBoolean(true);
     protected Selector selector;
     protected Thread runner;
     private volatile boolean stopped;
@@ -65,7 +55,7 @@ public class SQLiteWorker implements Runnable {
     protected final int maxConns;
     protected final AtomicBoolean procsLock = new AtomicBoolean();
     private final SlotAllocator<SQLiteProcessor> processors;
-    private final PriorityQueue<SQLiteProcessor> busyQueue;
+    private final SlotAllocator<SQLiteProcessor> busyProcs;
     
     public SQLiteWorker(SQLiteServer server, int id) {
         this.server = server;
@@ -73,8 +63,8 @@ public class SQLiteWorker implements Runnable {
         this.name = server.getName() + " worker-"+this.id;
         this.maxConns = server.getMaxConns();
         this.procQueue = new ArrayBlockingQueue<>(maxConns);
-        this.processors= new SlotAllocator<>(this.maxConns);
-        this.busyQueue = new PriorityQueue<>(this.maxConns, busyQueueCmp);
+        this.processors = new SlotAllocator<>(this.maxConns);
+        this.busyProcs = new SlotAllocator<>(this.maxConns);
     }
     
     public int getId() {
@@ -209,7 +199,7 @@ public class SQLiteWorker implements Runnable {
         long deadNano = System.nanoTime() + runNanos;
         // Q1: procQueue
         for (;;) {
-            if (runNanos > 0L && System.nanoTime() >= deadNano) {
+            if (runNanos > 0L && System.nanoTime() > deadNano) {
                 return;
             }
             
@@ -221,6 +211,7 @@ public class SQLiteWorker implements Runnable {
             try {
                 p.setSelector(selector);
                 p.setWorker(this);
+                p.setName(this.name + "-" + p.getName());
                 if (this.processors.size() >= this.maxConns) {
                     p.tooManyConns();
                     p.stop();
@@ -250,23 +241,31 @@ public class SQLiteWorker implements Runnable {
             }
         }
         
-        // Q2: busyQueue
-        PriorityQueue<SQLiteProcessor> busyQueue = this.busyQueue;
-        for (;;) {
-            if (runNanos > 0L && System.nanoTime() >= deadNano) {
+        // Q2: busyProcessors
+        SlotAllocator<SQLiteProcessor> busyProcs = this.busyProcs;
+        for (int i = 0, n = busyProcs.maxSlot(); i < n; ++i) {
+            if (runNanos > 0L && System.nanoTime() > deadNano) {
                 return;
             }
-            SQLiteProcessor proc = busyQueue.peek();
-            if (proc == null || !proc.queryTask.isReady()) {
-                break;
+            SQLiteProcessor proc = busyProcs.get(i);
+            if (proc == null) {
+                continue;
             }
-            this.server.trace(log, "Run busy processor: {}", proc);
-            busyQueue.poll();
-            try {
-                Thread.currentThread().setName(this.name + "-" + proc.getName());
-                proc.queryTask.run();
-            } finally {
-                Thread.currentThread().setName(this.name);
+            boolean stopped = proc.isStopped();
+            if (stopped || proc.queryTask.isReady() || proc.queryTask.isCanceled()) {
+                if (!busyProcs.deallocate(i, proc)) {
+                    throw new IllegalArgumentException("Busy processors slot used");
+                }
+                if (stopped) {
+                    continue;
+                }
+                this.server.trace(log, "Busy processor '{}' resumed", proc);
+                try {
+                    Thread.currentThread().setName(proc.getName());
+                    proc.queryTask.run();
+                } finally {
+                    Thread.currentThread().setName(this.name);
+                }
             }
         }
     }
@@ -284,7 +283,7 @@ public class SQLiteWorker implements Runnable {
             if (key.isWritable()) {
                 try {
                     p = (SQLiteProcessor)key.attachment();
-                    Thread.currentThread().setName(this.name + "-" + p.getName());
+                    Thread.currentThread().setName(p.getName());
                     p.write();
                 } finally {
                     Thread.currentThread().setName(this.name);
@@ -292,7 +291,7 @@ public class SQLiteWorker implements Runnable {
             } else if (key.isReadable()) {
                 try {
                     p = (SQLiteProcessor)key.attachment();
-                    Thread.currentThread().setName(this.name + "-" + p.getName());
+                    Thread.currentThread().setName(p.getName());
                     p.read();
                 } finally {
                     Thread.currentThread().setName(this.name);
@@ -302,39 +301,94 @@ public class SQLiteWorker implements Runnable {
             }
         }
     }
+    
+    public SQLiteWorker wakeup() {
+        if (this.wakeup.compareAndSet(false, true)) {
+            this.selector.wakeup();
+        }
+        
+        return this;
+    }
 
     public boolean offer(SQLiteProcessor process) {
         if (isStopped()) {
             return false;
         }
         
-        boolean ok = this.procQueue.offer(process);
-        if (ok && this.wakeup.compareAndSet(false, true)) {
-            this.selector.wakeup();
+        if (this.procQueue.offer(process)) {
+            wakeup();
+            return true;
         }
-        return ok;
+        
+        return false;
     }
     
-    public boolean offerBusy(SQLiteProcessor process) {
+    public boolean busy(SQLiteProcessor process) throws IllegalStateException {
         if (process.isStopped() || !process.isOpen()) {
             return false;
         }
         
-        this.server.trace(log, "Offer busy processor: {}", process);
-        return this.busyQueue.offer(process);
+        this.server.trace(log, "Busy processor '{}' suspended", process);
+        if (this.busyProcs.allocate(process) == -1) {
+            throw new IllegalStateException("Busy processors full");
+        }
+        SQLiteBusyContext busyContext = process.getBusyContext();
+        if (!busyContext.isSleepable()) {
+            this.dbIdle.set(false);
+        }
+        
+        return true;
+    }
+    
+    public void dbIdle() {
+        dbIdle(true);
+    }
+    
+    public void dbIdle(boolean global) {
+        if (global) {
+            this.server.dbIdle();
+        } else {
+            this.server.trace(log, "notify '{}' DB idle", this);
+            if (this.dbIdle.compareAndSet(false, true)) {
+                this.selector.wakeup();
+            } 
+        }
     }
     
     protected long minSelectTimeout() {
-        SQLiteProcessor proc = this.busyQueue.peek();
-        if (proc == null) {
-            return -1L;
+        SlotAllocator<SQLiteProcessor> busyProcs = this.busyProcs;
+        long timeout = -1L;
+        
+        for (int i = 0, n = busyProcs.maxSlot(); i < n; ++i) {
+            SQLiteProcessor proc = busyProcs.get(i);
+            
+            if (proc == null) {
+                continue;
+            }
+            
+            SQLiteBusyContext busyContext = proc.getBusyContext();
+            if (busyContext.isCanceled()) {
+                timeout = 0L;
+                break;
+            }
+            
+            if (busyContext.isReady()) {
+                if (busyContext.isSleepable() || this.dbIdle.get()) {
+                    timeout = 0L;
+                    break;
+                }
+                if (timeout > busyMinWait || timeout < 0L) {
+                    timeout = busyMinWait;
+                }
+            } else {
+                long remTime = busyContext.getTimeoutTime() - System.currentTimeMillis();
+                if (remTime < timeout || timeout < 0L) {
+                    timeout = Math.max(0L, remTime);
+                }
+            }
         }
-        SQLiteBusyContext context = proc.queryTask.getBusyContext();
-        if (context.isReady()) {
-            return 0L;
-        }
-        long timeout = context.getExecuteTime() - System.currentTimeMillis();
-        return (timeout <= 0L? 0L: timeout);
+        
+        return timeout;
     }
 
     SQLiteProcessor getProcessor(int pid) {
@@ -362,26 +416,27 @@ public class SQLiteWorker implements Runnable {
         this.procsLock.set(false);
     }
     
-    static final Comparator<SQLiteProcessor> busyQueueCmp = new Comparator<SQLiteProcessor>() {
-        
-        @Override
-        public int compare(SQLiteProcessor a, SQLiteProcessor b) {
-            if (!a.isOpen()) {
-                return -1;
-            }
-            if (!b.isOpen()) {
-                return -1;
-            }
-            
-            long ta = a.getBusyContext().getExecuteTime();
-            long tb = b.getBusyContext().getExecuteTime();
-            if (ta == tb) {
-                return 0;
-            }
-            
-            return (ta < tb ? -1: 1);
+    @Override
+    public String toString() {
+        return this.name;
+    }
+    
+    static {
+        String prop = "org.sqlite.server.worker.ioRatio";
+        int i = Integer.getInteger(prop, 50);
+        if (i <= 0 || i > 100) {
+            String message = prop + " " + i + ", expect (0, 100]";
+            throw new ExceptionInInitializerError(message);
         }
+        ioRatio = i;
         
-    };
+        prop = "org.sqlite.server.worker.busyMinWait";
+        i = Integer.getInteger(prop, 100);
+        if (i < 0) {
+            String message = prop + " " + i + ", expect [0, +∞)";
+            throw new ExceptionInInitializerError(message);
+        }
+        busyMinWait = i;
+    }
     
 }

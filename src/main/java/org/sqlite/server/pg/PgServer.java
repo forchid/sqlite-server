@@ -123,9 +123,8 @@ public class PgServer extends SQLiteServer {
     }
     
     @Override
-    protected SQLiteProcessor newProcessor(SocketChannel channel, int processId) 
-            throws NetworkException {
-        return new PgProcessor(channel, processId, this);
+    protected SQLiteProcessor newProcessor(SocketChannel channel, int pid) throws NetworkException {
+        return new PgProcessor(this, channel, pid);
     }
     
     @Override

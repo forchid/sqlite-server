@@ -386,6 +386,13 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         nextString("alyze");
         return new SQLStatement(this.sql, "ANALYZE");
     }
+    
+    protected SQLStatement parseBegin() {
+        nextString("egin");
+        TransactionStatement stmt = new TransactionStatement(this.sql, "BEGIN");
+        stmt.setDeferred(nextEnd());
+        return stmt;
+    }
 
     protected SQLStatement parseAttach() {
         String dbName, schemaName;
@@ -786,15 +793,9 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             throw syntaxError();
         }
         // OK
-        int second;
+        final int second;
         try {
-            if (sec.startsWith("0x") || sec.startsWith("0X")) {
-                second = Integer.parseInt(sec.substring(2), 16);
-            } else if (sec.startsWith("+0x") || sec.startsWith("-0X")) {
-                second = Integer.parseInt(sec.substring(3), 16);
-            } else {
-                second = Integer.parseInt(sec);
-            }
+            second = Integer.decode(sec);
             if (second < 0) {
                 throw new SQLParseException("Incorrect arguments in call to 'sleep'");
             }
@@ -1076,11 +1077,6 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         return parseStatement();
     }
 
-    protected SQLStatement parseBegin() {
-        nextString("egin");
-        return new TransactionStatement(this.sql, "BEGIN");
-    }
-    
     protected boolean nextEnd() {
         skipIgnorableIf();
         return (nextCharIf(';') != -1 || this.ei == this.sql.length());

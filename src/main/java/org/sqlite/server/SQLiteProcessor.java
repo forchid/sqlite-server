@@ -72,13 +72,13 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     protected SocketChannel channel;
     protected Selector selector;
     protected ByteBuffer readBuffer;
-    protected SQLiteQueryTask queryTask;
+    protected volatile SQLiteQueryTask queryTask;
     protected Deque<ByteBuffer> writeQueue;
     protected SQLiteProcessorTask writeTask;
     
-    protected final int id;
-    protected final String name;
     protected final SQLiteServer server;
+    protected final int id;
+    protected String name;
     protected int slot = -1; // slot in SlotAllocator
     protected SQLiteWorker worker;
     protected SQLiteAuthMethod authMethod;
@@ -92,12 +92,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     private String metaSchema = null;
     protected Stack<TransactionStatement> savepointStack;
     
-    protected SQLiteProcessor(SocketChannel channel, int processId, SQLiteServer server)
-            throws NetworkException {
+    protected SQLiteProcessor(SQLiteServer server, SocketChannel channel, int id) throws NetworkException {
         this.channel = channel;
         this.server = server;
-        this.id = processId;
-        this.name = String.format("proc-%d", processId);
+        this.id = id;
+        this.name = "proc-" + id;
         
         try {
             this.remoteAddress = (InetSocketAddress)channel.getRemoteAddress();
@@ -115,6 +114,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     public String getName() {
         return this.name;
+    }
+    
+    public void setName(String name) {
+        this.name = name;
     }
     
     public SQLiteServer getServer() {
@@ -225,7 +228,12 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     public SQLiteBusyContext getBusyContext() {
-        return this.queryTask.getBusyContext();
+        SQLiteQueryTask queryTask = this.queryTask;
+        if (queryTask == null) {
+            return null;
+        }
+        
+        return queryTask.getBusyContext();
     }
     
     public void setBusyContext(SQLiteBusyContext busyContext) {
@@ -252,6 +260,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     // SQLContext methods
+    @Override
+    protected void transactionComplelete() {
+        this.getWorker().dbIdle();
+    }
+    
     @Override
     public SQLiteConnection getConnection() {
         return this.connection;
@@ -396,6 +409,12 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     public void cancelRequest() throws SQLException {
+        SQLiteBusyContext busyContext = getBusyContext();
+        if (busyContext != null) {
+            busyContext.setCanceled(true);
+            this.worker.wakeup();
+        }
+        
         SQLiteConnection conn = getConnection();
         if (conn != null && isOpen()) {
             conn.getDatabase().interrupt();
@@ -813,6 +832,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         this.channel = null;
         IoUtils.close(this.connection);
         this.connection = null;
+        this.worker.dbIdle();
         
         this.server.trace(log, "Close: id {}", this.id);
     }

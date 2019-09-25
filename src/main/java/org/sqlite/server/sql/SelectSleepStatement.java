@@ -54,16 +54,16 @@ public class SelectSleepStatement extends SQLStatement {
         SQLiteBusyContext busyContext = processor.getBusyContext();
         if (this.second == 0 || (busyContext != null && busyContext.isReady())) {
             super.preExecute(maxRows);
-        } else {
-            // Calculate the execute time
-            if (busyContext == null) {
-                busyContext = new SQLiteBusyContext();
-                busyContext.setExecuteTime(busyContext.getStartTime() + this.second * 1000L);
-                processor.setBusyContext(busyContext);
-            }
-            SQLiteErrorCode error = SQLiteErrorCode.SQLITE_BUSY;
-            throw new SQLException("Non-blocking execution", "57019", error.code);
+            return;
         }
+        
+        // Calculate the execute time
+        if (busyContext == null) {
+            busyContext = new SQLiteBusyContext(this.second * 1000L, true);
+            processor.setBusyContext(busyContext);
+        }
+        SQLiteErrorCode error = SQLiteErrorCode.SQLITE_BUSY;
+        throw new SQLException("Non-blocking execution", "57019", error.code);
     }
     
 }

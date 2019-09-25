@@ -40,9 +40,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteConfig;
-import org.sqlite.SQLiteConfig.Encoding;
-import org.sqlite.SQLiteConfig.JournalMode;
-import org.sqlite.SQLiteConfig.SynchronousMode;
 import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.Db;
 import org.sqlite.server.sql.meta.User;
@@ -156,11 +153,7 @@ public class SQLiteMetaDb implements AutoCloseable {
             throw new IllegalStateException("MetaDb has been closed");
         }
         
-        SQLiteConfig config = new SQLiteConfig();
-        config.setJournalMode(JournalMode.WAL);
-        config.setSynchronous(SynchronousMode.NORMAL);
-        config.setBusyTimeout(50000);
-        config.setEncoding(Encoding.UTF8);
+        SQLiteConfig config = this.server.newSQLiteConfig(3000);
         return (SQLiteConnection)config.createConnection("jdbc:sqlite:"+this.file);
     }
     

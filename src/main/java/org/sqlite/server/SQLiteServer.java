@@ -28,6 +28,7 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Iterator;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -67,6 +68,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
+    public static final int BUSY_TIMEOUT_DEFAULT  = 30000;
     
     // command list
     public static final String CMD_INITDB = "initdb";
@@ -85,8 +87,10 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected int port = PORT_DEFAULT;
     protected int maxConns = MAX_CONNS_DEFAULT;
     private int maxPid;
+    protected int busyTimeout = BUSY_TIMEOUT_DEFAULT;
     protected File dataDir = new File(System.getProperty("user.home"), "sqlite3Data");
     protected boolean trace;
+    protected boolean traceError;
     
     protected final String protocol;
     protected Selector selector;
@@ -345,8 +349,16 @@ public abstract class SQLiteServer implements AutoCloseable {
         // Parse args
         for (int argc = args.length; i < argc; i++) {
             String a = args[i];
-            if ("--trace".equals(a) || "-T".equals(a)) {
+            if ("--busy-timeout".equals(a)) {
+                int busyTimeout = Integer.decode(args[++i]);
+                if (busyTimeout < 0) {
+                    throw new IllegalArgumentException("--busy-timeout " + busyTimeout);
+                }
+                this.busyTimeout = busyTimeout;
+            } else if ("--trace".equals(a) || "-T".equals(a)) {
                 this.trace = true;
+            } else if ("--trace-error".equals(a)) {
+                this.traceError = true;
             } else if ("--user".equals(a) || "-U".equals(a)) {
                 this.username = args[++i];
             } else if ("--password".equals(a) || "-p".equals(a)) {
@@ -446,7 +458,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     protected void startWorkers() throws IOException {
         this.workers = new SQLiteWorker[this.workerCount];
-        for (int i = 0; i < this.workerCount; ++i) {
+        for (int i = 0, n = workers.length; i < n; ++i) {
             SQLiteWorker worker = new SQLiteWorker(this, i);
             this.workers[i] = worker;
             worker.start();
@@ -473,9 +485,21 @@ public abstract class SQLiteServer implements AutoCloseable {
         throw new IllegalStateException("No available worker");
     }
     
+    public void dbIdle() {
+        SQLiteWorker[] workers = this.workers;
+        for (int i = 0, n = workers.length; i < n; ++i) {
+            SQLiteWorker worker = workers[i];
+            if (worker == null || !worker.isOpen()) {
+                continue;
+            }
+            worker.dbIdle(false);
+        }
+    }
+    
     public SQLiteProcessor getProcessor(int pid) {
         SQLiteWorker[] workers = this.workers;
-        for (SQLiteWorker worker: workers) {
+        for (int i = 0, n = workers.length; i < n; ++i) {
+            SQLiteWorker worker = workers[i];
             if (worker == null) {
                 continue;
             }
@@ -567,7 +591,7 @@ public abstract class SQLiteServer implements AutoCloseable {
             return;
         }
         
-        for (int i = 0; i < workers.length; ++i) {
+        for (int i = 0, n = workers.length; i < n; ++i) {
             SQLiteWorker worker = workers[i];
             if (worker != null) {
                 worker.stop();
@@ -608,14 +632,37 @@ public abstract class SQLiteServer implements AutoCloseable {
         }
         trace(log, "SQLite connection {}", url);
         
+        SQLiteConfig config = newSQLiteConfig(3000/* connect timeout */);
+        SQLiteConnection conn = (SQLiteConnection)config.createConnection(url);
+        // init connection
+        boolean failed = true;
+        try {
+            Statement stmt = conn.createStatement();
+            // reset busy_timeout after connection
+            stmt.execute("pragma busy_timeout = 0;");
+            stmt.close();
+            dbIdle();
+            failed = false;
+            return conn;
+        } finally {
+            if (failed) {
+                conn.close();
+            }
+        }
+    }
+    
+    public SQLiteConfig newSQLiteConfig() {
+        return newSQLiteConfig(0);
+    }
+    
+    public SQLiteConfig newSQLiteConfig(int busyTimeout) {
         SQLiteConfig config = new SQLiteConfig();
         config.setJournalMode(JournalMode.WAL);
         config.setSynchronous(SynchronousMode.NORMAL);
-        config.setBusyTimeout(50000);
+        config.setBusyTimeout(busyTimeout);
         config.enforceForeignKeys(true);
         config.setEncoding(Encoding.UTF8);
-        
-        return (SQLiteConnection)config.createConnection(url);
+        return config;
     }
     
     public boolean isStopped() {
@@ -624,6 +671,14 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public boolean isTrace() {
         return this.trace;
+    }
+    
+    public boolean isTraceError() {
+        return this.traceError;
+    }
+    
+    public int getBusyTimeout() {
+        return this.busyTimeout;
     }
     
     public String getName() {
@@ -768,13 +823,13 @@ public abstract class SQLiteServer implements AutoCloseable {
     }
     
     public void traceError(Logger log, String message, Throwable cause) {
-        if (isTrace()) {
+        if (isTraceError()) {
             log.warn(message, cause);
         }
     }
     
     public void traceError(Logger log, String tag, String message, Throwable cause) {
-        if (isTrace()) {
+        if (isTraceError()) {
             log.warn(tag + ": " + message, cause);
         }
     }
@@ -848,6 +903,8 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --password|-p   <password>    Superuser's password, must be provided in non-trust auth\n"+
                 "  --db|-d         <dbName>      Initialized database, default as the user name\n"+
                 "  --host|-H       <host>        Superuser's login host, IP, or '%', default "+HOST_DEFAULT+"\n"+
+                "  --trace|-T                    Trace SQLite server execution\n" +
+                "  --trace-error                 Trace error information of SQLite server execution\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
                 "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
     }
@@ -862,6 +919,8 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --max-conns     <number>      Max client connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
                 "  --worker-count  <number>      SQLite worker number, default CPU cores and max "+MAX_WORKER_COUNT+"\n"+
                 "  --trace|-T                    Trace SQLite server execution\n" +
+                "  --trace-error                 Trace error information of SQLite server execution\n"+
+                "  --busy-timeout  <millis>      SQL statement busy timeout, default "+BUSY_TIMEOUT_DEFAULT+"\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg";
     }
     

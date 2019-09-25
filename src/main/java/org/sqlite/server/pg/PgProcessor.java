@@ -96,9 +96,8 @@ public class PgProcessor extends SQLiteProcessor {
     private final HashMap<String, Prepared> prepared = new HashMap<>();
     private final HashMap<String, Portal> portals = new HashMap<>();
 
-    protected PgProcessor(SocketChannel channel, int processId, PgServer server) 
-            throws NetworkException {
-        super(channel, processId, server);
+    protected PgProcessor(PgServer server, SocketChannel channel, int id) throws NetworkException {
+        super(server, channel, id);
         this.secret = (int)SecurityUtils.secureRandomLong();
     }
     
@@ -599,6 +598,11 @@ public class PgProcessor extends SQLiteProcessor {
             this.inSize = -1;
             rem = resetReadBuffer();
         } while(!this.needFlush && rem >= 5 && !hasAsyncTask());
+        
+        // Must disable read if a statement running
+        if (hasAsyncTask()) {
+            disableRead();
+        }
     }
     
     protected boolean hasAsyncTask() {
@@ -846,7 +850,7 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     private void sendErrorResponse(SQLException e) throws IOException {
-        server.traceError(log, "send an error message", e);
+        this.server.traceError(log, "send an error message", e);
         String sqlState = e.getSQLState();
         if (sqlState == null) {
             sqlState = "HY000";
@@ -1254,7 +1258,10 @@ public class PgProcessor extends SQLiteProcessor {
         @Override
         protected void execute() throws IOException {
             PgProcessor proc = (PgProcessor)this.proc;
+            boolean timeout = true;
             try {
+                checkBusyState();
+                timeout = false;
                 boolean resultSet = this.sqlStmt.execute(maxRows);
                 if (resultSet) {
                     boolean async = this.async;
@@ -1271,13 +1278,14 @@ public class PgProcessor extends SQLiteProcessor {
                 proc.sendCommandComplete(this.sqlStmt, count, resultSet);
                 proc.xQueryFailed = false;
             } catch (SQLException e) {
-                if (proc.server.isBusy(e)) {
+                if (!timeout && proc.server.isBusy(e)) {
                     SQLiteBusyContext context = proc.getBusyContext();
                     if (context == null) {
-                        context = new SQLiteBusyContext();
+                        int busyTimeout = proc.server.getBusyTimeout();
+                        context = new SQLiteBusyContext(busyTimeout);
                         proc.setBusyContext(context);
                     }
-                    proc.getWorker().offerBusy(proc);
+                    proc.getWorker().busy(proc);
                     this.async = true;
                     return;
                 }
@@ -1415,10 +1423,13 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 
                 for (; next; ) {
+                    boolean timeout = true;
                     try {
                         sqlStmt.setContext(proc);
                         proc.writeTask = null;
                         proc.trace(log, "execute SQL: {}", sqlStmt);
+                        checkBusyState();
+                        timeout = false;
                         boolean result = sqlStmt.execute(0);
                         if (result) {
                             ResultSet rs = sqlStmt.getJdbcStatement().getResultSet();
@@ -1452,15 +1463,16 @@ public class PgProcessor extends SQLiteProcessor {
                             sqlStmt = this.parser.next();
                         }
                     } catch (SQLException e) {
-                        if (proc.server.isBusy(e)) {
+                        if (!timeout && proc.server.isBusy(e)) {
                             this.curStmt = sqlStmt;
                             resetTask = false;
                             SQLiteBusyContext busyContext = proc.getBusyContext();
                             if (busyContext == null) {
-                                busyContext = new SQLiteBusyContext();
+                                int busyTimeout = proc.server.getBusyTimeout();
+                                busyContext = new SQLiteBusyContext(busyTimeout);
                                 proc.setBusyContext(busyContext);
                             }
-                            proc.getWorker().offerBusy(proc);
+                            proc.getWorker().busy(proc);
                             this.async = true;
                             return;
                         }

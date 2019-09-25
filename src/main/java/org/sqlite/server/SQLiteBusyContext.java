@@ -23,40 +23,58 @@ package org.sqlite.server;
  */
 public class SQLiteBusyContext {
     
-    protected long startTime;
-    protected long executeTime;
+    protected volatile boolean canceled;
+    protected final boolean sleepable;
     
-    public SQLiteBusyContext() {
-        this(0L);
+    protected final long startTime;
+    protected final long timeoutTime;
+    
+    public SQLiteBusyContext(long timeout) throws IllegalArgumentException {
+        this(timeout, false);
     }
     
-    public SQLiteBusyContext(long executeTime) {
-        this.executeTime = executeTime;
+    public SQLiteBusyContext(long timeout, boolean sleepable) throws IllegalArgumentException {
+        if (timeout < 0L) {
+            throw new IllegalArgumentException("timeout " + timeout);
+        }
+        
         this.startTime = System.currentTimeMillis();
+        this.timeoutTime = this.startTime + timeout;
+        this.sleepable = sleepable;
+    }
+    
+    public boolean isCanceled() {
+        return canceled;
+    }
+
+    public void setCanceled(boolean canceled) {
+        this.canceled = canceled;
     }
     
     public long getStartTime() {
         return startTime;
     }
-
-    public void setStartTime(long startTime) {
-        this.startTime = startTime;
+    
+    public long getTimeoutTime() {
+        return this.timeoutTime;
     }
     
-    public long getExecuteTime() {
-        return this.executeTime;
+    public boolean isSleepable() {
+        return this.sleepable;
     }
-
-    public void setExecuteTime(long executeTime) {
-        this.executeTime = executeTime;
+    
+    public boolean isTimeout() {
+        long curMillis = System.currentTimeMillis();
+        return (this.timeoutTime < curMillis);
     }
     
     public boolean isReady() {
-        if (this.executeTime == 0L) {
-            return true;
+        if (this.sleepable) {
+            long curMillis = System.currentTimeMillis();
+            return (this.timeoutTime <= curMillis);
         }
-        long curMillis = System.currentTimeMillis();
-        return (this.executeTime <= curMillis);
+        
+        return true;
     }
     
 }

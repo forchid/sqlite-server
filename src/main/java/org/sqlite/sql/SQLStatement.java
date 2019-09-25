@@ -203,9 +203,10 @@ public class SQLStatement implements AutoCloseable {
      * @throws IllegalStateException if SQL context closed or access metaDb error
      */
     public void postResult() throws IllegalStateException {
-        if (this.context.isTrace()) {
-            boolean autocommit = this.context.isAutoCommit();
-            this.context.trace(log, "tx: autocommit {} <-", autocommit); 
+        boolean autocommit = this.context.isAutoCommit();
+        this.context.trace(log, "tx: autocommit {} <-", autocommit);
+        if (autocommit) {
+            this.context.transactionComplelete();
         }
     }
     

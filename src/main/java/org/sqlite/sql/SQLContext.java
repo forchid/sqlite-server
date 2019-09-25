@@ -68,6 +68,8 @@ public abstract class SQLContext {
     
     protected abstract void releaseTransaction(TransactionStatement txSql, boolean finished);
     
+    protected abstract void transactionComplelete();
+    
     protected abstract boolean hasPrivilege(SQLStatement s) throws SQLException;
     
     protected abstract void checkPermission(SQLStatement s) throws SQLException;

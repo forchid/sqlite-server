@@ -28,6 +28,7 @@ public class TransactionStatement extends SQLStatement {
     
     protected String savepointName;
     protected boolean txPrepared;
+    protected boolean deferred;
     
     public TransactionStatement(String sql, String command) {
         super(sql, command);
@@ -101,6 +102,16 @@ public class TransactionStatement extends SQLStatement {
         return this.savepointName;
     }
     
+    @Override
+    public String getExecutableSQL() throws SQLException {
+        if (this.isDeferred() && isBegin()) {
+            // deferred -> immediate: 
+            // Solve busy can't be recovered in transaction!
+            return "begin immediate;";
+        }
+        return super.getExecutableSQL();
+    }
+    
     public boolean isBegin() {
         return ("BEGIN".equals(getCommand()));
     }
@@ -124,6 +135,14 @@ public class TransactionStatement extends SQLStatement {
     
     public boolean hasSavepoint() {
         return (getSavepointName() != null);
+    }
+    
+    public boolean isDeferred() {
+        return deferred;
+    }
+
+    public void setDeferred(boolean deferred) {
+        this.deferred = deferred;
     }
     
 }

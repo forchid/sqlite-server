@@ -25,7 +25,7 @@ import java.io.IOException;
  */
 public abstract class SQLiteQueryTask extends SQLiteProcessorTask {
     
-    protected SQLiteBusyContext busyContext;
+    protected volatile SQLiteBusyContext busyContext;
     
     protected SQLiteQueryTask(SQLiteProcessor proc) {
         super(proc);
@@ -41,6 +41,10 @@ public abstract class SQLiteQueryTask extends SQLiteProcessorTask {
     
     public boolean isReady() {
         return (getBusyContext().isReady());
+    }
+    
+    public boolean isCanceled() {
+        return (getBusyContext().isCanceled());
     }
     
     @Override
