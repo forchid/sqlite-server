@@ -377,18 +377,20 @@ public class SQLiteWorker implements Runnable {
                     timeout = 0L;
                     break;
                 }
-                if (timeout > busyMinWait || timeout < 0L) {
-                    timeout = busyMinWait;
-                }
-            } else {
-                long remTime = busyContext.getTimeoutTime() - System.currentTimeMillis();
-                if (remTime < timeout || timeout < 0L) {
-                    if (remTime <= 0L) {
-                        timeout = 0L;
-                        break;
+                if (!busyContext.isOnDbWriteLock()) {
+                    if (timeout > busyMinWait || timeout < 0L) {
+                        timeout = busyMinWait;
                     }
-                    timeout = remTime;
                 }
+            }
+            
+            long remTime = busyContext.getTimeoutTime() - System.currentTimeMillis();
+            if (timeout > remTime || timeout < 0L) {
+                if (remTime <= 0L) {
+                    timeout = 0L;
+                    break;
+                }
+                timeout = remTime;
             }
         }
         

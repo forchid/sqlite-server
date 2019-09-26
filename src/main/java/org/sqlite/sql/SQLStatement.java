@@ -180,9 +180,15 @@ public class SQLStatement implements AutoCloseable {
     protected boolean doExecute(int maxRows) throws SQLException {
         boolean resultSet;
         
-        if (this.context.isTrace()) {
-            Connection conn = this.context.getConnection();
-            this.context.trace(log, "tx: autocommit {} ->", conn.getAutoCommit()); 
+        SQLContext context = this.context;
+        if (context.isTrace()) {
+            Connection conn = context.getConnection();
+            context.trace(log, "tx: autocommit {} ->", conn.getAutoCommit()); 
+        }
+        
+        if (!isQuery() && !context.isReadOnly() && !context.holdsDbWriteLock()) {
+            context.dbWriteLock();
+            context.trace(log, "'{}' db write lock: {}", context, this);
         }
         
         if (this.prepared) {
@@ -205,10 +211,14 @@ public class SQLStatement implements AutoCloseable {
      * @throws IllegalStateException if SQL context closed or access metaDb error
      */
     public void postResult() throws IllegalStateException {
-        boolean autocommit = this.context.isAutoCommit();
-        this.context.trace(log, "tx: autocommit {} <-", autocommit);
+        SQLContext context = this.context;
+        boolean autocommit = context.isAutoCommit();
+        context.trace(log, "tx: autocommit {} <-", autocommit);
         if (autocommit) {
-            this.context.transactionComplelete();
+            if (context.dbWriteUnlock()) {
+                context.trace(log, "'{}' db write unlock: {}", context, this);
+            }
+            context.transactionComplelete();
         }
     }
     

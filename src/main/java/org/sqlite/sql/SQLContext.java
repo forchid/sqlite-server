@@ -82,6 +82,12 @@ public abstract class SQLContext {
     
     protected abstract void transactionComplelete();
     
+    public abstract void dbWriteLock() throws SQLException;
+    
+    public abstract boolean holdsDbWriteLock();
+    
+    public abstract boolean dbWriteUnlock();
+    
     protected abstract boolean hasPrivilege(SQLStatement s) throws SQLException;
     
     protected abstract void checkPermission(SQLStatement s) throws SQLException;
@@ -89,6 +95,8 @@ public abstract class SQLContext {
     public abstract boolean isUniqueViolated(SQLException cause);
     
     public abstract String getMetaDbName();
+    
+    public abstract String getDbName();
     
     public abstract File getDataDir();
     

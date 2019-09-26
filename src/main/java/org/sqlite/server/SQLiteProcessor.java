@@ -279,6 +279,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     @Override
+    public String getDbName() {
+        return this.databaseName;
+    }
+    
+    @Override
     public String getMetaDbName() {
         return (getMetaDb().getDbName());
     }
@@ -370,6 +375,36 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             setReadOnly(false);
             detachMetaDb();
         }
+    }
+    
+    @Override
+    public void dbWriteLock() throws SQLException {
+        SQLiteBusyContext busyContext = getBusyContext();
+        if (!this.server.tryDbWriteLock(this)) {
+            if (busyContext == null) {
+                long busyTimeout = this.server.getBusyTimeout();
+                busyContext = new SQLiteBusyContext(true, busyTimeout);
+                setBusyContext(busyContext);
+            }
+            busyContext.setOnDbWriteLock(true);
+            throw convertError(SQLiteErrorCode.SQLITE_BUSY);
+        }
+        if (busyContext != null) {
+            busyContext.setOnDbWriteLock(false);
+        }
+    }
+    
+    @Override
+    public boolean dbWriteUnlock() {
+        if (this.server.dbWriteUnlock(this)) {
+            return true;
+        }
+        return false;
+    }
+    
+    @Override
+    public boolean holdsDbWriteLock() {
+        return (this.server.holdsDbWriteLock(this));
     }
     
     @Override
@@ -846,6 +881,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         this.channel = null;
         IoUtils.close(this.connection);
         this.connection = null;
+        this.dbWriteUnlock();
         this.worker.dbIdle();
         
         this.server.trace(log, "Close: id {}", this.id);

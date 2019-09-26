@@ -30,6 +30,8 @@ import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Iterator;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -47,6 +49,7 @@ import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.pg.PgServer;
 import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.sql.SQLContext;
 import org.sqlite.util.IoUtils;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
@@ -88,6 +91,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected int maxConns = MAX_CONNS_DEFAULT;
     private int maxPid;
     protected int busyTimeout = BUSY_TIMEOUT_DEFAULT;
+    private final ConcurrentMap<String, SQLContext> dbWriteLocks;
     protected File dataDir = new File(System.getProperty("user.home"), "sqlite3Data");
     protected boolean trace;
     protected boolean traceError;
@@ -175,6 +179,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     protected SQLiteServer(String protocol) {
         this.protocol = protocol;
+        this.dbWriteLocks = new ConcurrentHashMap<>();
     }
     
     protected String[] wrapArgs(String command, String ... args) {
@@ -838,6 +843,22 @@ public abstract class SQLiteServer implements AutoCloseable {
             throws NetworkException;
     
     public abstract SQLiteAuthMethod newAuthMethod(String protocol, String authMethod);
+    
+    public boolean tryDbWriteLock(SQLContext context) {
+        String db = context.getDbName();
+        SQLContext oldOne = this.dbWriteLocks.putIfAbsent(db, context);
+        return (oldOne == null || oldOne == context);
+    }
+    
+    public boolean dbWriteUnlock(SQLContext context) {
+        String db = context.getDbName();
+        return this.dbWriteLocks.remove(db, context);
+    }
+    
+    public boolean holdsDbWriteLock(SQLContext context) {
+        String db = context.getDbName();
+        return (this.dbWriteLocks.get(db) == context);
+    }
     
     protected int nextPid() {
         int id = ++this.maxPid;

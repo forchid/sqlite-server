@@ -28,12 +28,22 @@ public class SQLiteBusyContext {
     
     protected final long startTime;
     protected final long timeoutTime;
+    protected boolean onDbWriteLock;  // busy on
     
     public SQLiteBusyContext(long timeout) throws IllegalArgumentException {
-        this(timeout, false);
+        this(false, timeout);
+    }
+    
+    public SQLiteBusyContext(boolean onDbWriteLock, long timeout) throws IllegalArgumentException {
+        this(onDbWriteLock, timeout, false);
     }
     
     public SQLiteBusyContext(long timeout, boolean sleepable) throws IllegalArgumentException {
+        this(false, timeout, sleepable);
+    }
+    
+    public SQLiteBusyContext(boolean onDbWriteLock, long timeout, boolean sleepable) 
+            throws IllegalArgumentException {
         if (timeout < 0L) {
             throw new IllegalArgumentException("timeout " + timeout);
         }
@@ -49,6 +59,14 @@ public class SQLiteBusyContext {
 
     public void setCanceled(boolean canceled) {
         this.canceled = canceled;
+    }
+    
+    public boolean isOnDbWriteLock() {
+        return onDbWriteLock;
+    }
+    
+    public void setOnDbWriteLock(boolean onDbWriteLock) {
+        this.onDbWriteLock = onDbWriteLock;
     }
     
     public long getStartTime() {
