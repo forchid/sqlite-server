@@ -125,6 +125,7 @@ public class SQLStatement implements AutoCloseable {
             throw new IllegalStateException("Empty statement can't be prepared");
         }
         checkPermission();
+        this.context.checkReadOnly(this);
         
         Connection conn = this.context.getConnection();
         String sql = getExecutableSQL();
@@ -157,6 +158,7 @@ public class SQLStatement implements AutoCloseable {
         } else {
             if (this.jdbcStatement == null) {
                 checkPermission();
+                this.context.checkReadOnly(this);
                 Connection conn = this.context.getConnection();
                 this.jdbcStatement = conn.createStatement();
             }

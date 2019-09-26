@@ -15,11 +15,8 @@
  */
 package org.sqlite.server.jdbc;
 
-import java.io.File;
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,7 +24,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.sqlite.SQLiteErrorCode;
 import org.sqlite.TestDbBase;
 import org.sqlite.util.IoUtils;
 
@@ -50,7 +46,6 @@ public class ConnectionTest extends TestDbBase {
         int maxConns = getMaxConns() * getWorkCount();
         
         singleConnTest();
-        nestedConnTxTest();
         
         multiConnsTest(maxConns-50, maxConns, false, 1);
         multiConnsTest(maxConns,    maxConns, false, 10);
@@ -74,77 +69,6 @@ public class ConnectionTest extends TestDbBase {
         for (int i = 0; i < iterates; ++i) {
             doMultiConnsTest(n, maxConns, multiThread, i);
             if (multiThread) sleep(1000L);
-        }
-    }
-    
-    private void nestedConnTxTest() throws SQLException {
-        String dataDir = getDataDir(), dbFile = getDbDefault();
-        String url = "jdbc:sqlite:"+new File(dataDir, dbFile);
-        try (Connection conn = getConnection(url, "", "")) {
-            Statement stmt = conn.createStatement();
-            ResultSet rs;
-            int n, b = 1000000, d = 1000, id = 1;
-            String sql;
-            
-            sql = "create table if not exists accounts(id integer primary key, balance decimal)";
-            stmt.executeUpdate(sql);
-            sql = String.format("insert into accounts(id, balance)values(%d, %d)", id, b);
-            n = stmt.executeUpdate(sql);
-            assertTrue(1 == n);
-            
-            // tx#1
-            conn.setAutoCommit(false);
-            sql = String.format("update accounts set balance = balance + %d where id = %d", d, id);
-            n = stmt.executeUpdate(sql);
-            assertTrue(1 == n);
-            // check update result
-            sql = String.format("select balance from accounts where id = %d", id);
-            rs = stmt.executeQuery(sql);
-            assertTrue(rs.next());
-            assertTrue(rs.getInt(1) == b + d);
-            rs.close();
-            
-            try (Connection aConn = getConnection(url, "", "")) {
-                assertTrue(aConn != conn);
-                Statement aStmt;
-                // check the first insertion result
-                aStmt = aConn.createStatement();
-                sql = String.format("select balance from accounts where id = %d", id);
-                rs = aStmt.executeQuery(sql);
-                assertTrue(rs.next());
-                assertTrue(rs.getInt(1) == b);
-                rs.close();
-                
-                // tx#2
-                aConn.setAutoCommit(false);
-                // check isolation
-                sql = String.format("select balance from accounts where id = %d", id);
-                rs = aStmt.executeQuery(sql);
-                assertTrue(rs.next());
-                assertTrue(rs.getInt(1) == b);
-                // concurrent update
-                try {
-                    sql = String.format("update accounts set balance = balance + %d where id = %d", d, id);
-                    n = aStmt.executeUpdate(sql);
-                    assertTrue(1 == n);
-                    fail("Concurrent update should be blocked and busy");
-                } catch (SQLException e) {
-                    if (e.getErrorCode() == SQLiteErrorCode.SQLITE_BUSY.code) {
-                        // OK
-                        aConn.rollback();
-                    } else {
-                        throw e;
-                    }
-                }
-            }
-            
-            // commit and check result
-            conn.commit();
-            sql = String.format("select balance from accounts where id = %d", id);
-            rs = stmt.executeQuery(sql);
-            assertTrue(rs.next());
-            assertTrue(rs.getInt(1) == b + d);
-            rs.close();
         }
     }
     

@@ -559,28 +559,129 @@ public class SQLParserTest extends TestBase {
         insertTest("/*sql*/insert/*;*/ into t(a) values(1)-- sql", 1);
         insertTest("/*sql*/insert/*;*/ into t(a) values(1); insert into t(a) /*\"*/values(2)-- sql", 2);
         
-        txBeginTest("begin", 1);
-        txBeginTest("begin;", 1);
-        txBeginTest(" begin;", 1);
-        txBeginTest("Begin;", 1);
-        txBeginTest(" Begin ;", 1);
-        txBeginTest("/*tx*/begin--", 1);
-        txBeginTest("/*tx*/ begin--", 1);
-        txBeginTest("/*tx*/begin --", 1);
-        txBeginTest("/*tx*/begin/*tx*/--", 1);
-        txBeginTest("/*tx*/begin/*tx*/--;", 1);
-        txBeginTest("begin; begin", 2);
-        txBeginTest("begin;Begin;", 2);
-        txBeginTest(" begin;beGin;", 2);
-        txBeginTest("Begin;/*tx*/begin;", 2);
-        txBeginTest(" Begin ;begin;", 2);
-        txBeginTest("/*tx*/begin;begin--;", 2);
-        txBeginTest("begin;/*tx*/ begin--", 2);
-        txBeginTest("Begin;/*tx*/begin --", 2);
-        txBeginTest("begiN;/*tx*/begin/*tx*/--", 2);
-        txBeginTest("begIn;/*tx*/begin/*tx*/--;", 2);
-        txBeginTest("begIn transaction;/*tx*/begin/*tx*/--;", 2);
+        boolean deferred = true, immediate = false, exclusive = false;
+        txBeginTest("begin", 1, deferred, immediate, exclusive);
+        txBeginTest("begin;", 1, deferred, immediate, exclusive);
+        txBeginTest("start transaction;", 1, deferred, immediate, exclusive);
+        txBeginTest(" begin;", 1, deferred, immediate, exclusive);
+        txBeginTest(" start transaction ;", 1, deferred, immediate, exclusive);
+        txBeginTest("Begin;", 1, deferred, immediate, exclusive);
+        txBeginTest(" Begin ;", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/ begin--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin --", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/--;", 1, deferred, immediate, exclusive);
+        txBeginTest("begin; begin", 2, deferred, immediate, exclusive);
+        txBeginTest("begin;Begin;", 2, deferred, immediate, exclusive);
+        txBeginTest(" begin;beGin;", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin;/*tx*/begin;", 2, deferred, immediate, exclusive);
+        txBeginTest(" Begin ;begin;", 2, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin;begin--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begin;/*tx*/ begin--", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin;/*tx*/begin --", 2, deferred, immediate, exclusive);
+        txBeginTest("begiN;/*tx*/begin/*tx*/--", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn;/*tx*/begin/*tx*/--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn transaction;/*tx*/begin/*tx*/--;", 2, deferred, immediate, exclusive);
+        // deferred
+        txBeginTest("begin deferred", 1, deferred, immediate, exclusive);
+        txBeginTest("begin Deferred;", 1, deferred, immediate, exclusive);
+        txBeginTest("start Deferred transaction ;", 1, deferred, immediate, exclusive);
+        txBeginTest(" begin DEFERRED;", 1, deferred, immediate, exclusive);
+        txBeginTest("Begin  deferred;", 1, deferred, immediate, exclusive);
+        txBeginTest(" Begin  deferred ;", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin deferred--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/ begin deferred--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin deferred --", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/deferred--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/ deferred--;", 1, deferred, immediate, exclusive);
+        txBeginTest("begin deferred; begin deferred", 2, deferred, immediate, exclusive);
+        txBeginTest("begin deferred;Begin deferred;", 2, deferred, immediate, exclusive);
+        txBeginTest(" begin deferred;beGin deferred;", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin deferred;/*tx*/begin deferred;", 2, deferred, immediate, exclusive);
+        txBeginTest(" Begin deferred ;begin deferred;", 2, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin deferred;begin deferred--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begin deferred;/*tx*/ begin deferred--", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin deferred;/*tx*/begin deferred --", 2, deferred, immediate, exclusive);
+        txBeginTest("begiN deferred;/*tx*/begin deferred/*tx*/--", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn deferred;/*tx*/begin deferred/*tx*/--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn deferred transaction;/*tx*/begin deferred/*tx*/--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn DEFERRED transaction;/*tx*/begin deferred/*tx*/work--;", 2, deferred, immediate, exclusive);
+        // immediate
+        deferred = false; immediate = true; exclusive = false;
+        txBeginTest("begin immediate", 1, deferred, immediate, exclusive);
+        txBeginTest("begin IMMEDIATE;", 1, deferred, immediate, exclusive);
+        txBeginTest(" begin IMMEDIATE;", 1, deferred, immediate, exclusive);
+        txBeginTest("Begin  IMMEDIATE;", 1, deferred, immediate, exclusive);
+        txBeginTest(" Begin  IMMEDIATE ;", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin IMMEDIATE--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/ begin IMMEDIATE--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin IMMEDIATE --", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/IMMEDIATE--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/ IMMEDIATE--;", 1, deferred, immediate, exclusive);
+        txBeginTest("begin IMMEDIATE; begin IMMEDIATE", 2, deferred, immediate, exclusive);
+        txBeginTest("begin IMMEDIATE;Begin IMMEDIATE;", 2, deferred, immediate, exclusive);
+        txBeginTest(" begin IMMEDIATE;beGin IMMEDIATE;", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin IMMEDIATE;/*tx*/begin IMMEDIATE;", 2, deferred, immediate, exclusive);
+        txBeginTest(" Begin IMMEDIATE ;begin IMMEDIATE;", 2, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin IMMEDIATE;begin IMMEDIATE--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begin IMMEDIATE;/*tx*/ begin IMMEDIATE--", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin IMMEDIATE;/*tx*/begin IMMEDIATE --", 2, deferred, immediate, exclusive);
+        txBeginTest("begiN IMMEDIATE;/*tx*/begin IMMEDIATE/*tx*/--", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn IMMEDIATE;/*tx*/begin IMMEDIATE/*tx*/--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn IMMEDIATE transaction;/*tx*/begin IMMEDIATE/*tx*/--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn IMMEDIATE transaction;/*tx*/begin IMMEDIATE/*tx*/work--;", 2, deferred, immediate, exclusive);
+        // exclusive
+        deferred = false; immediate = false; exclusive = true;
+        txBeginTest("begin exclusive ", 1, deferred, immediate, exclusive);
+        txBeginTest("begin EXCLUSIVE ;", 1, deferred, immediate, exclusive);
+        txBeginTest(" begin EXCLUSIVE ;", 1, deferred, immediate, exclusive);
+        txBeginTest("Begin  EXCLUSIVE ;", 1, deferred, immediate, exclusive);
+        txBeginTest(" Begin  EXCLUSIVE ;", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin EXCLUSIVE--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/ begin EXCLUSIVE--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin EXCLUSIVE --", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/EXCLUSIVE--", 1, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin/*tx*/ EXCLUSIVE--;", 1, deferred, immediate, exclusive);
+        txBeginTest("begin EXCLUSIVE; begin EXCLUSIVE", 2, deferred, immediate, exclusive);
+        txBeginTest("begin EXCLUSIVE;Begin EXCLUSIVE;", 2, deferred, immediate, exclusive);
+        txBeginTest(" begin EXCLUSIVE;beGin EXCLUSIVE;", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin EXCLUSIVE;/*tx*/begin EXCLUSIVE;", 2, deferred, immediate, exclusive);
+        txBeginTest(" Begin EXCLUSIVE ;begin EXCLUSIVE;", 2, deferred, immediate, exclusive);
+        txBeginTest("/*tx*/begin EXCLUSIVE;begin EXCLUSIVE--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begin EXCLUSIVE;/*tx*/ begin EXCLUSIVE--", 2, deferred, immediate, exclusive);
+        txBeginTest("Begin EXCLUSIVE;/*tx*/begin EXCLUSIVE --", 2, deferred, immediate, exclusive);
+        txBeginTest("begiN EXCLUSIVE;/*tx*/begin EXCLUSIVE/*tx*/--", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn EXCLUSIVE;/*tx*/begin EXCLUSIVE/*tx*/--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn EXCLUSIVE transaction;/*tx*/begin EXCLUSIVE/*tx*/--;", 2, deferred, immediate, exclusive);
+        txBeginTest("begIn EXCLUSIVE transaction;/*tx*/begin EXCLUSIVE/*tx*/work--;", 2, deferred, immediate, exclusive);
+        // transaction mode
+        boolean readOnly;
+        deferred = false; immediate = false; exclusive = true;
+        readOnly = true;
+        txBeginTest("begin read only", 1, true, immediate, false, readOnly);
+        txBeginTest("begin exclusive transaction read only", 1, deferred, immediate, exclusive, readOnly);
+        txBeginTest("begin exclusive transaction isolation level serializable, read only", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.SERIALIZABLE);
+        txBeginTest("begin exclusive transaction read only,isolation level serializable", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.SERIALIZABLE);
+        txBeginTest("begin exclusive transaction read only, isolation level read committed", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.READ_COMMITTED);
+        txBeginTest("start exclusive transaction read only, isolation level read committed", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.READ_COMMITTED);
+        readOnly = false;
+        txBeginTest("begin read write;", 1, true, immediate, false, readOnly);
+        txBeginTest("begin EXCLUSIVE transaction read write;", 1, deferred, immediate, exclusive, readOnly);
+        txBeginTest("begin EXCLUSIVE transaction read write, isolation level serializable;", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.SERIALIZABLE);
+        txBeginTest("begin EXCLUSIVE transaction isolation level serializable,read write;", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.SERIALIZABLE);
+        txBeginTest("begin EXCLUSIVE transaction isolation level read uncommitted, read write;", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.READ_UNCOMMITTED);
+        txBeginTest("start EXCLUSIVE transaction isolation level read uncommitted, read write;", 
+                1, deferred, immediate, exclusive, readOnly, TransactionStatement.READ_UNCOMMITTED);
         
+        // show
         showDatabasesTest("show databases", 1, false);
         showDatabasesTest(" Show DATABASES", 1, false);
         showDatabasesTest(" Show all DATABASES", 1, true);
@@ -1113,7 +1214,19 @@ public class SQLParserTest extends TestBase {
         overTest(parser, i, stmts);
     }
     
-    private void txBeginTest(String sqls, int stmts) {
+    private void txBeginTest(String sqls, int stmts, 
+            boolean deferred, boolean immediate, boolean exclusive) {
+        txBeginTest(sqls, stmts, deferred, immediate, exclusive, false, TransactionStatement.SERIALIZABLE);
+    }
+    
+    private void txBeginTest(String sqls, int stmts, 
+            boolean deferred, boolean immediate, boolean exclusive, boolean readOnly) {
+        txBeginTest(sqls, stmts, deferred, immediate, exclusive, readOnly, TransactionStatement.SERIALIZABLE);
+    }
+    
+    private void txBeginTest(String sqls, int stmts, 
+            boolean deferred, boolean immediate, boolean exclusive,
+            boolean readOnly, int isolation) {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
@@ -1131,6 +1244,11 @@ public class SQLParserTest extends TestBase {
             assertTrue(!tx.isRollback());
             assertTrue(!tx.isSavepoint());
             assertTrue(!tx.hasSavepoint());
+            assertTrue(deferred == tx.isDeferred());
+            assertTrue(immediate == tx.isImmediate());
+            assertTrue(exclusive == tx.isExclusive());
+            assertTrue(readOnly == tx.isReadOnly());
+            assertTrue(isolation == tx.getIsolationLevel());
             ++i;
             parser.remove();
         }

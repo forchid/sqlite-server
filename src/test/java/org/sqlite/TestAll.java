@@ -22,6 +22,7 @@ import java.util.List;
 import org.sqlite.server.SQLiteServerTest;
 import org.sqlite.server.jdbc.ConnectionTest;
 import org.sqlite.server.jdbc.StatementTest;
+import org.sqlite.server.jdbc.TransactionTest;
 import org.sqlite.sql.SQLParserTest;
 import org.sqlite.sql.SQLReaderTest;
 import org.sqlite.util.DateTimeUtilsTest;
@@ -72,7 +73,8 @@ public class TestAll extends TestBase {
         add(new StatementTest()).
         add(new SQLReaderTest()).
         add(new SQLParserTest()).
-        add(new SQLiteServerTest());
+        add(new SQLiteServerTest()).
+        add(new TransactionTest());
     }
     
 }

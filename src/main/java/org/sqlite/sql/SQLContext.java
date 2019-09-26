@@ -29,6 +29,8 @@ import org.slf4j.Logger;
  */
 public abstract class SQLContext {
     
+    protected boolean readOnly;
+    
     protected SQLContext() {
         
     }
@@ -59,6 +61,16 @@ public abstract class SQLContext {
             throw new IllegalStateException("SQL context closed", e);
         }
     }
+    
+    public boolean isReadOnly() {
+        return this.readOnly;
+    }
+    
+    public void setReadOnly(boolean readOnly) {
+        this.readOnly = readOnly;
+    }
+    
+    public abstract void checkReadOnly(SQLStatement sqlStmt) throws SQLException;
     
     protected abstract void prepareTransaction(TransactionStatement txSql);
     

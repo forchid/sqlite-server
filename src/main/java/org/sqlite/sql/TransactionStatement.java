@@ -26,9 +26,19 @@ import java.sql.SQLException;
  */
 public class TransactionStatement extends SQLStatement {
     
+    public static final int DEFERRED   = 1;
+    public static final int IMMEDIATE  = 2;
+    public static final int EXCLUSIVE  = 4;
+    
+    public static final int READ_UNCOMMITTED = 1;
+    public static final int READ_COMMITTED   = 2;
+    public static final int REPEATABLE_READ  = 3;
+    public static final int SERIALIZABLE     = 4;
+    
     protected String savepointName;
-    protected boolean txPrepared;
-    protected boolean deferred;
+    private boolean ready, readOnly;
+    protected int behavior = DEFERRED;
+    protected int isolationLevel = SERIALIZABLE;
     
     public TransactionStatement(String sql, String command) {
         super(sql, command);
@@ -55,25 +65,26 @@ public class TransactionStatement extends SQLStatement {
         
         if (this.context.isAutoCommit() && (isBegin() || isSavepoint())) {
             this.context.prepareTransaction(this);
-            this.txPrepared = true;
+            this.ready = true;
         }
     }
     
     @Override
     protected boolean doExecute(int maxRows) throws SQLException {
-        boolean prepared = this.txPrepared;
+        boolean prepared = this.ready;
         boolean failed = true;
         try {
             boolean resultSet = super.doExecute(maxRows);
-            
             if (!prepared && isSavepoint()) {
                 this.context.pushSavepoint(this);
             }
+            
             failed = false;
             return resultSet;
         } finally {
             if (failed && prepared) {
                 this.context.resetAutoCommit();
+                this.ready = false;
             }
         }
     }
@@ -105,10 +116,14 @@ public class TransactionStatement extends SQLStatement {
     @Override
     public String getExecutableSQL() throws SQLException {
         if (this.isDeferred() && isBegin()) {
+            if (isReadOnly()) {
+                return "begin";
+            }
             // deferred -> immediate: 
             // Solve busy can't be recovered in transaction!
             return "begin immediate;";
         }
+        
         return super.getExecutableSQL();
     }
     
@@ -121,12 +136,37 @@ public class TransactionStatement extends SQLStatement {
         return ("COMMIT".equals(cmd) || "END".equals(cmd));
     }
     
+    public int getIsolationLevel() {
+        return this.isolationLevel;
+    }
+
+    public void setIsolationLevel(int isolationLevel) throws IllegalArgumentException {
+        switch (isolationLevel) {
+        case READ_UNCOMMITTED:
+        case READ_COMMITTED:
+        case REPEATABLE_READ:
+        case SERIALIZABLE:
+            break;
+        default:
+            throw new IllegalArgumentException("isolationLevel " + isolationLevel);
+        }
+        this.isolationLevel = isolationLevel;
+    }
+    
     public boolean isRollback() {
         return ("ROLLBACK".equals(getCommand()));
     }
     
     public boolean isSavepoint() {
         return ("SAVEPOINT".equals(getCommand()));
+    }
+    
+    public boolean isReadOnly() {
+        return readOnly;
+    }
+
+    public void setReadOnly(boolean readOnly) {
+        this.readOnly = readOnly;
     }
     
     public boolean isRelease() {
@@ -138,11 +178,27 @@ public class TransactionStatement extends SQLStatement {
     }
     
     public boolean isDeferred() {
-        return deferred;
+        return DEFERRED == this.behavior;
     }
 
     public void setDeferred(boolean deferred) {
-        this.deferred = deferred;
+        this.behavior = deferred? DEFERRED: 0;
+    }
+    
+    public boolean isImmediate() {
+        return IMMEDIATE == this.behavior;
+    }
+
+    public void setImmediate(boolean immediate) {
+        this.behavior = immediate? IMMEDIATE: 0;
+    }
+
+    public boolean isExclusive() {
+        return EXCLUSIVE == this.behavior;
+    }
+
+    public void setExclusive(boolean exclusive) {
+        this.behavior = exclusive? EXCLUSIVE: 0;
     }
     
 }

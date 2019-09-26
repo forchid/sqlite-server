@@ -261,8 +261,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     // SQLContext methods
     @Override
-    protected void transactionComplelete() {
-        this.getWorker().dbIdle();
+    public void checkReadOnly(SQLStatement sqlStmt) throws SQLException {
+        if (this.isReadOnly() && !sqlStmt.isQuery() && !sqlStmt.isTransaction()) {
+            String message = "Attempt to write a readonly transaction";
+            throw convertError(SQLiteErrorCode.SQLITE_READONLY, message);
+        }
     }
     
     @Override
@@ -306,12 +309,19 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     @Override
+    protected void transactionComplelete() {
+        this.getWorker().dbIdle();
+    }
+    
+    @Override
     protected void prepareTransaction(TransactionStatement txSql) {
         this.server.trace(log, "tx: begin");
         this.savepointStack.clear();
         SQLiteConnection conn = getConnection();
         conn.getConnectionConfig().setAutoCommit(false);
         this.savepointStack.push(txSql);
+        setReadOnly(txSql.isReadOnly());
+        trace(log, "readOnly {} in '{}'", this.readOnly, this);
     }
     
     @Override
@@ -324,6 +334,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         getConnection().getConnectionConfig()
         .setAutoCommit(true);
         this.savepointStack.clear();
+        setReadOnly(false);
     }
     
     @Override
@@ -356,6 +367,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
         
         if (isAutoCommit()) {
+            setReadOnly(false);
             detachMetaDb();
         }
     }
@@ -445,6 +457,8 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
                 sqlState = "23514";
             } else if (SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE.code == error.code) {
                 sqlState = "23505";
+            } else if (SQLiteErrorCode.SQLITE_READONLY.code == error.code) {
+                sqlState = "25000";
             }
             if (sqlState == null) {
                 sqlState = "HY000";

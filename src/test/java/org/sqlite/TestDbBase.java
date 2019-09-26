@@ -48,7 +48,7 @@ public abstract class TestDbBase extends TestBase {
         server.initdb(initArgs);
         IoUtils.close(server);
         
-        String[] bootArgs = {"-D", dataDir, "--trace-error",// "-T",
+        String[] bootArgs = {"-D", dataDir, //"--trace-error", //"-T",
                 "--worker-count", getWorkCount()+"", "--max-conns", maxConns+""};
         server = SQLiteServer.create(bootArgs);
         server.bootAsync(bootArgs);

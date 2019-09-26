@@ -181,7 +181,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                 throw syntaxError();
             case 'b':
             case 'B':
-                return parseBegin();
+                return parseBegin(false);
             case 'c':
             case 'C':
                 c = nextChar();
@@ -254,16 +254,22 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             case 's':
             case 'S':
                 c = nextChar();
-                if ('a' == c || 'A' == c) {
+                switch (c) {
+                case 'a':
+                case 'A':
                     return parseSavepoint();
-                }
-                if ('e' == c || 'E' == c) {
+                case 'e':
+                case 'E':
                     return parseSelect();
-                }
-                if ('h' == c || 'H' == c) {
+                case 'h':
+                case 'H':
                     return parseShow();
+                case 't':
+                case 'T':
+                    return parseBegin(true);
+                default:
+                    throw syntaxError();
                 }
-                throw syntaxError();
             case 'u':
             case 'U':
                 return parseUpdate();
@@ -387,10 +393,152 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         return new SQLStatement(this.sql, "ANALYZE");
     }
     
-    protected SQLStatement parseBegin() {
-        nextString("egin");
+    protected SQLStatement parseBegin(boolean standard) {
+        nextString(standard? "art": "egin");
         TransactionStatement stmt = new TransactionStatement(this.sql, "BEGIN");
-        stmt.setDeferred(nextEnd());
+        if (nextEnd()) {
+            if (standard) {
+                stmt.close();
+                throw syntaxError("No \"transaction\" specified after \"start\"");
+            }
+            stmt.setDeferred(true);
+        } else {
+            // Parse: [deferred | immediate | exclusive] [work | transaction]
+            boolean txBehaviorSet = false, txOccurs = false, next = true;
+            for (; next; ) {
+                char c = nextChar();
+                switch (c) {
+                case 't':
+                case 'T':
+                    nextString("ransaction");
+                    txOccurs = true;
+                    next = false;
+                    break;
+                case 'w':
+                case 'W':
+                    nextString("ork");
+                    next = false;
+                    break;
+                case 'd':
+                case 'D':
+                    if (txBehaviorSet) {
+                        stmt.close();
+                        throw syntaxError();
+                    }
+                    nextString("eferred");
+                    stmt.setDeferred(true);
+                    txBehaviorSet = true;
+                    break;
+                case 'e':
+                case 'E':
+                    if (txBehaviorSet) {
+                        stmt.close();
+                        throw syntaxError();
+                    }
+                    nextString("xclusive");
+                    stmt.setExclusive(true);
+                    txBehaviorSet = true;
+                    break;
+                case 'i':
+                case 'I':
+                    if (txBehaviorSet) {
+                        stmt.close();
+                        throw syntaxError();
+                    }
+                    nextString("mmediate");
+                    stmt.setImmediate(true);
+                    txBehaviorSet = true;
+                    break;
+                default:
+                    backChar();
+                    next = false;
+                    break;
+                }
+                
+                if (next) next = !nextEnd();
+            }
+            if (standard && !txOccurs) {
+                throw syntaxError("No \"transaction\" specified after \"start\"");
+            }
+            if (!txBehaviorSet) {
+                stmt.setDeferred(true);
+            }
+            // Parse: transaction mode
+            if (!nextEnd()) {
+                for (;;) {
+                    char c = nextChar();
+                    switch (c) {
+                    case 'i':
+                    case 'I':
+                        // Parse: isolation level
+                        nextString("solation");
+                        skipIgnorable();
+                        nextString("level");
+                        skipIgnorable();
+                        c = nextChar();
+                        switch (c) {
+                        case 'r':
+                        case 'R':
+                            if (nextStringIf("ead") != -1) {
+                                skipIgnorable();
+                                if (nextStringIf("uncommitted") != -1) {
+                                    stmt.setIsolationLevel(TransactionStatement.READ_UNCOMMITTED);
+                                    break;
+                                } else if (nextStringIf("committed") != -1) {
+                                    stmt.setIsolationLevel(TransactionStatement.READ_COMMITTED);
+                                    break;
+                                }
+                            } else if (nextStringIf("epeatable") != -1) {
+                                skipIgnorable();
+                                if (nextStringIf("read") != -1) {
+                                    stmt.setIsolationLevel(TransactionStatement.REPEATABLE_READ);
+                                    break;
+                                }
+                            }
+                            stmt.close();
+                            throw syntaxError();
+                        case 's':
+                        case 'S':
+                            nextString("erializable");
+                            stmt.setIsolationLevel(TransactionStatement.SERIALIZABLE);
+                            break;
+                        default:
+                            stmt.close();
+                            throw syntaxError(); 
+                        }
+                        break;
+                    case 'r':
+                    case 'R':
+                        // Parse: read only | read write
+                        nextString("ead");
+                        skipIgnorable();
+                        if (nextStringIf("only") != -1) {
+                            stmt.setReadOnly(true);
+                            break;
+                        } else if (nextStringIf("write") != -1) {
+                            stmt.setReadOnly(false);
+                            break;
+                        }
+                        stmt.close();
+                        throw syntaxError(); 
+                    default:
+                        stmt.close();
+                        throw syntaxError(); 
+                    }
+                    
+                    if (nextEnd()) {
+                        break;
+                    }
+                    if (nextCharIf(',') != -1) {
+                        skipIgnorableIf();
+                        continue;
+                    }
+                    stmt.close();
+                    throw syntaxError(); 
+                } // for
+            }
+        }
+        
         return stmt;
     }
 
@@ -1075,6 +1223,13 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         return parseStatement();
+    }
+    
+    protected void backChar() {
+        if (this.ei == 0) {
+            throw new IllegalStateException("No previous char");
+        }
+        --this.ei;
     }
 
     protected boolean nextEnd() {
