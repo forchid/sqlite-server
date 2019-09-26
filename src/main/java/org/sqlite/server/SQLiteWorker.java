@@ -383,7 +383,11 @@ public class SQLiteWorker implements Runnable {
             } else {
                 long remTime = busyContext.getTimeoutTime() - System.currentTimeMillis();
                 if (remTime < timeout || timeout < 0L) {
-                    timeout = Math.max(0L, remTime);
+                    if (remTime <= 0L) {
+                        timeout = 0L;
+                        break;
+                    }
+                    timeout = remTime;
                 }
             }
         }
