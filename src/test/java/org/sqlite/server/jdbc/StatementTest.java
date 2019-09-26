@@ -19,6 +19,7 @@ import java.io.File;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -44,6 +45,7 @@ public class StatementTest extends TestDbBase {
         databaseDDLTest();
         dropUserTest();
         nestedBlockCommentTest();
+        pragmaTest();
         simpleScalarQueryTest();
     }
     
@@ -557,6 +559,35 @@ public class StatementTest extends TestDbBase {
             assertTrue(1 == rs.getInt(1));
             
             stmt.close();
+        }
+    }
+    
+    private void pragmaTest() throws SQLException {
+        doPragmaTest("pragma user_version;", true, "0");
+        doPragmaTest("pragma user_version = 1;", false, null);
+    }
+    
+    private void doPragmaTest(String sql, boolean resultSet, String result) throws SQLException {
+        try (Connection conn = getConnection()) {
+            assertTrue((resultSet && result != null) || (!resultSet && result == null));
+            Statement stmt = conn.createStatement();
+            boolean res = stmt.execute(sql);
+            assertTrue(res == resultSet);
+            if (res) {
+                ResultSet rs = stmt.getResultSet();
+                assertTrue(rs.next());
+                assertTrue(rs.getString(1).equals(result));
+            } else {
+                assertTrue(result == null && stmt.getUpdateCount() == 0);
+            }
+            
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ResultSetMetaData meta = ps.getMetaData();
+            if (result == null) {
+                assertTrue(meta == null);
+            } else {
+                assertTrue(meta != null);
+            }
         }
     }
 
