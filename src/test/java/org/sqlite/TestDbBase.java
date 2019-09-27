@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import org.apache.tomcat.jdbc.pool.DataSource;
 import org.sqlite.server.SQLiteServer;
 import org.sqlite.util.IoUtils;
 
@@ -38,20 +39,30 @@ public abstract class TestDbBase extends TestBase {
     protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault();
     protected static String password = "123456";
     
-    protected static SQLiteServer server;
+    protected static final SQLiteServer server;
+    protected static final DataSource dataSource;
     static {
         String dataDir= getDataDir();
         
         deleteDataDir(new File(dataDir));
         String[] initArgs = {"-D", dataDir, "-p", password};
-        server = SQLiteServer.create(initArgs);
-        server.initdb(initArgs);
-        IoUtils.close(server);
+        SQLiteServer svr = SQLiteServer.create(initArgs);
+        svr.initdb(initArgs);
+        IoUtils.close(svr);
         
-        String[] bootArgs = {"-D", dataDir, //"--trace-error", //"-T",
+        String[] bootArgs = {"-D", dataDir, //"--trace-error", "-T",
                 "--worker-count", getWorkCount()+"", "--max-conns", maxConns+""};
         server = SQLiteServer.create(bootArgs);
         server.bootAsync(bootArgs);
+        
+        dataSource = new DataSource();
+        dataSource.setMaxActive(getMaxConns());
+        dataSource.setMaxIdle(0);
+        dataSource.setMinIdle(0);
+        dataSource.setDriverClassName("org.postgresql.Driver");
+        dataSource.setUrl(url);
+        dataSource.setUsername(getUserDefault());
+        dataSource.setPassword(password);
     }
     
     protected static String getUrl(int port, String path) {
@@ -88,6 +99,14 @@ public abstract class TestDbBase extends TestBase {
         return (getConnection(url, user, password));
     }
     
+    protected Connection getConnection(boolean fromPool) throws SQLException {
+        if (fromPool) {
+            return dataSource.getConnection();
+        }
+        
+        return (getConnection());
+    }
+    
     protected static String getUserDefault() {
         return user;
     }
@@ -121,6 +140,22 @@ public abstract class TestDbBase extends TestBase {
     
     protected static String getExtraDir() {
         return getDataDir("extraTest");
+    }
+    
+    protected void initTableAccounts() throws SQLException {
+        try (Connection conn = getConnection()) {
+            initTableAccounts(conn);
+        }
+    }
+    
+    protected void initTableAccounts(Connection conn) throws SQLException {
+        Statement stmt = conn.createStatement();
+        stmt.executeUpdate("drop table if exists accounts");
+        String sql = "create table accounts("
+                + "id integer primary key, "
+                + "name varchar(50) not null, "
+                + "balance decimal)";
+        stmt.executeUpdate(sql);
     }
     
     protected static void deleteDataDir(String dataDir) {

@@ -247,25 +247,35 @@ public class SQLiteWorker implements Runnable {
             if (runNanos > 0L && System.nanoTime() > deadNano) {
                 return;
             }
+            
             SQLiteProcessor proc = busyProcs.get(i);
             if (proc == null) {
                 continue;
             }
-            boolean stopped = proc.isStopped();
-            if (stopped || proc.queryTask.isReady() || proc.queryTask.isCanceled()) {
-                if (!busyProcs.deallocate(i, proc)) {
-                    throw new IllegalArgumentException("Busy processors slot used");
-                }
-                if (stopped) {
+            if (proc.isStopped()) {
+                if (busyProcs.deallocate(i, proc)) {
                     continue;
                 }
-                this.server.trace(log, "Busy processor '{}' resumed", proc);
-                try {
-                    Thread.currentThread().setName(proc.getName());
-                    proc.queryTask.run();
-                } finally {
-                    Thread.currentThread().setName(this.name);
+                throw new IllegalStateException("Busy processors slot used");
+            }
+            
+            SQLiteBusyContext busyContext = proc.getBusyContext();
+            if (busyContext.isReady() || busyContext.isCanceled()) {
+                if (this.server.canHoldDbWriteLock(proc) || busyContext.isTimeout() 
+                                                         || busyContext.isCanceled()) {
+                    if (busyProcs.deallocate(i, proc)) {
+                        this.server.trace(log, "Busy processor '{}' resumed", proc);
+                        try {
+                            Thread.currentThread().setName(proc.getName());
+                            proc.queryTask.run();
+                        } finally {
+                            Thread.currentThread().setName(this.name);
+                        }
+                        continue;
+                    }
+                    throw new IllegalStateException("Busy processors slot used");
                 }
+                continue;
             }
         }
     }
@@ -347,11 +357,9 @@ public class SQLiteWorker implements Runnable {
     public void dbIdle(boolean global) {
         if (global) {
             this.server.dbIdle();
-        } else {
-            this.server.trace(log, "notify '{}' DB idle", this);
-            if (this.dbIdle.compareAndSet(false, true)) {
-                this.selector.wakeup();
-            } 
+        } else if (this.dbIdle.compareAndSet(false, true)) {
+            this.selector.wakeup();
+            this.server.trace(log, "Hello '{}' db idle", this);
         }
     }
     

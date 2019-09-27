@@ -38,10 +38,24 @@ public class TransactionTest extends TestDbBase {
 
     @Override
     public void test() throws SQLException {
+        initTableAccounts();
         nestedConnTxTest();
         readOnlyTxTest();
+        
+        rrTxTest(100, 10);
+        rrTxTest(100, 50);
+        rrTxTest(10, 100);
+        rrTxTest(100, 100);
+        rrTxTest(100, 150);
+        
+        rwTxTest(100, 10);
+        rwTxTest(10, 100);
+        rwTxTest(100, 100);
+        
+        wwTxTest(100, 10);
+        wwTxTest(100, 100);
     }
-
+    
     private void nestedConnTxTest() throws SQLException {
         String dataDir = getDataDir(), dbFile = getDbDefault();
         String url = "jdbc:sqlite:"+new File(dataDir, dbFile);
@@ -50,9 +64,6 @@ public class TransactionTest extends TestDbBase {
             ResultSet rs;
             int n, b = 1000000, d = 1000, id = 1;
             String sql;
-            
-            sql = "create table if not exists accounts(id integer primary key, name varchar(50) not null, balance decimal)";
-            stmt.executeUpdate(sql);
             sql = String.format("insert into accounts(id, name, balance)values(%d, 'Peter', %d)", id, b);
             n = stmt.executeUpdate(sql);
             assertTrue(1 == n);
@@ -110,6 +121,8 @@ public class TransactionTest extends TestDbBase {
             assertTrue(rs.next());
             assertTrue(rs.getInt(1) == b + d);
             rs.close();
+            stmt.execute("delete from accounts");
+            conn.commit();
         }
     }
     
@@ -141,6 +154,199 @@ public class TransactionTest extends TestDbBase {
             }
             
             stmt.execute("rollback");
+        }
+    }
+    
+    private void rrTxTest(int times, int cons) throws SQLException {
+        long joinTimeout = 3000L;
+        try (Connection conn = getConnection(true)) {
+            Statement s = conn.createStatement();
+            ResultSet rs = s.executeQuery("select count(*) from accounts");
+            assertTrue (rs.next());
+            assertTrue (rs.getInt(1) == 0);
+            int n = s.executeUpdate("insert into accounts(id, name, balance)values(1, 'Ken', 15000)");
+            assertTrue(n == 1);
+            for (int i = 0; i < times; ++i) {
+                Transaction[] readers = new Reader[cons];
+                for (int j = 0; j < cons; ++j) {
+                    readers[j] = new Reader(this);
+                }
+                for (int j = 0; j < cons; ++j) {
+                    readers[j].start();
+                }
+                try {
+                    for (int j = 0; j < cons; ++j) {
+                        Transaction reader = readers[j];
+                        reader.join(joinTimeout);
+                        assertTrue(reader.isOk());
+                    }
+                } catch (InterruptedException e) {
+                    fail("Interrupted");
+                }
+            }
+            s.execute("delete from accounts");
+        }
+    }
+    
+    private void rwTxTest(int times, int cons) throws SQLException {
+        long joinTimeout = 3000L;
+        try (Connection conn = getConnection(true)) {
+            Statement s = conn.createStatement();
+            ResultSet rs = s.executeQuery("select count(*) from accounts");
+            assertTrue (rs.next());
+            assertTrue (rs.getInt(1) == 0);
+            int n = s.executeUpdate("insert into accounts(id, name, balance)values(1, 'Ken', 15000)");
+            assertTrue(n == 1);
+            for (int i = 0; i < times; ++i) {
+                Transaction[] txList = new Transaction[cons];
+                for (int j = 0; j < cons; ++j) {
+                    if (j % 3 == 0) {
+                        txList[j] = new Writer(this);
+                    } else {
+                        txList[j] = new Reader(this);
+                    }
+                }
+                for (int j = 0; j < cons; ++j) {
+                    txList[j].start();
+                }
+                try {
+                    for (int j = 0; j < cons; ++j) {
+                        Transaction tx = txList[j];
+                        tx.join(joinTimeout);
+                        assertTrue(tx.isOk());
+                    }
+                } catch (InterruptedException e) {
+                    fail("Interrupted");
+                }
+            }
+            s.execute("delete from accounts");
+        }
+    }
+    
+    private void wwTxTest(int times, int cons) throws SQLException {
+        long joinTimeout = 3000L;
+        try (Connection conn = getConnection(true)) {
+            Statement s = conn.createStatement();
+            ResultSet rs = s.executeQuery("select count(*) from accounts");
+            assertTrue (rs.next());
+            assertTrue (rs.getInt(1) == 0);
+            int n = s.executeUpdate("insert into accounts(id, name, balance)values(1, 'Ken', 15000)");
+            assertTrue(n == 1);
+            
+            for (int i = 0; i < times; ++i) {
+                Transaction[] txList = new Transaction[cons];
+                for (int j = 0; j < cons; ++j) {
+                    txList[j] = new Writer(this);
+                }
+                for (int j = 0; j < cons; ++j) {
+                    txList[j].start();
+                }
+                try {
+                    for (int j = 0; j < cons; ++j) {
+                        Transaction tx = txList[j];
+                        tx.join(joinTimeout);
+                        assertTrue(tx.isOk());
+                    }
+                } catch (InterruptedException e) {
+                    fail("Interrupted");
+                }
+            }
+            s.execute("delete from accounts");
+        }
+    }
+    
+    static abstract class Transaction extends Thread {
+        
+        protected final TransactionTest test;
+        protected volatile boolean ok;
+        
+        Transaction(TransactionTest test) {
+            this.test = test;
+        }
+        
+        public boolean isOk() {
+            return this.ok;
+        }
+        
+    }
+    
+    static class Reader extends Transaction {
+        
+        Reader(TransactionTest test) {
+            super(test);
+            super.setDaemon(true);
+            super.setName("r-tx");
+        }
+        
+        @Override
+        public void run() {
+            try (Connection c = test.getConnection(true)){
+                Statement s = c.createStatement();
+                if (!c.getAutoCommit()) {
+                    c.setAutoCommit(true);
+                }
+                s.execute("begin read only");
+                ResultSet rs = s.executeQuery("select id, name, balance from accounts where id = 1");
+                assertTrue(rs.next());
+                assertTrue(rs.getInt(1) == 1);
+                
+                rs = s.executeQuery("select count(*) from accounts");
+                assertTrue(rs.next());
+                assertTrue(rs.getInt(1) == 1);
+                rs.close();
+                
+                s.execute("commit");
+                this.ok = true;
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        
+    }
+    
+    static class Writer extends Transaction {
+        
+        Writer(TransactionTest test) {
+            super(test);
+            super.setDaemon(true);
+            super.setName("w-tx");
+        }
+        
+        @Override
+        public void run() {
+            try (Connection c = test.getConnection(true)){
+                c.setAutoCommit(false);
+                Statement s = c.createStatement();
+                ResultSet rs;
+                
+                rs = s.executeQuery("select count(*) from accounts");
+                assertTrue(rs.next());
+                assertTrue(rs.getInt(1) == 1);
+                rs.close();
+                
+                rs = s.executeQuery("select id, name, balance from accounts where id = 1");
+                assertTrue(rs.next());
+                assertTrue(rs.getInt(1) == 1);
+                rs.close();
+                
+                int n = s.executeUpdate("insert into accounts(name, balance)values('Johnson', 200000)");
+                assertTrue(n == 1);
+                rs = s.executeQuery("select last_insert_rowid()");
+                assertTrue(rs.next());
+                int id = rs.getInt(1);
+                rs.close();
+                
+                n = s.executeUpdate("update accounts set balance=balance+1000 where id = " + id);
+                assertTrue(n == 1);
+                
+                n = s.executeUpdate("delete from accounts where id = " + id + " and balance = 201000");
+                assertTrue(n == 1);
+                
+                c.commit();
+                this.ok = true;
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
     

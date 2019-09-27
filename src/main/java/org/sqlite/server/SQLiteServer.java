@@ -64,7 +64,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
     
     public static final String NAME = "SQLite server";
-    public static final String VERSION = "0.3.27";
+    public static final String VERSION = "0.3.28";
     public static final String USER_DEFAULT = "root";
     public static final String METADB_NAME  = "sqlite3.meta";
     public static final String HOST_DEFAULT = "localhost";
@@ -226,22 +226,31 @@ public abstract class SQLiteServer implements AutoCloseable {
         }
     }
     
-    public boolean isBusy(SQLException e) {
-        final int busyCode = SQLiteErrorCode.SQLITE_BUSY.code;
-        
+    /** Whether busy or locked.
+     * 
+     * @param e the SQL exception
+     * @return true if busy or locked, otherwise false
+     */
+    public boolean isBlocked(SQLException e) {
         for (; e != null;) {
-            int errorCode = e.getErrorCode();
-            trace(log, "SQL errorCode: {}", errorCode);
-            if (busyCode == errorCode) {
+            switch (e.getErrorCode()) {
+            case 5: // SQLITE_BUSY
+            case 6: // SQLITE_LOCKED
+            case 261: // SQLITE_BUSY_RECOVERY
+            case 262: // SQLITE_LOCKED_SHAREDCACHE
+            case 517: // SQLITE_BUSY_SNAPSHOT
                 return true;
-            }
-            Throwable cause = e.getCause();
-            if (cause instanceof SQLException) {
-                e = (SQLException)cause;
-            } else {
-                e = null;
+            default:
+                Throwable cause = e.getCause();
+                if (cause instanceof SQLException) {
+                    e = (SQLException)cause;
+                } else {
+                    e = null;
+                }
+                break;
             }
         }
+        
         return false;
     }
     
@@ -852,12 +861,21 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public boolean dbWriteUnlock(SQLContext context) {
         String db = context.getDbName();
+        if (db == null) {
+            return false;
+        }
         return this.dbWriteLocks.remove(db, context);
     }
     
     public boolean holdsDbWriteLock(SQLContext context) {
         String db = context.getDbName();
         return (this.dbWriteLocks.get(db) == context);
+    }
+    
+    public boolean canHoldDbWriteLock(SQLContext context) {
+        String db = context.getDbName();
+        SQLContext holder = this.dbWriteLocks.get(db);
+        return (holder == null || holder == context);
     }
     
     protected int nextPid() {

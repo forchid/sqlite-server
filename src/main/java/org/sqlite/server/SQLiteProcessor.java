@@ -478,27 +478,36 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     public SQLException convertError(SQLiteErrorCode error, String message, String sqlState) {
         if (sqlState == null) {
-            if (SQLiteErrorCode.SQLITE_AUTH.code            == error.code) {
-                sqlState = "28000";
-            } else if (SQLiteErrorCode.SQLITE_ERROR.code    == error.code) {
+            switch (error.code) {
+            case 1:  // SQLITE_ERROR
                 sqlState = "42000";
-            } else if (SQLiteErrorCode.SQLITE_PERM.code     == error.code) {
-                sqlState = "42501";
-            } else if (SQLiteErrorCode.SQLITE_INTERNAL.code == error.code) {
+                break;
+            case 2:  // SQLITE_INTERNAL
                 sqlState = "58005";
-            } else if (SQLiteErrorCode.SQLITE_IOERR.code    == error.code) {
-                sqlState = "58030";
-            } else if (SQLiteErrorCode.SQLITE_CONSTRAINT.code == error.code) {
-                sqlState = "23514";
-            } else if (SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE.code == error.code) {
-                sqlState = "23505";
-            } else if (SQLiteErrorCode.SQLITE_READONLY.code == error.code) {
+                break;
+            case 3:  // SQLITE_PERM
+                sqlState = "42501";
+                break;
+            case 8:  // SQLITE_READONLY
                 sqlState = "25000";
-            }
-            if (sqlState == null) {
+                break;
+            case 10: // SQLITE_IOERR
+                sqlState = "58030";
+                break;
+            case 19:  // SQLITE_CONSTRAINT
+                sqlState = "23514";
+                break;
+            case 23: // SQLITE_AUTH
+                sqlState = "28000";
+                break;
+            case 2067: // SQLITE_CONSTRAINT_UNIQUE
+                sqlState = "23505";
+                break;
+            default:
                 sqlState = "HY000";
+                break;
             }
-        }
+        } // if
         
         if (message == null) {
             message = error.message;

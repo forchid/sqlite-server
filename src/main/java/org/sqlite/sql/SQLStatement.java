@@ -188,7 +188,7 @@ public class SQLStatement implements AutoCloseable {
         
         if (!isQuery() && !context.isReadOnly() && !context.holdsDbWriteLock()) {
             context.dbWriteLock();
-            context.trace(log, "'{}' db write lock: {}", context, this);
+            context.trace(log, "Held db write lock: sql \"{}\"", this);
         }
         
         if (this.prepared) {
@@ -216,7 +216,7 @@ public class SQLStatement implements AutoCloseable {
         context.trace(log, "tx: autocommit {} <-", autocommit);
         if (autocommit) {
             if (context.dbWriteUnlock()) {
-                context.trace(log, "'{}' db write unlock: {}", context, this);
+                context.trace(log, "Released db write lock: sql \"{}\"", this);
             }
             context.transactionComplelete();
         }

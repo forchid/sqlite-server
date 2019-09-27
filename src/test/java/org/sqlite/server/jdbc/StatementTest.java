@@ -44,6 +44,7 @@ public class StatementTest extends TestDbBase {
         createUserTest();
         databaseDDLTest();
         dropUserTest();
+        insertTest();
         nestedBlockCommentTest();
         pragmaTest();
         simpleScalarQueryTest();
@@ -588,6 +589,33 @@ public class StatementTest extends TestDbBase {
             } else {
                 assertTrue(meta != null);
             }
+        }
+    }
+    
+    private void insertTest() throws SQLException {
+        try (Connection conn = getConnection()) {
+            initTableAccounts(conn);
+            Statement s = conn.createStatement();
+            ResultSet rs;
+            int n;
+            
+            conn.setAutoCommit(false);
+            n = s.executeUpdate("insert into accounts(name, balance)values('Kite', 20000)");
+            assertTrue(1 == n);
+            rs = s.executeQuery("select last_insert_rowid()");
+            assertTrue(rs.next());
+            assertTrue(rs.getInt(1) == 1);
+            rs.close();
+            
+            n = s.executeUpdate("insert into accounts(name, balance)values('Tom', 25000), ('John son', 22000)");
+            assertTrue(2 == n);
+            rs = s.executeQuery("select last_insert_rowid()");
+            assertTrue(rs.next());
+            assertTrue(rs.getInt(1) == 3);
+            assertTrue(!rs.next());
+            rs.close();
+            
+            conn.rollback();
         }
     }
 

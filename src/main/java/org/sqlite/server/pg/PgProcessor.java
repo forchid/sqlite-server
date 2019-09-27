@@ -1278,7 +1278,7 @@ public class PgProcessor extends SQLiteProcessor {
                 proc.sendCommandComplete(this.sqlStmt, count, resultSet);
                 proc.xQueryFailed = false;
             } catch (SQLException e) {
-                if (!timeout && proc.server.isBusy(e)) {
+                if (!timeout && proc.server.isBlocked(e)) {
                     SQLiteBusyContext context = proc.getBusyContext();
                     if (context == null) {
                         int busyTimeout = proc.server.getBusyTimeout();
@@ -1463,7 +1463,7 @@ public class PgProcessor extends SQLiteProcessor {
                             sqlStmt = this.parser.next();
                         }
                     } catch (SQLException e) {
-                        if (!timeout && proc.server.isBusy(e)) {
+                        if (!timeout && proc.server.isBlocked(e)) {
                             this.curStmt = sqlStmt;
                             resetTask = false;
                             SQLiteBusyContext busyContext = proc.getBusyContext();

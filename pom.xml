@@ -71,6 +71,12 @@
       <version>42.2.5.jre7</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.tomcat</groupId>
+      <artifactId>tomcat-jdbc</artifactId>
+      <version>8.5.29</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
   
 </project>
