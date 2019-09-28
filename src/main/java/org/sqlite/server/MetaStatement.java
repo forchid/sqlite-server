@@ -23,6 +23,7 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLStatement;
+import static org.sqlite.util.ConvertUtils.*;
 
 /**The SQLite meta database operation statement.
  * 
@@ -61,11 +62,6 @@ public abstract class MetaStatement extends SQLStatement {
     protected User getMetaUser() {
         SQLiteProcessor proc = getContext();
         return (proc.getUser());
-    }
-    
-    protected SQLException convertError(SQLiteErrorCode error) {
-        SQLiteProcessor proc = getContext();
-        return proc.convertError(error);
     }
     
     @Override

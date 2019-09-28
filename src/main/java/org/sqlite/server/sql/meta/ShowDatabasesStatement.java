@@ -114,7 +114,7 @@ public class ShowDatabasesStatement extends MetaStatement {
     }
     
     @Override
-    protected void preExecute(int maxRows) throws SQLException, IllegalStateException {
+    public void preExecute(int maxRows) throws SQLException, IllegalStateException {
         super.preExecute(maxRows);
         SQLiteProcessor proc = getContext();
         proc.statisticsCatalogs();

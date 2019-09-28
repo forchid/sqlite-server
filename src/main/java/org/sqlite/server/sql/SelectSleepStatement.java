@@ -49,7 +49,7 @@ public class SelectSleepStatement extends SQLStatement {
     }
     
     @Override
-    protected void preExecute(int maxRows) throws SQLException, IllegalStateException {
+    public void preExecute(int maxRows) throws SQLException, IllegalStateException {
         SQLiteProcessor processor = getContext();
         SQLiteBusyContext busyContext = processor.getBusyContext();
         if (this.second == 0 || (busyContext != null && busyContext.isReady())) {

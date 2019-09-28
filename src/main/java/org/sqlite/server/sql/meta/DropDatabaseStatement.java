@@ -23,6 +23,7 @@ import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import static org.sqlite.util.ConvertUtils.*;
 import org.sqlite.util.StringUtils;
 
 /** DROP {DATABASE | SCHEMA} [IF EXISTS] dbname, requires superuser privilege.
@@ -59,13 +60,12 @@ public class DropDatabaseStatement extends MetaStatement {
         super.postExecute(resultSet);
         
         if (!isQuiet() && getJdbcStatement().getUpdateCount() == 0) {
-            SQLiteProcessor proc = getContext();
-            throw proc.convertError(SQLiteErrorCode.SQLITE_ERROR, "Database not exists");
+            throw convertError(SQLiteErrorCode.SQLITE_ERROR, "Database not exists");
         }
     }
     
     @Override
-    protected void preExecute(int maxRows) throws SQLException {
+    public void preExecute(int maxRows) throws SQLException {
         super.preExecute(maxRows);
         
         SQLiteProcessor proc = getContext();

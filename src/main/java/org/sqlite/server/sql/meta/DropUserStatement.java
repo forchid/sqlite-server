@@ -26,6 +26,7 @@ import org.sqlite.server.MetaStatement;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import static org.sqlite.util.ConvertUtils.*;
 
 /**The DROP USER statement:
  * DROP USER user@host [IDENTIFIED WITH PG] [, user@host [IDENTIFIED WITH PG]...]

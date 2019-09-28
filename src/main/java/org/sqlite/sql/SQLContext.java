@@ -80,7 +80,7 @@ public abstract class SQLContext {
     
     protected abstract void releaseTransaction(TransactionStatement txSql, boolean finished);
     
-    protected abstract void transactionComplelete();
+    public abstract void transactionComplelete();
     
     public abstract void dbWriteLock() throws SQLException;
     

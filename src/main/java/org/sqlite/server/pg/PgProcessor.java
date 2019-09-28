@@ -56,6 +56,7 @@ import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import static org.sqlite.util.ConvertUtils.*;
 import org.sqlite.util.DateTimeUtils;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SecurityUtils;
@@ -505,12 +506,12 @@ public class PgProcessor extends SQLiteProcessor {
                         try {
                             ParameterMetaData paramMeta = null;
                             ResultSetMetaData rsMeta = null;
-                            if (!p.sql.isEmpty()) {
-                                PreparedStatement ps = p.sql.getPreparedStatement();
-                                if (!(p.sql instanceof MetaStatement)) {
-                                    paramMeta = ps.getParameterMetaData();
+                            SQLStatement sql = p.sql;
+                            if (!sql.isEmpty()) {
+                                if (!(sql instanceof MetaStatement)) {
+                                    paramMeta = sql.getParameterMetaData();
                                 }
-                                rsMeta = ps.getMetaData();
+                                rsMeta = sql.getPreparedMetaData();
                             }
                             sendParameterDescription(paramMeta, p.paramType);
                             sendRowDescription(rsMeta);
@@ -525,11 +526,10 @@ public class PgProcessor extends SQLiteProcessor {
                         sendErrorResponse("Portal not found: " + name);
                     } else {
                         SQLStatement sqlStmt = p.prep.sql;
-                        PreparedStatement prep = sqlStmt.getPreparedStatement();
                         try {
                             ResultSetMetaData meta = null;
                             if (!sqlStmt.isEmpty()) {
-                                meta = prep.getMetaData();
+                                meta = sqlStmt.getPreparedMetaData();
                             }
                             sendRowDescription(meta);
                             this.xQueryFailed = false;
@@ -1064,7 +1064,8 @@ public class PgProcessor extends SQLiteProcessor {
                 dataOut.writeByte(rs.getInt(column) == 1 ? 't' : 'f');
                 break;
             default:
-                byte[] data = rs.getString(column).getBytes(getEncoding());
+                String value = rs.getString(column);
+                byte[] data = value.getBytes(getEncoding());
                 writeInt(data.length);
                 write(data);
             }
@@ -1273,7 +1274,7 @@ public class PgProcessor extends SQLiteProcessor {
                     return;
                 }
                 
-                int count = this.sqlStmt.getJdbcStatement().getUpdateCount();
+                int count = this.sqlStmt.getUpdateCount();
                 this.sqlStmt.postResult();
                 proc.sendCommandComplete(this.sqlStmt, count, resultSet);
                 proc.xQueryFailed = false;
@@ -1328,7 +1329,7 @@ public class PgProcessor extends SQLiteProcessor {
             boolean resetTask = true;
             try {
                 if (this.rs == null) {
-                    this.rs = stmt.getJdbcStatement().getResultSet();
+                    this.rs = stmt.getResultSet();
                 }
                 // the meta-data is sent in the prior 'Describe'
                 for (; this.rs.next(); ) {
@@ -1342,8 +1343,9 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 
                 // detach only after resultSet finished
+                int n = stmt.getUpdateCount();
                 stmt.postResult();
-                proc.sendCommandComplete(stmt, 0, true);
+                proc.sendCommandComplete(stmt, n, true);
                 proc.xQueryFailed = false;
             } catch (SQLException e) {
                 if (proc.server.isCanceled(e)) {
@@ -1411,10 +1413,11 @@ public class PgProcessor extends SQLiteProcessor {
                             return;
                         }
                     }
+                    int n = this.curStmt.getUpdateCount();
                     this.curStmt.postResult();
                     IoUtils.close(this.curStmt);
                     this.rs = null;
-                    proc.sendCommandComplete(this.curStmt, 0, true);
+                    proc.sendCommandComplete(this.curStmt, n, true);
                     
                     // try next
                     if (next=this.parser.hasNext()) {
@@ -1432,7 +1435,7 @@ public class PgProcessor extends SQLiteProcessor {
                         timeout = false;
                         boolean result = sqlStmt.execute(0);
                         if (result) {
-                            ResultSet rs = sqlStmt.getJdbcStatement().getResultSet();
+                            ResultSet rs = sqlStmt.getResultSet();
                             ResultSetMetaData meta = rs.getMetaData();
                             proc.sendRowDescription(meta);
                             for (; rs.next(); ) {
@@ -1447,13 +1450,14 @@ public class PgProcessor extends SQLiteProcessor {
                                     return;
                                 }
                             }
+                            int n = sqlStmt.getUpdateCount();
                             sqlStmt.postResult();
                             IoUtils.close(sqlStmt);
                             this.rs = null;
                             this.curStmt = null;
-                            proc.sendCommandComplete(sqlStmt, 0, result);
+                            proc.sendCommandComplete(sqlStmt, n, result);
                         } else {
-                            int count = sqlStmt.getJdbcStatement().getUpdateCount();
+                            int count = sqlStmt.getUpdateCount();
                             sqlStmt.postResult();
                             proc.sendCommandComplete(sqlStmt, count, result);
                         }

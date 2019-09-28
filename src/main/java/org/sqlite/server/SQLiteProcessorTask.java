@@ -21,6 +21,7 @@ import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteErrorCode;
+import static org.sqlite.util.ConvertUtils.*;
 
 /** SQLite processor task that processes asynchronous logic such as busy, big result set write
  * in SQLite processor, and handle fatal error for protecting SQLiteWorker.
@@ -79,11 +80,11 @@ public abstract class SQLiteProcessorTask implements Runnable {
     protected void checkBusyState() throws SQLException {
         SQLiteBusyContext ctx = this.proc.getBusyContext();
         if (ctx != null && !ctx.isSleepable() && ctx.isTimeout()) {
-            throw this.proc.convertError(SQLiteErrorCode.SQLITE_BUSY);
+            throw convertError(SQLiteErrorCode.SQLITE_BUSY);
         }
         
         if (ctx != null && ctx.isCanceled()) {
-            throw this.proc.convertError(SQLiteErrorCode.SQLITE_INTERRUPT);
+            throw convertError(SQLiteErrorCode.SQLITE_INTERRUPT);
         }
     }
     

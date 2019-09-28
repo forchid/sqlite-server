@@ -23,6 +23,7 @@ import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import static org.sqlite.util.ConvertUtils.*;
 
 /**A statement that represents:
  * ALTER USER user@host [WITH]

@@ -35,8 +35,9 @@ import org.sqlite.util.IoUtils;
 public abstract class TestDbBase extends TestBase {
     protected static final int maxConns = getMaxConns();
     
+    protected static String params = "";//"?loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log";
     protected static String user = "root";
-    protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault();
+    protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+params;
     protected static String password = "123456";
     
     protected static final SQLiteServer server;

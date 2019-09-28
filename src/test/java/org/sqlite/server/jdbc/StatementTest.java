@@ -22,6 +22,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.sqlite.TestDbBase;
 
@@ -32,8 +33,17 @@ import org.sqlite.TestDbBase;
  */
 public class StatementTest extends TestDbBase {
     
-    public static void main(String args[]) throws SQLException {
-        new StatementTest().test();
+    public static void main(String args[]) throws Exception {
+        boolean failed = true;
+        try {
+            new StatementTest().test();
+            failed = false;
+        } finally {
+            if (failed) {
+                // wait for logger
+                Thread.sleep(1000L);
+            }
+        }
     }
 
     @Override
@@ -44,7 +54,18 @@ public class StatementTest extends TestDbBase {
         createUserTest();
         databaseDDLTest();
         dropUserTest();
+        
         insertTest();
+        
+        insertReturningTest(false, true);
+        insertReturningTest(true, true);
+        insertReturningTest(true, false);
+        
+        insertReturningTest(1);
+        insertReturningTest(10);
+        insertReturningTest(100);
+        insertReturningTest(150);
+        
         nestedBlockCommentTest();
         pragmaTest();
         simpleScalarQueryTest();
@@ -597,26 +618,158 @@ public class StatementTest extends TestDbBase {
             initTableAccounts(conn);
             Statement s = conn.createStatement();
             ResultSet rs;
-            int n;
+            int n, id = 0;
             
             conn.setAutoCommit(false);
             n = s.executeUpdate("insert into accounts(name, balance)values('Kite', 20000)");
             assertTrue(1 == n);
             rs = s.executeQuery("select last_insert_rowid()");
             assertTrue(rs.next());
-            assertTrue(rs.getInt(1) == 1);
+            assertTrue(rs.getInt(1) == ++id);
             rs.close();
             
             n = s.executeUpdate("insert into accounts(name, balance)values('Tom', 25000), ('John son', 22000)");
             assertTrue(2 == n);
+            id += 2;
             rs = s.executeQuery("select last_insert_rowid()");
             assertTrue(rs.next());
-            assertTrue(rs.getInt(1) == 3);
+            assertTrue(rs.getInt(1) == id);
             assertTrue(!rs.next());
             rs.close();
             
             conn.rollback();
         }
     }
+    
+    private void insertReturningTest(boolean tx, boolean commit) throws SQLException {
+        try (Connection conn = getConnection()) {
+            initTableAccounts(conn);
+            doInsertReturningTest(conn, tx, commit);
+        }
+    }
+    
+    private void doInsertReturningTest(Connection conn, boolean tx, boolean commit) throws SQLException {
+        Statement s = conn.createStatement();
+        ResultSet rs;
+        int n, id;
+        boolean resultSet;
+        
+        conn.setAutoCommit(!tx);
+        
+        try (ResultSet r = s.executeQuery("select count(*) from accounts")) {
+            assertTrue(r.next());
+            assertTrue(r.getInt(1) == 0);
+            assertTrue(!r.next());
+        }
+        
+        resultSet = s.execute("insert into accounts(name, balance)values('James', 21000)", 
+                Statement.RETURN_GENERATED_KEYS);
+        assertTrue(!resultSet);
+        n = s.getUpdateCount();
+        assertTrue(1 == n);
+        rs = s.getGeneratedKeys();
+        assertTrue(rs.next());
+        id = rs.getInt(1);
+        assertTrue(id == 1);
+        assertTrue(!rs.next());
+        rs.close();
+        
+        resultSet = s.execute("insert into accounts(id, name, balance) select null, 'James', 21000", 
+                Statement.RETURN_GENERATED_KEYS);
+        assertTrue(!resultSet);
+        n = s.getUpdateCount();
+        assertTrue(1 == n);
+        rs = s.getGeneratedKeys();
+        assertTrue(rs.next());
+        id = rs.getInt(1);
+        assertTrue(id == 2);
+        assertTrue(!rs.next());
+        rs.close();
+        
+        resultSet = s.execute("insert into accounts(name, balance) values('Tom', 25000), ('John son', 22000)", 
+                Statement.RETURN_GENERATED_KEYS);
+        assertTrue(!resultSet);
+        n = s.getUpdateCount();
+        assertTrue(2 == n);
+        rs = s.getGeneratedKeys();
+        assertTrue(rs.next());
+        id = rs.getInt(1);
+        assertTrue(id == 3);
+        assertTrue(rs.next());
+        id = rs.getInt(1);
+        assertTrue(id == 4);
+        assertTrue(!rs.next());
+        rs.close();
+        
+        resultSet = s.execute("insert into accounts(id, name, balance) select 5, 'James', 21000", 
+                Statement.RETURN_GENERATED_KEYS);
+        assertTrue(!resultSet);
+        n = s.getUpdateCount();
+        assertTrue(1 == n);
+        rs = s.getGeneratedKeys();
+        assertTrue(rs.next());
+        id = rs.getInt(1);
+        assertTrue(id == 5);
+        assertTrue(!rs.next());
+        rs.close();
+        
+        if (tx) {
+            if (commit) {
+                conn.commit();
+                conn.setAutoCommit(true);
+                try (ResultSet r = s.executeQuery("select count(*) from accounts")) {
+                    assertTrue(r.next());
+                    assertTrue(r.getInt(1) == id);
+                    assertTrue(!r.next());
+                }
+            } else {
+                conn.rollback();
+                conn.setAutoCommit(true);
+                try (ResultSet r = s.executeQuery("select count(*) from accounts")) {
+                    assertTrue(r.next());
+                    assertTrue(r.getInt(1) == 0);
+                    assertTrue(!r.next());
+                }
+            }
+        } else {
+            conn.setAutoCommit(true);
+            try (ResultSet r = s.executeQuery("select count(*) from accounts")) {
+                assertTrue(r.next());
+                assertTrue(r.getInt(1) == id);
+                assertTrue(!r.next());
+            }
+        }
+    }
 
+    private void insertReturningTest(final int cons) throws SQLException {
+        Thread [] tests = new Thread[cons];
+        final AtomicInteger successes = new AtomicInteger();
+        try (Connection conn = getConnection(true)) {
+            initTableAccounts(conn);
+        }
+        for (int i = 0; i < cons; ++i) {
+            tests [i] = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try (Connection conn = getConnection(true)) {
+                        doInsertReturningTest(conn, true, false);
+                        successes.incrementAndGet();
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }, "test-" + i);
+            tests [i].start();
+        }
+        
+        try {
+            for (int i = 0; i < cons; ++i) {
+                tests [i].join(3000L);
+            }
+            assertTrue(successes.get() == cons);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    
 }

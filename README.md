@@ -9,6 +9,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Added some SQL statements that include CREATE USER, ALTER USER, DROP USER, GRANT, REVOKE, SHOW GRANTS, CREATE DATABASE, SHOW DATABASES, DROP DATABASE for administrative purposes
 + Added some SQL functions such as USER(), CURRENT_USER(), VERSION(), SERVER_VERSION(), DATABASE(), CURRENT_DATABASE(), START_TIME(), SYSDATE(), CLOCK_TIMESTAMP(), SLEEP(N)
 + Added BEGIN READ ONLY | READ WRITE to support read only or read write transaction in a connection
++ Support "INSERT INTO ...{VALUES()... | SELECT ...} RETURNING ..." statement of PostgreSQL style
 
 # Examples
 1. Standalone SQLite server

@@ -16,7 +16,10 @@
 package org.sqlite.sql;
 
 import java.sql.Connection;
+import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -135,12 +138,28 @@ public class SQLStatement implements AutoCloseable {
         return ps;
     }
     
-    public Statement getJdbcStatement() {
+    protected Statement getJdbcStatement() {
         return this.jdbcStatement;
     }
     
     public PreparedStatement getPreparedStatement() {
         return (PreparedStatement)this.jdbcStatement;
+    }
+    
+    public ParameterMetaData getParameterMetaData() throws SQLException {
+        return this.getPreparedStatement().getParameterMetaData();
+    }
+    
+    public ResultSetMetaData getPreparedMetaData() throws SQLException {
+        return this.getPreparedStatement().getMetaData();
+    }
+    
+    public ResultSet getResultSet() throws SQLException {
+        return this.getJdbcStatement().getResultSet();
+    }
+    
+    public int getUpdateCount() throws SQLException {
+        return this.getJdbcStatement().getUpdateCount();
     }
     
     protected void checkPermission() throws SQLException {
@@ -151,7 +170,7 @@ public class SQLStatement implements AutoCloseable {
         this.context.checkPermission(this);
     }
     
-    protected void preExecute(int maxRows) throws SQLException, IllegalStateException {
+    public void preExecute(int maxRows) throws SQLException, IllegalStateException {
         if (this.prepared) {
             PreparedStatement ps = getPreparedStatement();
             ps.setMaxRows(maxRows);
@@ -246,6 +265,30 @@ public class SQLStatement implements AutoCloseable {
         this.jdbcStatement = null;
         this.context = null;
         this.open = false;
+    }
+
+    protected boolean execute(String sql) throws SQLException {
+        Connection conn = this.context.getConnection();
+        Statement s = conn.createStatement();
+        boolean resultSet = s.execute(sql);
+        s.close();
+        return resultSet;
+    }
+    
+    protected int executeUpdate(String sql) throws SQLException {
+        Connection conn = this.context.getConnection();
+        Statement s = conn.createStatement();
+        s.execute(sql);
+        int n = s.getUpdateCount();
+        s.close();
+        return n;
+    }
+    
+    protected ResultSet executeQuery(String sql) throws SQLException {
+        Connection conn = this.context.getConnection();
+        Statement s = conn.createStatement();
+        s.execute(sql);
+        return s.getResultSet();
     }
     
 }

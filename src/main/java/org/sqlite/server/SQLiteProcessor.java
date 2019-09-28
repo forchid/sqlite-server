@@ -46,6 +46,7 @@ import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
 import org.sqlite.util.IoUtils;
+import static org.sqlite.util.ConvertUtils.*;
 
 import static java.lang.Integer.*;
 
@@ -314,7 +315,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     @Override
-    protected void transactionComplelete() {
+    public void transactionComplelete() {
         this.getWorker().dbIdle();
     }
     
@@ -468,53 +469,6 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
     }
     
-    public SQLException convertError(SQLiteErrorCode error) {
-        return convertError(error, null, null);
-    }
-    
-    public SQLException convertError(SQLiteErrorCode error, String message) {
-        return convertError(error, message, null);
-    }
-    
-    public SQLException convertError(SQLiteErrorCode error, String message, String sqlState) {
-        if (sqlState == null) {
-            switch (error.code) {
-            case 1:  // SQLITE_ERROR
-                sqlState = "42000";
-                break;
-            case 2:  // SQLITE_INTERNAL
-                sqlState = "58005";
-                break;
-            case 3:  // SQLITE_PERM
-                sqlState = "42501";
-                break;
-            case 8:  // SQLITE_READONLY
-                sqlState = "25000";
-                break;
-            case 10: // SQLITE_IOERR
-                sqlState = "58030";
-                break;
-            case 19:  // SQLITE_CONSTRAINT
-                sqlState = "23514";
-                break;
-            case 23: // SQLITE_AUTH
-                sqlState = "28000";
-                break;
-            case 2067: // SQLITE_CONSTRAINT_UNIQUE
-                sqlState = "23505";
-                break;
-            default:
-                sqlState = "HY000";
-                break;
-            }
-        } // if
-        
-        if (message == null) {
-            message = error.message;
-        }
-        return new SQLException(message, sqlState, error.code);
-    }
-
     public void start() throws IOException, IllegalStateException {
         final String name = getName();
         if (isStopped()) {

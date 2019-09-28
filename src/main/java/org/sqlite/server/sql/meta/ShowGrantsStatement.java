@@ -24,6 +24,7 @@ import org.sqlite.server.MetaStatement;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import static org.sqlite.util.ConvertUtils.*;
 
 /** SHOW GRANTS [FOR {'user'[@'host'|'%'] | CURRENT_USER[()]}]
  * 

@@ -25,6 +25,7 @@ import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import static org.sqlite.util.ConvertUtils.*;
 
 /** CREATE {DATABASE | SCHEMA} [IF NOT EXISTS] dbname [{LOCATION | DIRECTORY} 'data-dir']
  * 
@@ -102,7 +103,7 @@ public class CreateDatabaseStatement extends MetaStatement {
             if (proc.getMetaDbName().equals(getDb())) {
                 SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
                 String message = "Can't create a database named by meta db's name";
-                throw proc.convertError(error, message);
+                throw convertError(error, message);
             }
             
             proc.createDbFile(this);

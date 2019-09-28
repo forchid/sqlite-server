@@ -60,7 +60,7 @@ public class TransactionStatement extends SQLStatement {
     }
     
     @Override
-    protected void preExecute(int maxRows) throws SQLException, IllegalStateException {
+    public void preExecute(int maxRows) throws SQLException, IllegalStateException {
         super.preExecute(maxRows);
         
         if (this.context.isAutoCommit() && (isBegin() || isSavepoint())) {

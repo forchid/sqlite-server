@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 import org.sqlite.server.MetaStatement;
+import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
@@ -866,62 +867,9 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     
     protected SQLStatement parseSelect() {
         nextString("lect");
-        if (skipIgnorableIf() != -1) {
+        if (skipIgnorableIf() != -1 && skipToIdentifierIf("sleep") != -1) {
             // Parse for supporting simple sleep()
-            char bc = 0, lc = 0, qc = 0;
-            int deep = 0;
-            boolean next = true;
-            for (; next;) {
-                char c = nextChar();
-                switch (c) {
-                case '/':
-                    if ('*' == nextChar() && lc == 0 && qc == 0) {
-                        if (bc == 0) {
-                            bc = '/';
-                        }
-                        ++deep;
-                    }
-                    break;
-                case '*':
-                    if ('/' == nextChar() && bc != 0) {
-                        --deep;
-                        if (deep == 0) {
-                            bc = 0;
-                        }
-                    }
-                    break;
-                case '-':
-                    if ('-' == nextChar() && bc == 0 && qc == 0) {
-                        lc = '-';
-                    }
-                    break;
-                case '\n':
-                    if (lc != 0) {
-                        lc = 0;
-                    }
-                    break;
-                case '\'':
-                case '"':
-                    if (bc == 0 && lc == 0) {
-                        if (qc == 0) {
-                            qc = c;
-                        } else if (qc == c) {
-                            qc = 0;
-                        }
-                    }
-                    break;
-                case 's':
-                case 'S':
-                    if ((bc == 0 && lc == 0 && qc == 0) && (nextStringIf("leep") != -1)) {
-                        return parseSelectSleep();
-                    }
-                    break;
-                default:
-                    break;
-                }
-                
-                if (next) next = !nextEnd();
-            }
+            return parseSelectSleep();
         }
         
         return new SQLStatement(this.sql, "SELECT", true);
@@ -1190,7 +1138,69 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
 
     protected SQLStatement parseInsert() {
         nextString("nsert");
-        return new SQLStatement(this.sql, "INSERT");
+        skipIgnorable();
+        nextString("into");
+        skipIgnorable();
+        
+        String schemaName = null;
+        String tableName = nextString();
+        skipIgnorableIf();
+        if (nextCharIf('.') != -1) {
+            schemaName = tableName;
+            skipIgnorableIf();
+            tableName = nextString();
+            skipIgnorableIf();
+        }
+        
+        String select = "select", returning = "returning";
+        String sql = this.sql, insertSQL;
+        if (skipToKeywordIf(select) != -1) {
+            // INSERT INTO ... SELECT...
+            String selectSQL;
+            this.bi = this.ei;
+            if (skipToKeywordIf(returning) != -1) {
+                // INSERT INTO ... SELECT...RETURNING...
+                insertSQL = sql.substring(0, this.ei - returning.length());
+                selectSQL = sql.substring(this.bi - select.length(), this.ei - returning.length());
+                skipIgnorableIf();
+                String returningColumns = sql.substring(this.ei);
+                int i = skipToIdentifier(returningColumns, ";");
+                if (i != -1) {
+                    returningColumns = returningColumns.substring(0, i - 1);
+                }
+                InsertReturningStatement stmt = new InsertReturningStatement(insertSQL);
+                stmt.setSchemaName(schemaName);
+                stmt.setTableName(tableName);
+                stmt.setReturningColumns(returningColumns);
+                SQLStatement selStmt = new SQLStatement(selectSQL, "SELECT", true);
+                stmt.setSelectStatement(selStmt);
+                return stmt;
+            } else {
+                insertSQL = this.sql;
+                selectSQL = sql.substring(this.bi - select.length(), sql.length());
+                InsertSelectStatement stmt = new InsertSelectStatement(insertSQL);
+                SQLStatement selStmt = new SQLStatement(selectSQL, "SELECT", true);
+                stmt.setSelectStatement(selStmt);
+                return stmt;
+            }
+        } else if (skipToKeywordIf(returning) != -1) {
+            // INSERT INTO ... RETURNING...
+            insertSQL = sql.substring(0, this.ei - returning.length());
+            skipIgnorableIf();
+            String returningColumns = sql.substring(this.ei);
+            int i = skipToIdentifier(returningColumns, ";");
+            if (i != -1) {
+                returningColumns = returningColumns.substring(0, i - 1);
+            }
+            InsertReturningStatement stmt = new InsertReturningStatement(insertSQL);
+            stmt.setSchemaName(schemaName);
+            stmt.setTableName(tableName);
+            stmt.setReturningColumns(returningColumns);
+            return stmt;
+        } else {
+            // INSERT INTO ... VALUES...
+            return new SQLStatement(this.sql, "INSERT");
+        }
     }
 
     protected SQLStatement parseExplain() {
@@ -1599,6 +1609,124 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         return -1;
+    }
+    
+    protected int skipToKeywordIf(String keyword) {
+        return skipToIdentifierIf(keyword, true);
+    }
+    
+    protected int skipToIdentifierIf(String ident) {
+        return skipToIdentifierIf(ident, true);
+    }
+    
+    protected int skipToIdentifierIf(String ident, boolean ignoreCase) {
+        int i = skipToIdentifier(this.sql, ident, this.ei, ignoreCase);
+        if (i == -1) {
+            return -1;
+        } else {
+            return (this.ei = i);
+        }
+    }
+    
+    protected static int skipToIdentifier(String src, String ident) {
+        return (skipToIdentifier(src, ident, 0));
+    }
+    
+    protected static int skipToIdentifier(String src, String ident, int offset) {
+        return (skipToIdentifier(src, ident, offset, true));
+    }
+    
+    protected static int skipToIdentifier(String src, String ident, int offset, boolean ignoreCase) {
+        final int head = ignoreCase? (ident.charAt(0) | 32) : ident.charAt(0);
+        final String tail = ident.substring(1);
+        final int srcSize = src.length();
+        
+        char bc = 0, lc = 0, qc = 0;
+        int deep = 0;
+        for (; offset < srcSize;) {
+            char c = src.charAt(offset++);
+            switch (c) {
+            case '/':
+                if (offset < srcSize && '*' == src.charAt(offset) && lc == 0 && qc == 0) {
+                    ++offset;
+                    if (bc == 0) {
+                        bc = '/';
+                    }
+                    ++deep;
+                }
+                break;
+            case '*':
+                if (offset < srcSize && '/' == src.charAt(offset) && bc != 0) {
+                    ++offset;
+                    --deep;
+                    if (deep == 0) {
+                        bc = 0;
+                    }
+                }
+                break;
+            case '-':
+                if (offset < srcSize && '-' == src.charAt(offset++) && bc == 0 && qc == 0) {
+                    lc = '-';
+                }
+                break;
+            case '\n':
+                if (lc != 0) {
+                    lc = 0;
+                }
+                break;
+            case '\'':
+            case '"':
+                if (bc == 0 && lc == 0) {
+                    if (qc == 0) {
+                        qc = c;
+                    } else if (qc == c) {
+                        qc = 0;
+                    }
+                }
+                break;
+            default:
+                boolean equals = ignoreCase? ((c | 32) == head): c == head;
+                if (equals && (bc == 0 && lc == 0 && qc == 0)) {
+                    if (tail.length() == 0) {
+                        return offset;
+                    }
+                    int i = nextString(src, tail, offset, ignoreCase);
+                    if (i != -1) {
+                        return (offset = i);
+                    }
+                }
+                break;
+            }
+        }
+        
+        return -1;
+    }
+    
+    protected static int nextString(String src, String s, int offset) {
+        return (nextString(src, s, offset, true));
+    }
+    
+    protected static int nextString(String src, String s, int offset, boolean ignoreCase) {
+        int srcSize = src.length(), size = s.length();
+        if (srcSize - offset < size) {
+            return -1;
+        }
+        
+        if (ignoreCase) {
+            for (int i = 0; i < size; ++i, ++offset) {
+                if ((s.charAt(i) | 32) != (src.charAt(offset) | 32)) {
+                    return -1;
+                }
+            }
+        } else {
+            for (int i = 0; i < size; ++i, ++offset) {
+                if ((s.charAt(i)) != (src.charAt(offset))) {
+                    return -1;
+                }
+            }
+        }
+        
+        return offset;
     }
     
     protected SQLParseException syntaxError() {

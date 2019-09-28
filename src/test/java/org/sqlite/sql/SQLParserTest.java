@@ -20,6 +20,7 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.TestBase;
 import org.sqlite.server.MetaStatement;
+import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
@@ -558,6 +559,30 @@ public class SQLParserTest extends TestBase {
         insertTest("/*sql*/insert/*;*/into t (a)/*'*/values(1);", 1);
         insertTest("/*sql*/insert/*;*/ into t(a) values(1)-- sql", 1);
         insertTest("/*sql*/insert/*;*/ into t(a) values(1); insert into t(a) /*\"*/values(2)-- sql", 2);
+        
+        insertSelectTest("insert into t(a) select 1", 1);
+        insertSelectTest("insert into t(a) select 1 ;", 1);
+        insertSelectTest("insert into t(a)/***/ select 1 --", 1);
+        insertSelectTest(" /**/insert into t(a)-- \n/***/ select 1 --", 1);
+        
+        insertReturningTest("insert into t(a)values(1) returning*", 1, false, null, "t", "*");
+        insertReturningTest("insert into t(a) values(1) returning *", 1, false, null, "t", "*");
+        insertReturningTest("insert into t(a) values(1)  returning * ;", 1, false, null, "t", "* ");
+        insertReturningTest("insert into t(a)/***/ values(1) --\nreturning *", 1, false, null, "t", "*");
+        insertReturningTest(" /**/insert into t(a)-- \n/***/ select 1 --\n returning/****/--\n* /***/ ",
+                1, false, null, "t", "* /***/ ");
+        insertReturningTest("insert into t(a) select 1 returning*", 1, true, null, "t", "*");
+        insertReturningTest("insert into t(a) select 1 returning *", 1, true, null, "t", "*");
+        insertReturningTest("insert into t(a) select 1  returning * ;", 1, true, null, "t", "* ");
+        insertReturningTest("insert into t(a)/***/ select 1 --\nreturning *", 1, true, null, "t", "*");
+        insertReturningTest(" /**/insert into t(a)-- \n/***/ select 1 --\n returning/****/--\n* /***/ ",
+                1, true, null, "t", "* /***/ ");
+        insertReturningTest("insert into t(a) select 'returning' RETURNING*", 1, true, null, "t", "*");
+        insertReturningTest("insert into t(a) select 1/*returning*/ returning *", 1, true, null, "t", "*");
+        insertReturningTest("insert into t(a) select \"returning\"  returning * ;", 1, true, null, "t", "* ");
+        insertReturningTest("insert into t(a)/***/ select 'RETURNING' --\nRETURNING *", 1, true, null, "t", "*");
+        insertReturningTest(" /*returning*/insert into t(a)-- returning\n/***/ select 1 --returning\n returning/****/--\n* /***/ ",
+                1, true, null, "t", "* /***/ ");
         
         boolean deferred = true, immediate = false, exclusive = false;
         txBeginTest("begin", 1, deferred, immediate, exclusive);
@@ -1192,6 +1217,60 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void insertSelectTest(String sqls, int stmts) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test INSERT %s", stmt);
+            assertTrue("INSERT".equals(stmt.getCommand()));
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            
+            InsertSelectStatement s = (InsertSelectStatement)stmt;
+            SQLStatement selStmt = s.getSelectStatement();
+            assertTrue(selStmt.isQuery());
+            assertTrue(!selStmt.isEmpty());
+            assertTrue(!selStmt.isTransaction());
+            assertTrue(!selStmt.isComment());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void insertReturningTest(String sqls, int stmts, boolean hasSelect,
+            String schemaName, String tableName, String returningColumns) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test INSERT %s", stmt);
+            assertTrue("INSERT".equals(stmt.getCommand()));
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            
+            if (hasSelect) {
+                InsertSelectStatement s = (InsertSelectStatement)stmt;
+                SQLStatement selStmt = s.getSelectStatement();
+                assertTrue(selStmt.isQuery());
+                assertTrue(!selStmt.isEmpty());
+                assertTrue(!selStmt.isTransaction());
+                assertTrue(!selStmt.isComment());
+            }
+            
+            InsertReturningStatement s = (InsertReturningStatement)stmt;
+            assertTrue(schemaName == null || (schemaName.equalsIgnoreCase(s.getSchemaName())));
+            assertTrue((tableName.equalsIgnoreCase(s.getTableName())));
+            assertTrue((returningColumns.equals(s.getReturningColumns())));
             ++i;
             parser.remove();
         }

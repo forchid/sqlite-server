@@ -15,6 +15,10 @@
  */
 package org.sqlite.util;
 
+import java.sql.SQLException;
+
+import org.sqlite.SQLiteErrorCode;
+
 /**<p>
  * The common object or value convert utils.
  * </p>
@@ -29,6 +33,53 @@ public final class ConvertUtils {
         {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
     
     private ConvertUtils() {}
+    
+    public static SQLException convertError(SQLiteErrorCode error) {
+        return convertError(error, null, null);
+    }
+    
+    public static  SQLException convertError(SQLiteErrorCode error, String message) {
+        return convertError(error, message, null);
+    }
+    
+    public static SQLException convertError(SQLiteErrorCode error, String message, String sqlState) {
+        if (sqlState == null) {
+            switch (error.code) {
+            case 1:  // SQLITE_ERROR
+                sqlState = "42000";
+                break;
+            case 2:  // SQLITE_INTERNAL
+                sqlState = "58005";
+                break;
+            case 3:  // SQLITE_PERM
+                sqlState = "42501";
+                break;
+            case 8:  // SQLITE_READONLY
+                sqlState = "25000";
+                break;
+            case 10: // SQLITE_IOERR
+                sqlState = "58030";
+                break;
+            case 19:  // SQLITE_CONSTRAINT
+                sqlState = "23514";
+                break;
+            case 23: // SQLITE_AUTH
+                sqlState = "28000";
+                break;
+            case 2067: // SQLITE_CONSTRAINT_UNIQUE
+                sqlState = "23505";
+                break;
+            default:
+                sqlState = "HY000";
+                break;
+            }
+        } // if
+        
+        if (message == null) {
+            message = error.message;
+        }
+        return new SQLException(message, sqlState, error.code);
+    }
     
     public final static int parseInt(Object o, final int defaultValue) {
         try {
