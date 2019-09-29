@@ -37,7 +37,7 @@ public class TransactionTest extends TestDbBase {
     }
 
     @Override
-    public void test() throws SQLException {
+    protected void doTest() throws SQLException {
         initTableAccounts();
         nestedConnTxTest();
         readOnlyTxTest();

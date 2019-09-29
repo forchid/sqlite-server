@@ -35,7 +35,7 @@ public class SQLReaderTest extends TestBase {
     }
     
     @Override
-    public void test() throws SQLException {
+    protected void doTest() throws SQLException {
         sqlTest("");
         sqlTest(" ", " ");
         sqlTest("\n");

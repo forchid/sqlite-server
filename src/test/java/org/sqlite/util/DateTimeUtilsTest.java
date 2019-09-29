@@ -34,7 +34,7 @@ public class DateTimeUtilsTest extends TestBase {
     }
 
     @Override
-    public void test() throws SQLException {
+    protected void doTest() throws SQLException {
         TimeZone tz;
         
         tz = TimeZone.getTimeZone("GMT+08:00");

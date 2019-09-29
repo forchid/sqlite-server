@@ -41,16 +41,16 @@ public class TestAll extends TestBase {
     }
 
     @Override
-    public void test() throws SQLException {
+    protected void doTest() throws SQLException {
         try {
             addAll();
-            doTest();
+            doTestAll();
         } finally {
             cleanup();
         }
     }
     
-    protected void doTest() throws SQLException {
+    protected void doTestAll() throws SQLException {
         for(TestBase test: tests) {
             String className = test.getClass().getName();
             long start = System.currentTimeMillis();

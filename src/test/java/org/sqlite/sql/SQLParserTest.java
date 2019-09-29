@@ -51,7 +51,7 @@ public class SQLParserTest extends TestBase {
     }
 
     @Override
-    public void test() throws SQLException {
+    protected void doTest() throws SQLException {
         // superuser or nosuperuser
         alterUserTest("alter user test@localhost superuser", 1,
                 "tests", "update 'tests'.user set sa = 1 where host = 'localhost' and user = 'test' and protocol = 'pg'",

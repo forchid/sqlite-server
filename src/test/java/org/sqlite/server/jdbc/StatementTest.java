@@ -33,21 +33,12 @@ import org.sqlite.TestDbBase;
  */
 public class StatementTest extends TestDbBase {
     
-    public static void main(String args[]) throws Exception {
-        boolean failed = true;
-        try {
-            new StatementTest().test();
-            failed = false;
-        } finally {
-            if (failed) {
-                // wait for logger
-                Thread.sleep(1000L);
-            }
-        }
+    public static void main(String args[]) throws SQLException {
+        new StatementTest().test();
     }
 
     @Override
-    public void test() throws SQLException {
+    protected void doTest() throws SQLException {
         alterUserTest();
         attachTest();
         createTableTest();

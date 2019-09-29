@@ -33,7 +33,20 @@ public abstract class TestBase extends TestCase {
     static final String LINESEP = System.getProperty("line.separator");
     protected static boolean disableINFO = false, disableERROR = true;
     
-    public abstract void test() throws SQLException;
+    public final void test() throws SQLException {
+        boolean failed = true;
+        try {
+            doTest();
+            failed = false;
+        } finally {
+            if (failed) {
+                // wait for logger
+                sleep(1000L);
+            }
+        }
+    }
+    
+    protected abstract void doTest() throws SQLException;
     
     protected void cleanup() {
         // NOOP

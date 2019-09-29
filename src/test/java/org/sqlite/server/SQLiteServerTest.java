@@ -34,7 +34,7 @@ public class SQLiteServerTest extends TestDbBase {
     }
 
     @Override
-    public void test() throws SQLException {
+    protected void doTest() throws SQLException {
         initdbTest();
     }
 

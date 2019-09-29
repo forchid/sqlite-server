@@ -42,7 +42,8 @@ public class ConnectionTest extends TestDbBase {
         }
     }
     
-    public void test() throws SQLException {
+    @Override
+    protected void doTest() throws SQLException {
         int maxConns = getMaxConns() * getWorkCount();
         
         singleConnTest();
