@@ -557,8 +557,6 @@ public class PgProcessor extends SQLiteProcessor {
                 final int maxRows = readShort();
                 Prepared prepared = p.prep;
                 final SQLStatement sqlStmt = prepared.sql;
-                server.trace(log, "sql \"{}\"", sqlStmt);
-                
                 // check empty statement
                 if (sqlStmt.isEmpty()) {
                     server.trace(log, "query string empty: {}", sqlStmt);
@@ -674,9 +672,9 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     protected void destroyPrepared(String name) {
-        server.trace(log, "Destroy");
         Prepared p = prepared.remove(name);
         if (p != null) {
+            server.trace(log, "Destroy");
             server.trace(log, "the named '{}' prepared and it's all portal", name);
             IoUtils.close(p.sql);
             // Need to close all generated portals by this prepared
@@ -1429,6 +1427,7 @@ public class PgProcessor extends SQLiteProcessor {
                     
                     // try next
                     if (next=this.parser.hasNext()) {
+                        IoUtils.close(sqlStmt);
                         sqlStmt = this.parser.next();
                     }
                 }
@@ -1438,7 +1437,6 @@ public class PgProcessor extends SQLiteProcessor {
                     try {
                         sqlStmt.setContext(proc);
                         proc.writeTask = null;
-                        proc.trace(log, "execute SQL: {}", sqlStmt);
                         checkBusyState();
                         timeout = false;
                         boolean result = sqlStmt.execute(0);
@@ -1472,6 +1470,7 @@ public class PgProcessor extends SQLiteProcessor {
                         
                         // try next
                         if (next=this.parser.hasNext()) {
+                            IoUtils.close(sqlStmt);
                             sqlStmt = this.parser.next();
                         }
                     } catch (SQLException e) {
@@ -1494,22 +1493,23 @@ public class PgProcessor extends SQLiteProcessor {
                             proc.sendCommandComplete(sqlStmt, 0, false);
                             // try next
                             if (next=this.parser.hasNext()) {
+                                IoUtils.close(sqlStmt);
                                 sqlStmt = this.parser.next();
                             }
                         } else {
-                            sqlStmt.complete(false);
                             throw e;
-                        }
-                    } finally {
-                        if (resetTask) {
-                            IoUtils.close(sqlStmt);
                         }
                     }
                 } // For statements
             } catch (SQLParseException e) {
-                if (sqlStmt != null) sqlStmt.complete(false);
+                if (sqlStmt != null && sqlStmt.isOpen())  {
+                    sqlStmt.complete(false);
+                }
                 proc.sendErrorResponse(e);
             } catch (SQLException e) {
+                if (sqlStmt != null && sqlStmt.isOpen()) {
+                    sqlStmt.complete(false);
+                }
                 if (proc.server.isCanceled(e)) {
                     proc.sendCancelQueryResponse();
                 } else {
@@ -1518,6 +1518,7 @@ public class PgProcessor extends SQLiteProcessor {
             } finally {
                 if (resetTask) {
                     proc.writeTask = null;
+                    IoUtils.close(sqlStmt);
                     IoUtils.close(this.curStmt);
                     this.rs = null;
                     IoUtils.close(parser);

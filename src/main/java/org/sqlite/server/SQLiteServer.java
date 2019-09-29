@@ -71,7 +71,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
-    public static final int BUSY_TIMEOUT_DEFAULT  = 30000;
+    public static final int BUSY_TIMEOUT_DEFAULT  = 50000;
     
     // command list
     public static final String CMD_INITDB = "initdb";

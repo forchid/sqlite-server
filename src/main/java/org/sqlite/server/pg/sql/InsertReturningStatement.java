@@ -117,7 +117,6 @@ public class InsertReturningStatement extends InsertSelectStatement {
                 // Transaction control for multiple-step operations
                 assert context.isAutoCommit() && !this.implicitTx;
                 context.dbWriteLock();
-                context.trace(log, "Held db write lock: sql \"{}\"", this);
                 super.execute("begin immediate");
                 this.implicitTx = true;
                 this.step = SELECT_LOWID;

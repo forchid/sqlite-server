@@ -390,6 +390,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             busyContext.setOnDbWriteLock(true);
             throw convertError(SQLiteErrorCode.SQLITE_BUSY);
         }
+        trace(log, "tx: db write lock");
         if (busyContext != null) {
             busyContext.setOnDbWriteLock(false);
         }
@@ -398,6 +399,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     @Override
     public boolean dbWriteUnlock() {
         if (this.server.dbWriteUnlock(this)) {
+            trace(log, "tx: db write unlock");
             return true;
         }
         return false;

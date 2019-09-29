@@ -207,9 +207,9 @@ public class SQLStatement implements AutoCloseable {
         final boolean writable = !isQuery() && !context.isReadOnly();
         if (writable && !context.holdsDbWriteLock()) {
             context.dbWriteLock();
-            context.trace(log, "tx: db write lock");
         }
         
+        context.trace(log, "execute sql \"{}\"", this);
         if (this.prepared) {
             // Execute batch prepared statement in an explicit transaction for ACID
             if (autoCommit && writable && !this.implicitTx) {
@@ -270,9 +270,7 @@ public class SQLStatement implements AutoCloseable {
         }
         
         if (autoCommit) {
-            if (context.dbWriteUnlock()) {
-                context.trace(log, "tx: db write unlock");
-            }
+            context.dbWriteUnlock();
             context.transactionComplelete();
         }
     }
