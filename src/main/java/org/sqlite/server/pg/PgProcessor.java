@@ -806,18 +806,19 @@ public class PgProcessor extends SQLiteProcessor {
             writeStringPart("DELETE ");
             writeString(updateCount + "");
             break;
-        case "SELECT":
         case "CALL":
         case "PRAGMA":
+        case "SELECT":
             writeString("SELECT");
             break;
         case "BEGIN":
             writeString("BEGIN");
             break;
         default:
-            server.trace(log, "check CommandComplete tag for command {}", command);
-            writeStringPart(sql.isQuery()? "SELECT": "UPDATE ");
+            server.trace(log, "check CommandComplete for command {}", command);
+            writeStringPart("UPDATE ");
             writeString(updateCount + "");
+            break;
         }
         sendMessage();
     }

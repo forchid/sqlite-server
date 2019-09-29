@@ -135,8 +135,9 @@ public class StatementTest extends TestDbBase {
                 rs = sa.executeQuery("select name from a.test where name='ABC'");
                 assertTrue(rs.next());
                 assertTrue("ABC".equals(rs.getString(1)));
+                rs.close();
                 n = sa.executeUpdate("detach database a");
-                assertTrue(0 == n);
+                assertTrue(1 == n);
             }
             // cleanup
             n = s.executeUpdate("revoke attach on 'attach.db' from test@localhost");

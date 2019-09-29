@@ -233,7 +233,8 @@ public abstract class SQLiteServer implements AutoCloseable {
      */
     public boolean isBlocked(SQLException e) {
         for (; e != null;) {
-            switch (e.getErrorCode()) {
+            int errorCode = e.getErrorCode();
+            switch (errorCode) {
             case 5: // SQLITE_BUSY
             case 6: // SQLITE_LOCKED
             case 261: // SQLITE_BUSY_RECOVERY
@@ -241,6 +242,7 @@ public abstract class SQLiteServer implements AutoCloseable {
             case 517: // SQLITE_BUSY_SNAPSHOT
                 return true;
             default:
+                trace(log, "sql errorCode: {}", errorCode);
                 Throwable cause = e.getCause();
                 if (cause instanceof SQLException) {
                     e = (SQLException)cause;
