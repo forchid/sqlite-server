@@ -21,6 +21,7 @@ import java.util.List;
 
 import org.sqlite.server.SQLiteServerTest;
 import org.sqlite.server.jdbc.ConnectionTest;
+import org.sqlite.server.jdbc.PreparedStatementTest;
 import org.sqlite.server.jdbc.StatementTest;
 import org.sqlite.server.jdbc.TransactionTest;
 import org.sqlite.sql.SQLParserTest;
@@ -70,6 +71,7 @@ public class TestAll extends TestBase {
     protected void addAll() {
         add(new ConnectionTest()).
         add(new DateTimeUtilsTest()).
+        add(new PreparedStatementTest()).
         add(new StatementTest()).
         add(new SQLReaderTest()).
         add(new SQLParserTest()).

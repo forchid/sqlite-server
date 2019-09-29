@@ -43,6 +43,7 @@ public class SQLStatement implements AutoCloseable {
     protected Statement jdbcStatement;
     protected boolean prepared;
     private boolean open = true;
+    protected boolean implicitTx;
     
     protected boolean query;
     protected boolean comment;
@@ -197,20 +198,25 @@ public class SQLStatement implements AutoCloseable {
     }
     
     protected boolean doExecute(int maxRows) throws SQLException {
+        SQLContext context = this.context;
         boolean resultSet;
         
-        SQLContext context = this.context;
-        if (context.isTrace()) {
-            Connection conn = context.getConnection();
-            context.trace(log, "tx: autocommit {} ->", conn.getAutoCommit()); 
-        }
+        final boolean autoCommit = context.isAutoCommit();
+        context.trace(log, "tx: autoCommit {} ->", autoCommit);
         
-        if (!isQuery() && !context.isReadOnly() && !context.holdsDbWriteLock()) {
+        final boolean writable = !isQuery() && !context.isReadOnly();
+        if (writable && !context.holdsDbWriteLock()) {
             context.dbWriteLock();
-            context.trace(log, "Held db write lock: sql \"{}\"", this);
+            context.trace(log, "tx: db write lock");
         }
         
         if (this.prepared) {
+            // Execute batch prepared statement in an explicit transaction for ACID
+            if (autoCommit && writable && !this.implicitTx) {
+                execute("begin immediate");
+                this.implicitTx = true;
+                context.trace(log, "tx: begin an implicit transaction");
+            }
             PreparedStatement ps = getPreparedStatement();
             resultSet = ps.execute();
         } else {
@@ -230,12 +236,42 @@ public class SQLStatement implements AutoCloseable {
      * @throws IllegalStateException if SQL context closed or access metaDb error
      */
     public void postResult() throws IllegalStateException {
+        if (this.prepared) {
+            return;
+        }
+        
+        complete(true);
+    }
+    
+    /**Cleanup work after the whole execution of this statement complete
+     * 
+     * @param success the execution of this statement is successful or not
+     * @throws IllegalStateException if SQL context closed or access metaDb error etc
+     */
+    public void complete(boolean success) throws IllegalStateException {
         SQLContext context = this.context;
-        boolean autocommit = context.isAutoCommit();
-        context.trace(log, "tx: autocommit {} <-", autocommit);
-        if (autocommit) {
+        final boolean autoCommit = context.isAutoCommit();
+        context.trace(log, "tx: autoCommit {} <-", autoCommit);
+        
+        if (this.implicitTx) {
+            assert autoCommit;
+            try {
+                if (success) {
+                    execute("commit");
+                    context.trace(log, "tx: commit an implicit transaction");
+                } else {
+                    execute("rollback");
+                    context.trace(log, "tx: rollback an implicit transaction");
+                }
+                this.implicitTx = false;
+            } catch (SQLException e) {
+                throw new IllegalStateException("Can't complete an implicit transaction", e);
+            }
+        }
+        
+        if (autoCommit) {
             if (context.dbWriteUnlock()) {
-                context.trace(log, "Released db write lock: sql \"{}\"", this);
+                context.trace(log, "tx: db write unlock");
             }
             context.transactionComplelete();
         }

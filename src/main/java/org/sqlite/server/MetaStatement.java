@@ -23,6 +23,7 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLStatement;
+
 import static org.sqlite.util.ConvertUtils.*;
 
 /**The SQLite meta database operation statement.
@@ -65,13 +66,13 @@ public abstract class MetaStatement extends SQLStatement {
     }
     
     @Override
-    public void postResult() throws IllegalStateException {
+    public void complete(boolean success) throws IllegalStateException {
+        super.complete(success);
+        
         if (this.context.isAutoCommit()) {
             SQLiteProcessor proc = getContext();
             proc.detachMetaDb();
         }
-        
-        super.postResult();
     }
     
     @Override

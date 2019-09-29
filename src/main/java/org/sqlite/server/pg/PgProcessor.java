@@ -96,6 +96,7 @@ public class PgProcessor extends SQLiteProcessor {
     private boolean initDone, xQueryFailed;
     private final HashMap<String, Prepared> prepared = new HashMap<>();
     private final HashMap<String, Portal> portals = new HashMap<>();
+    private Portal portal;
 
     protected PgProcessor(PgServer server, SocketChannel channel, int id) throws NetworkException {
         super(server, channel, id);
@@ -394,7 +395,7 @@ public class PgProcessor extends SQLiteProcessor {
                     }
                     sqlStmt.setContext(this);
                     p.sql = sqlStmt;
-                    server.trace(log, "named '{}' SQL: {}", p.name, p.sql);
+                    server.trace(log, "named '{}' sql \"{}\"", p.name, p.sql);
                     if (UNNAMED.equals(p.name)) {
                         destroyPrepared(UNNAMED);
                     }
@@ -473,6 +474,7 @@ public class PgProcessor extends SQLiteProcessor {
                     portal.resultColumnFormat[i] = readShort();
                 }
                 sendBindComplete();
+                this.portal = portal;
                 this.xQueryFailed = false;
                 break;
             }
@@ -555,7 +557,7 @@ public class PgProcessor extends SQLiteProcessor {
                 final int maxRows = readShort();
                 Prepared prepared = p.prep;
                 final SQLStatement sqlStmt = prepared.sql;
-                server.trace(log, "execute SQL: {}", sqlStmt);
+                server.trace(log, "sql \"{}\"", sqlStmt);
                 
                 // check empty statement
                 if (sqlStmt.isEmpty()) {
@@ -569,6 +571,11 @@ public class PgProcessor extends SQLiteProcessor {
             }
             case 'S': {
                 server.trace(log, "Sync");
+                if (this.portal != null) {
+                    SQLStatement sqlStmt = this.portal.prep.sql;
+                    sqlStmt.complete(!this.xQueryFailed);
+                    this.portal = null;
+                }
                 this.xQueryFailed = false;
                 this.needFlush = true;
                 sendReadyForQuery();
@@ -644,7 +651,7 @@ public class PgProcessor extends SQLiteProcessor {
             
             conn = server.newSQLiteConnection(this.databaseName);
             if (isTrace()) {
-                trace(log, "sqlite init: autocommit {}", conn.getAutoCommit());
+                trace(log, "SQLite init: autoCommit {}", conn.getAutoCommit());
             }
             setConnection(conn);
             sendAuthenticationOk();
@@ -667,9 +674,10 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     protected void destroyPrepared(String name) {
+        server.trace(log, "Destroy");
         Prepared p = prepared.remove(name);
         if (p != null) {
-            server.trace(log, "Destroy the named '{}' prepared and it's any portal", name);
+            server.trace(log, "the named '{}' prepared and it's all portal", name);
             IoUtils.close(p.sql);
             // Need to close all generated portals by this prepared
             Iterator<Entry<String, Portal>> i;
@@ -961,7 +969,7 @@ public class PgProcessor extends SQLiteProcessor {
                 // in a transaction block
                 c = 'T';
             }
-            trace(log, "sqlite ready: autocommit {}", autocommit);
+            trace(log, "SQLite ready: autoCommit {}", autocommit);
         } catch (SQLException e) {
             // failed transaction block
             c = 'E';

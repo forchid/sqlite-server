@@ -1460,7 +1460,7 @@ public class SQLParserTest extends TestBase {
         for (SQLStatement stmt: parser) {
             info("Test ATTACH %s", stmt);
             assertTrue("ATTACH".equals(stmt.getCommand()));
-            assertTrue(!stmt.isQuery());
+            assertTrue(stmt.isQuery());
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
@@ -1480,7 +1480,7 @@ public class SQLParserTest extends TestBase {
         for (SQLStatement stmt: parser) {
             info("Test DETACH %s", stmt);
             assertTrue("DETACH".equals(stmt.getCommand()));
-            assertTrue(!stmt.isQuery());
+            assertTrue(stmt.isQuery());
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());

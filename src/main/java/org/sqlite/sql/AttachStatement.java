@@ -33,7 +33,7 @@ public class AttachStatement extends SQLStatement {
     protected String schemaName;
     
     public AttachStatement(String sql) {
-        super(sql, "ATTACH");
+        super(sql, "ATTACH", true/* Not write into the master DB */);
     }
 
     public String getDbName() {

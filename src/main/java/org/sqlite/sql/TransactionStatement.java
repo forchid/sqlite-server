@@ -61,6 +61,7 @@ public class TransactionStatement extends SQLStatement {
     
     @Override
     public void preExecute(int maxRows) throws SQLException, IllegalStateException {
+        assert !this.implicitTx;
         super.preExecute(maxRows);
         
         if (this.context.isAutoCommit() && (isBegin() || isSavepoint())) {
@@ -90,7 +91,9 @@ public class TransactionStatement extends SQLStatement {
     }
     
     @Override
-    public void postResult() throws IllegalStateException {
+    public void complete(boolean success) throws IllegalStateException {
+        assert !this.implicitTx;
+        
         String command = this.command;
         switch (command) {
         case "COMMIT":
@@ -105,8 +108,7 @@ public class TransactionStatement extends SQLStatement {
             this.context.releaseTransaction(this, false);
             break;
         }
-        
-        super.postResult();
+        super.complete(success);
     }
     
     public String getSavepointName() {

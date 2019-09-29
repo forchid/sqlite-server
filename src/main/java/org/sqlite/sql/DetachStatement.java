@@ -27,7 +27,7 @@ public class DetachStatement extends SQLStatement {
     protected String schemaName;
 
     public DetachStatement(String sql, String command) {
-        super(sql, command);
+        super(sql, command, true/* Not write into the master DB */);
     }
     
     public String getSchemaName() {

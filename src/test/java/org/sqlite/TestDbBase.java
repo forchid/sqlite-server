@@ -153,9 +153,10 @@ public abstract class TestDbBase extends TestBase {
         Statement stmt = conn.createStatement();
         stmt.executeUpdate("drop table if exists accounts");
         String sql = "create table accounts("
+                //+ "id serial primary key, "
                 + "id integer primary key, "
                 + "name varchar(50) not null, "
-                + "balance decimal)";
+                + "balance decimal(12, 2))";
         stmt.executeUpdate(sql);
     }
     

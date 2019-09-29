@@ -58,7 +58,6 @@ public class InsertReturningStatement extends InsertSelectStatement {
             SELECT_HIGHID = 4, SELECT_RETURNING = 5, TX_END = 6;
     
     private int step = INIT;
-    protected boolean implicitTx;
     protected boolean resultSet;
     protected Long lowId;
     protected Long highId;
@@ -92,10 +91,6 @@ public class InsertReturningStatement extends InsertSelectStatement {
         }
     }
     
-    protected boolean canRollback() {
-        return (this.implicitTx && this.step > TX_BEGIN);
-    }
-    
     @Override
     protected boolean doExecute(int maxRows) throws SQLException {
         SQLContext context = this.context;
@@ -103,134 +98,115 @@ public class InsertReturningStatement extends InsertSelectStatement {
         ResultSet rs;
         int rows = 0;
         
-        boolean failed = true;
-        try {
-            switch (this.step) {
-            case INIT:
-                this.resultSet = false;
-                this.lowId = this.highId = null;
-                this.implicitTx = context.isAutoCommit();
-                if (this.implicitTx) {
-                    this.step = TX_BEGIN;
-                    context.trace(log, "Step. INIT -> TX_BEGIN: implicitTx = {}", this.implicitTx);
-                } else {
-                    this.step = SELECT_LOWID;
-                    context.trace(log, "Step. INIT -> SELECT_LOWID: implicitTx = {}", this.implicitTx);
-                }
-            case TX_BEGIN:
-                if (TX_BEGIN == this.step) {
-                    context.dbWriteLock();
-                    context.trace(log, "Held db write lock: sql \"{}\"", this);
-                    super.execute("begin immediate");
-                    this.step = SELECT_LOWID;
-                    context.trace(log, "Step. TX_BEGIN -> SELECT_LOWID: implicitTx = {}", this.implicitTx);
-                }
-            case SELECT_LOWID:
-                this.maxRowidSelect.execute(1);
-                rs = this.maxRowidSelect.getResultSet();
+        switch (this.step) {
+        case INIT:
+            this.resultSet = false;
+            this.lowId = this.highId = null;
+            boolean autoCommit = context.isAutoCommit();
+            if (autoCommit && !this.implicitTx) {
+                this.step = TX_BEGIN;
+                context.trace(log, "Step. INIT -> TX_BEGIN: autoCommit = {}, implicitTx = {}", 
+                        autoCommit, this.implicitTx);
+            } else {
+                this.step = SELECT_LOWID;
+                context.trace(log, "Step. INIT -> SELECT_LOWID: autoCommit = {}, implicitTx = {}", 
+                        autoCommit, this.implicitTx);
+            }
+        case TX_BEGIN:
+            if (TX_BEGIN == this.step) {
+                // Transaction control for multiple-step operations
+                assert context.isAutoCommit() && !this.implicitTx;
+                context.dbWriteLock();
+                context.trace(log, "Held db write lock: sql \"{}\"", this);
+                super.execute("begin immediate");
+                this.implicitTx = true;
+                this.step = SELECT_LOWID;
+                context.trace(log, "Step. TX_BEGIN -> SELECT_LOWID: implicitTx = {}", this.implicitTx);
+            }
+        case SELECT_LOWID:
+            this.maxRowidSelect.execute(1);
+            rs = this.maxRowidSelect.getResultSet();
+            rs.next();
+            this.lowId = rs.getLong(1) + 1L;
+            if (this.lowId < 1L) {
+                throw convertError(SQLiteErrorCode.SQLITE_FULL);
+            }
+            if (rs.wasNull()) {
+                this.lowId = null;
+            }
+            rs.close();
+            this.step = INSERT_ROWS;
+            context.trace(log, "Step. SELECT_LOWID -> INSERT_ROWS: lowId = {}", this.lowId);
+        case INSERT_ROWS:
+            super.doExecute(maxRows);
+            rows = getUpdateCount();
+            if (rows > 0) {
+                this.step = SELECT_HIGHID;
+                context.trace(log, "Step. INSERT_ROWS -> SELECT_HIGHID: lowId = {}, updateCount = {}", 
+                        this.lowId, rows);
+            } else {
+                this.step = SELECT_RETURNING;
+                context.trace(log, "Step. INSERT_ROWS -> SELECT_RETURNING: lowId = {}, updateCount = {}", 
+                        this.lowId, rows);
+            }
+        case SELECT_HIGHID:
+            if (SELECT_HIGHID == this.step) {
+                this.lastRowidSelect.execute(1);
+                rs = this.lastRowidSelect.getResultSet();
                 rs.next();
-                this.lowId = rs.getLong(1) + 1L;
-                if (this.lowId < 1L) {
+                this.highId = rs.getLong(1);
+                rs.close();
+                if (this.lowId != null && this.highId < this.lowId) {
                     throw convertError(SQLiteErrorCode.SQLITE_FULL);
                 }
-                if (rs.wasNull()) {
-                    this.lowId = null;
-                }
-                rs.close();
-                this.step = INSERT_ROWS;
-                context.trace(log, "Step. SELECT_LOWID -> INSERT_ROWS: lowId = {}", this.lowId);
-            case INSERT_ROWS:
-                super.doExecute(maxRows);
-                rows = getUpdateCount();
-                if (rows > 0) {
-                    this.step = SELECT_HIGHID;
-                    context.trace(log, "Step. INSERT_ROWS -> SELECT_HIGHID: lowId = {}, updateCount = {}", 
-                            this.lowId, rows);
-                } else {
-                    this.step = SELECT_RETURNING;
-                    context.trace(log, "Step. INSERT_ROWS -> SELECT_RETURNING: lowId = {}, updateCount = {}", 
-                            this.lowId, rows);
-                }
-            case SELECT_HIGHID:
-                if (SELECT_HIGHID == this.step) {
-                    this.lastRowidSelect.execute(1);
-                    rs = this.lastRowidSelect.getResultSet();
-                    rs.next();
-                    this.highId = rs.getLong(1);
-                    rs.close();
-                    if (this.lowId != null && this.highId < this.lowId) {
-                        throw convertError(SQLiteErrorCode.SQLITE_FULL);
-                    }
-                }
-                this.step = SELECT_RETURNING;
-                context.trace(log, "Step. SELECT_HIGHID -> SELECT_RETURNING: lowId = {}, highId = {}", 
-                        this.lowId, this.highId);
-            case SELECT_RETURNING:
-                ps = this.returningSelect.getPreparedStatement();
-                // Set parameters
-                if (this.lowId == null) {
-                    ps.setNull(1, Types.BIGINT);
-                    ps.setNull(3, Types.BIGINT);
-                } else {
-                    long lowId = this.lowId;
-                    ps.setLong(1, lowId);
-                    ps.setLong(3, lowId);
-                }
-                if (this.highId == null) {
-                    ps.setNull(2, Types.BIGINT);
-                    ps.setNull(4, Types.BIGINT);
-                } else {
-                    long highId = this.highId;
-                    ps.setLong(2, highId);
-                    ps.setLong(4, highId);
-                }
-                rows = getUpdateCount();
-                // Do execute
-                this.resultSet = this.returningSelect.execute(rows);
-                if (this.implicitTx) {
-                    this.step = TX_END;
-                    context.trace(log, "Step. SELECT_RETURNING -> TX_END: lowId = {}, highId = {}, resultSet = {}", 
-                            this.lowId, this.highId, this.resultSet);
-                } else {
-                    this.step = INIT;
-                    context.trace(log, "Step. SELECT_RETURNING -> INIT: lowId = {}, highId = {}, resultSet = {}", 
-                            this.lowId, this.highId, this.resultSet);
-                }
-                failed = false;
-                return this.resultSet;
-            default:
-                throw new IllegalStateException("Unknown step: " + this.step);
             }
-        } finally {
-            if (failed && canRollback()) {
-                // rollback
-                try {
-                    context.trace(log, "execution error: rollback");
-                    super.execute("rollback");
-                    context.dbWriteUnlock();
-                    this.step = INIT;
-                    failed = false;
-                } finally {
-                    if (failed) {
-                        throw new IllegalStateException("Can't rollback transaction");
-                    }
-                }
+            this.step = SELECT_RETURNING;
+            context.trace(log, "Step. SELECT_HIGHID -> SELECT_RETURNING: lowId = {}, highId = {}", 
+                    this.lowId, this.highId);
+        case SELECT_RETURNING:
+            ps = this.returningSelect.getPreparedStatement();
+            // Set parameters
+            if (this.lowId == null) {
+                ps.setNull(1, Types.BIGINT);
+                ps.setNull(3, Types.BIGINT);
+            } else {
+                long lowId = this.lowId;
+                ps.setLong(1, lowId);
+                ps.setLong(3, lowId);
             }
+            if (this.highId == null) {
+                ps.setNull(2, Types.BIGINT);
+                ps.setNull(4, Types.BIGINT);
+            } else {
+                long highId = this.highId;
+                ps.setLong(2, highId);
+                ps.setLong(4, highId);
+            }
+            rows = getUpdateCount();
+            // Do execute
+            this.resultSet = this.returningSelect.execute(rows);
+            if (this.implicitTx) {
+                this.step = TX_END; // called until complete()
+                context.trace(log, "Step. SELECT_RETURNING -> TX_END: lowId = {}, highId = {}, resultSet = {}", 
+                        this.lowId, this.highId, this.resultSet);
+            } else {
+                this.step = INIT;
+                context.trace(log, "Step. SELECT_RETURNING -> INIT: lowId = {}, highId = {}, resultSet = {}", 
+                        this.lowId, this.highId, this.resultSet);
+            }
+            return this.resultSet;
+        default:
+            throw new IllegalStateException("Unknown step: " + this.step);
         }
     }
     
     @Override
-    public void postResult() throws IllegalStateException {
+    public void complete(boolean success) throws IllegalStateException {
         if (this.implicitTx) {
-            if (this.step != TX_END) {
+            if (success && this.step != TX_END) {
                 throw new IllegalStateException("step not the step TX_END: " + this.step);
             }
-            this.context.trace(log, "commit the implicit transaction");
-            try {
-                super.execute("commit");
-            } catch (SQLException e) {
-                throw new IllegalStateException("Can't commit the implicit transaction", e);
-            }
+            super.complete(success);
             this.step = INIT;
             context.trace(log, "Step. TX_END -> INIT: lowId = {}, highId = {}, resultSet = {}", 
                     this.lowId, this.highId, this.resultSet);
@@ -238,9 +214,8 @@ public class InsertReturningStatement extends InsertSelectStatement {
             if (this.step != INIT) {
                 throw new IllegalStateException("step not the step INIT: " + this.step);
             }
+            super.complete(success);
         }
-        
-        super.postResult();
     }
     
     protected void prepareReturningSelects() throws SQLException {
