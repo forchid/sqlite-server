@@ -60,6 +60,8 @@ public class StatementTest extends TestDbBase {
         nestedBlockCommentTest();
         pragmaTest();
         simpleScalarQueryTest();
+        
+        selectForUpdateTest();
     }
     
     private void simpleScalarQueryTest() throws SQLException {
@@ -761,6 +763,37 @@ public class StatementTest extends TestDbBase {
             assertTrue(successes.get() == cons);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
+        }
+    }
+    
+    private void selectForUpdateTest() throws SQLException {
+        try (Connection conn = getConnection()) {
+            initTableAccounts(conn);
+            Statement s = conn.createStatement();
+            ResultSet rs;
+            int n;
+            
+            rs = s.executeQuery("select *from accounts where id = 1 for update");
+            assertTrue(!rs.next());
+            
+            n = s.executeUpdate("insert into accounts(name, balance)values('Tom', 25000)");
+            assertTrue(1 == n);
+            rs = s.executeQuery("select id from accounts where id = 1 for update");
+            assertTrue(rs.next());
+            assertTrue(rs.getInt(1) == 1);
+            assertTrue(!rs.next());
+            
+            conn.setAutoCommit(true);
+            s.execute("begin read only");
+            try {
+                rs = s.executeQuery("select id from accounts where id = 1 for update");
+                fail("read only transaction can't be updated");
+            } catch (SQLException e) {
+                if (!"25000".equals(e.getSQLState())) {
+                    throw e;
+                }
+                s.execute("rollback");
+            }
         }
     }
     

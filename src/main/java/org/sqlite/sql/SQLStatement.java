@@ -129,7 +129,7 @@ public class SQLStatement implements AutoCloseable {
             throw new IllegalStateException("Empty statement can't be prepared");
         }
         checkPermission();
-        this.context.checkReadOnly(this);
+        checkReadOnly();
         
         Connection conn = this.context.getConnection();
         String sql = getExecutableSQL();
@@ -137,6 +137,10 @@ public class SQLStatement implements AutoCloseable {
         this.jdbcStatement = ps;
         this.prepared = true;
         return ps;
+    }
+    
+    protected void checkReadOnly() throws SQLException {
+        this.context.checkReadOnly(this);
     }
     
     protected Statement getJdbcStatement() {
@@ -178,7 +182,7 @@ public class SQLStatement implements AutoCloseable {
         } else {
             if (this.jdbcStatement == null) {
                 checkPermission();
-                this.context.checkReadOnly(this);
+                checkReadOnly();
                 Connection conn = this.context.getConnection();
                 this.jdbcStatement = conn.createStatement();
             }
@@ -204,7 +208,7 @@ public class SQLStatement implements AutoCloseable {
         final boolean autoCommit = context.isAutoCommit();
         context.trace(log, "tx: autoCommit {} ->", autoCommit);
         
-        final boolean writable = !isQuery() && !context.isReadOnly();
+        final boolean writable = isWritable();
         if (writable && !context.holdsDbWriteLock()) {
             context.dbWriteLock();
         }
@@ -225,6 +229,10 @@ public class SQLStatement implements AutoCloseable {
         }
         
         return resultSet;
+    }
+    
+    protected boolean isWritable() {
+        return (!isQuery() && !this.context.isReadOnly());
     }
     
     protected void postExecute(boolean resultSet) throws SQLException {

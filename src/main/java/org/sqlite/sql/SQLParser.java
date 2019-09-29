@@ -872,7 +872,23 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             return parseSelectSleep();
         }
         
-        return new SQLStatement(this.sql, "SELECT", true);
+        String forKeyword = "for";
+        if (skipToKeywordIf(forKeyword) != -1) {
+            // SELECT ... FOR UPDATE
+            int i = this.ei - forKeyword.length();
+            String selectSQL = this.sql.substring(0, i);
+            skipIgnorable();
+            nextString("update");
+            if (nextEnd()) {
+                SelectStatement stmt = new SelectStatement(selectSQL);
+                stmt.setForUpdate(true);
+                return stmt;
+            }
+            
+            throw syntaxError();
+        }
+        
+        return new SelectStatement(this.sql);
     }
     
     protected SQLStatement parseSelectSleep() {

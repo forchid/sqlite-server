@@ -540,6 +540,18 @@ public class SQLParserTest extends TestBase {
             // OK
         }
         
+        selectForUpdateTest("select *from t for update", 1, "select *from t ");
+        selectForUpdateTest("select *from T FOR UPDATE ;", 1, "select *from T ");
+        selectForUpdateTest("SELECT * FROM t/***/for update", 1, "SELECT * FROM t/***/");
+        selectForUpdateTest("select *from t/**for update*/for update", 
+                1, "select *from t/**for update*/");
+        selectForUpdateTest("select *from t/**for update*/for update --;", 
+                1, "select *from t/**for update*/");
+        selectForUpdateTest(" /***/select *from t/**for update*/for update --;", 
+                1, " /***/select *from t/**for update*/");
+        selectForUpdateTest(" /***/select 'for update' from t/**for update*/for update --;", 
+                1, " /***/select 'for update' from t/**for update*/");
+        
         updateTest("update t set a = 1", 1);
         updateTest("Update t set a = 1", 1);
         updateTest("updatE t set a = 1;/**/uPdate t set b=2;", 2);
@@ -1143,6 +1155,27 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void selectForUpdateTest(String sqls, int stmts, String selectSQL) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SELECT %s", stmt);
+            assertTrue("SELECT".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            
+            SelectStatement s = (SelectStatement)stmt;
+            assertTrue(s.isForUpdate());
+            assertTrue(selectSQL.equals(s.getSQL()));
+            
             ++i;
             parser.remove();
         }
