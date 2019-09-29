@@ -211,7 +211,7 @@ public class InsertReturningStatement extends InsertSelectStatement {
             context.trace(log, "Step. TX_END -> INIT: lowId = {}, highId = {}, resultSet = {}", 
                     this.lowId, this.highId, this.resultSet);
         } else {
-            if (this.step != INIT) {
+            if (success && this.step != INIT) {
                 throw new IllegalStateException("step not the step INIT: " + this.step);
             }
             super.complete(success);

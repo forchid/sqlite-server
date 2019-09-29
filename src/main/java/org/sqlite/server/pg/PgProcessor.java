@@ -1388,9 +1388,9 @@ public class PgProcessor extends SQLiteProcessor {
         @Override
         protected void execute() throws IOException {
             PgProcessor proc = (PgProcessor)this.proc;
+            SQLStatement sqlStmt = this.curStmt;
             boolean resetTask = true;
             try {
-                SQLStatement sqlStmt = this.curStmt;
                 boolean next = true;
                 
                 if (this.rs == null) {
@@ -1476,6 +1476,7 @@ public class PgProcessor extends SQLiteProcessor {
                         }
                     } catch (SQLException e) {
                         if (!timeout && proc.server.isBlocked(e)) {
+                            sqlStmt.complete(false);
                             this.curStmt = sqlStmt;
                             resetTask = false;
                             SQLiteBusyContext busyContext = proc.getBusyContext();
@@ -1496,6 +1497,7 @@ public class PgProcessor extends SQLiteProcessor {
                                 sqlStmt = this.parser.next();
                             }
                         } else {
+                            sqlStmt.complete(false);
                             throw e;
                         }
                     } finally {
@@ -1505,6 +1507,7 @@ public class PgProcessor extends SQLiteProcessor {
                     }
                 } // For statements
             } catch (SQLParseException e) {
+                if (sqlStmt != null) sqlStmt.complete(false);
                 proc.sendErrorResponse(e);
             } catch (SQLException e) {
                 if (proc.server.isCanceled(e)) {
