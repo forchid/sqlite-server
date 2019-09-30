@@ -52,10 +52,19 @@ public class StatementTest extends TestDbBase {
         insertReturningTest(true, true);
         insertReturningTest(true, false);
         
-        insertReturningTest(1);
-        insertReturningTest(10);
-        insertReturningTest(100);
-        insertReturningTest(150);
+        insertReturningCommitTest(1, true, 10);
+        insertReturningCommitTest(1, false, 20);
+        insertReturningCommitTest(10, true, 10);
+        insertReturningCommitTest(10, false, 20);
+        insertReturningCommitTest(100, true, 10);
+        insertReturningCommitTest(100, false, 10);
+        insertReturningCommitTest(150, true, 5);
+        insertReturningCommitTest(200, false, 10);
+        
+        insertReturningRollbackTest(1);
+        insertReturningRollbackTest(10);
+        insertReturningRollbackTest(100);
+        insertReturningRollbackTest(150);
         
         nestedBlockCommentTest();
         pragmaTest();
@@ -735,7 +744,7 @@ public class StatementTest extends TestDbBase {
         }
     }
 
-    private void insertReturningTest(final int cons) throws SQLException {
+    private void insertReturningRollbackTest(final int cons) throws SQLException {
         Thread [] tests = new Thread[cons];
         final AtomicInteger successes = new AtomicInteger();
         try (Connection conn = getConnection(true)) {
@@ -752,13 +761,111 @@ public class StatementTest extends TestDbBase {
                         throw new RuntimeException(e);
                     }
                 }
-            }, "test-" + i);
+            }, "rollback-" + i);
+            tests [i].setDaemon(true);
             tests [i].start();
         }
         
         try {
             for (int i = 0; i < cons; ++i) {
                 tests [i].join(3000L);
+            }
+            assertTrue(successes.get() == cons);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    
+    private void insertReturningCommitTest(int cons, boolean tx, int iterations) throws SQLException {
+        for (int i = 0; i < iterations; ++i) {
+            doInsertReturningCommitTest(cons, tx);
+        }
+    }
+    
+    private void doInsertReturningCommitTest(final int cons, final boolean tx) throws SQLException {
+        Thread [] tests = new Thread[cons];
+        final AtomicInteger successes = new AtomicInteger();
+        try (Connection conn = getConnection(true)) {
+            Statement s = conn.createStatement();
+            ResultSet rs;
+            boolean resultSet;
+            int n, id;
+            
+            conn.setAutoCommit(true);
+            initTableAccounts(conn);
+            
+            resultSet = s.execute("insert into accounts(name, balance)values('James', 21000)", 
+                    Statement.RETURN_GENERATED_KEYS);
+            assertTrue(!resultSet);
+            n = s.getUpdateCount();
+            assertTrue(1 == n);
+            rs = s.getGeneratedKeys();
+            assertTrue(rs.next());
+            id = rs.getInt(1);
+            assertTrue(1 == id);
+            assertTrue(!rs.next());
+            rs.close();
+        }
+        
+        for (int i = 0; i < cons; ++i) {
+            tests [i] = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try (Connection conn = getConnection(true)) {
+                        Statement s = conn.createStatement();
+                        ResultSet rs;
+                        boolean resultSet;
+                        int n, id;
+                        
+                        conn.setAutoCommit(!tx);
+                        rs = s.executeQuery("select id, name, balance from accounts where id = 1");
+                        assertTrue(rs.next());
+                        assertTrue(1 == rs.getInt(1));
+                        assertTrue(!rs.next());
+                        rs.close();
+                        
+                        resultSet = s.execute("insert into accounts(name, balance)values('James', 21000)", 
+                                Statement.RETURN_GENERATED_KEYS);
+                        assertTrue(!resultSet);
+                        n = s.getUpdateCount();
+                        assertTrue(1 == n);
+                        
+                        rs = s.getGeneratedKeys();
+                        assertTrue(rs.next());
+                        id = rs.getInt(1);
+                        assertTrue(id > 0);
+                        assertTrue(!rs.next());
+                        rs.close();
+                        
+                        rs = s.executeQuery("select id, name, balance from accounts where id ="+id);
+                        assertTrue(rs.next());
+                        assertTrue(id == rs.getInt(1));
+                        assertTrue(!rs.next());
+                        rs.close();
+                        
+                        if (tx) {
+                            conn.commit();
+                            conn.setAutoCommit(true);
+                            rs = s.executeQuery("select id, name, balance from accounts where id ="+id);
+                            assertTrue(rs.next());
+                            assertTrue(id == rs.getInt(1));
+                            assertTrue(!rs.next());
+                            rs.close();
+                        }
+                        
+                        successes.incrementAndGet();
+                    } catch (SQLException e) {
+                        throw new RuntimeException("cons " + cons + ", tx " + tx, e);
+                    }
+                }
+            }, "commit-" + i);
+            tests [i].setDaemon(true);
+            tests [i].start();
+        }
+        
+        try {
+            for (int i = 0; i < cons; ++i) {
+                tests [i].join();
             }
             assertTrue(successes.get() == cons);
         } catch (InterruptedException e) {

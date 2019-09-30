@@ -108,6 +108,7 @@ public class TransactionStatement extends SQLStatement {
             this.context.releaseTransaction(this, false);
             break;
         }
+        
         super.complete(success);
     }
     

@@ -20,10 +20,13 @@ import java.sql.SQLException;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
+import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+
 import static org.sqlite.util.ConvertUtils.*;
+
 import org.sqlite.util.StringUtils;
 
 /** DROP {DATABASE | SCHEMA} [IF EXISTS] dbname, requires superuser privilege.
@@ -73,11 +76,13 @@ public class DropDatabaseStatement extends MetaStatement {
     }
     
     @Override
-    public void postResult() {
-        super.postResult();
+    public void complete(boolean success) throws ImplicitCommitException, IllegalStateException {
+        super.complete(success);
         
-        SQLiteProcessor proc = getContext();
-        proc.getServer().flushCatalogs();
+        if (success) {
+            SQLiteProcessor proc = getContext();
+            proc.getServer().flushCatalogs();
+        }
     }
     
     @Override

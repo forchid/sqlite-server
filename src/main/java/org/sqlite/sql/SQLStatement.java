@@ -239,42 +239,36 @@ public class SQLStatement implements AutoCloseable {
         
     }
     
-    /**
-     * Cleanup work after handling result of SQL execution
-     * @throws IllegalStateException if SQL context closed or access metaDb error
-     */
-    public void postResult() throws IllegalStateException {
-        if (this.prepared) {
-            return;
-        }
-        
-        complete(true);
-    }
-    
     /**Cleanup work after the whole execution of this statement complete
      * 
      * @param success the execution of this statement is successful or not
-     * @throws IllegalStateException if SQL context closed or access metaDb error etc
+     * @throws IllegalStateException if failure of rollback, SQL context closed or access metaDb error
+     * @throws ImplicitCommitException if failure of commit an implicit transaction
      */
-    public void complete(boolean success) throws IllegalStateException {
+    public void complete(boolean success) throws ImplicitCommitException, IllegalStateException {
         SQLContext context = this.context;
         final boolean autoCommit = context.isAutoCommit();
         context.trace(log, "tx: autoCommit {} <-", autoCommit);
         
         if (this.implicitTx) {
             assert autoCommit;
-            try {
-                if (success) {
+            if (success) {
+                try {
+                    // "COMMIT" maybe busy in DELETE journal mode, so we need retry to commit later
                     execute("commit");
                     context.trace(log, "tx: commit an implicit transaction");
-                } else {
+                } catch (SQLException e) {
+                    throw new ImplicitCommitException(e);
+                }
+            } else {
+                try {
                     execute("rollback");
                     context.trace(log, "tx: rollback an implicit transaction");
+                } catch (SQLException e) {
+                    throw new IllegalStateException("Can't rollback an implicit transaction", e);
                 }
-                this.implicitTx = false;
-            } catch (SQLException e) {
-                throw new IllegalStateException("Can't complete an implicit transaction", e);
             }
+            this.implicitTx = false;
         }
         
         if (autoCommit) {

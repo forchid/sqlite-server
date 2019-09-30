@@ -22,9 +22,11 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
+import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+
 import static org.sqlite.util.ConvertUtils.*;
 
 /** CREATE {DATABASE | SCHEMA} [IF NOT EXISTS] dbname [{LOCATION | DIRECTORY} 'data-dir']
@@ -73,10 +75,13 @@ public class CreateDatabaseStatement extends MetaStatement {
     }
     
     @Override
-    public void postResult() {
-        super.postResult();
-        SQLiteProcessor proc = getContext();
-        proc.getServer().flushCatalogs();
+    public void complete(boolean success) throws ImplicitCommitException, IllegalStateException {
+        super.complete(success);
+        
+        if (success) {
+            SQLiteProcessor proc = getContext();
+            proc.getServer().flushCatalogs();
+        }
     }
     
     @Override

@@ -158,7 +158,6 @@ public class TransactionTest extends TestDbBase {
     }
     
     private void rrTxTest(int times, int cons) throws SQLException {
-        long joinTimeout = 3000L;
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             ResultSet rs = s.executeQuery("select count(*) from accounts");
@@ -177,7 +176,7 @@ public class TransactionTest extends TestDbBase {
                 try {
                     for (int j = 0; j < cons; ++j) {
                         Transaction reader = readers[j];
-                        reader.join(joinTimeout);
+                        reader.join();
                         assertTrue(reader.isOk());
                     }
                 } catch (InterruptedException e) {
@@ -189,7 +188,6 @@ public class TransactionTest extends TestDbBase {
     }
     
     private void rwTxTest(int times, int cons) throws SQLException {
-        long joinTimeout = 3000L;
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             ResultSet rs = s.executeQuery("select count(*) from accounts");
@@ -212,7 +210,7 @@ public class TransactionTest extends TestDbBase {
                 try {
                     for (int j = 0; j < cons; ++j) {
                         Transaction tx = txList[j];
-                        tx.join(joinTimeout);
+                        tx.join();
                         assertTrue(tx.isOk());
                     }
                 } catch (InterruptedException e) {
@@ -224,7 +222,6 @@ public class TransactionTest extends TestDbBase {
     }
     
     private void wwTxTest(int times, int cons) throws SQLException {
-        long joinTimeout = 3000L;
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             ResultSet rs = s.executeQuery("select count(*) from accounts");
@@ -244,7 +241,7 @@ public class TransactionTest extends TestDbBase {
                 try {
                     for (int j = 0; j < cons; ++j) {
                         Transaction tx = txList[j];
-                        tx.join(joinTimeout);
+                        tx.join();
                         assertTrue(tx.isOk());
                     }
                 } catch (InterruptedException e) {
@@ -282,9 +279,7 @@ public class TransactionTest extends TestDbBase {
         public void run() {
             try (Connection c = test.getConnection(true)){
                 Statement s = c.createStatement();
-                if (!c.getAutoCommit()) {
-                    c.setAutoCommit(true);
-                }
+                c.setAutoCommit(true);
                 s.execute("begin read only");
                 ResultSet rs = s.executeQuery("select id, name, balance from accounts where id = 1");
                 assertTrue(rs.next());

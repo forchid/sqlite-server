@@ -47,16 +47,18 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.core.CoreResultSet;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.NetworkException;
-import org.sqlite.server.SQLiteBusyContext;
 import org.sqlite.server.SQLiteProcessorTask;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteQueryTask;
 import org.sqlite.server.SQLiteWorker;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+
 import static org.sqlite.util.ConvertUtils.*;
+
 import org.sqlite.util.DateTimeUtils;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SecurityUtils;
@@ -569,14 +571,8 @@ public class PgProcessor extends SQLiteProcessor {
             }
             case 'S': {
                 server.trace(log, "Sync");
-                if (this.portal != null) {
-                    SQLStatement sqlStmt = this.portal.prep.sql;
-                    sqlStmt.complete(!this.xQueryFailed);
-                    this.portal = null;
-                }
-                this.xQueryFailed = false;
-                this.needFlush = true;
-                sendReadyForQuery();
+                SyncProcessTask syncTask = new SyncProcessTask(this);
+                startQueryTask(syncTask);
                 break;
             }
             case 'Q': {
@@ -1282,24 +1278,14 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 
                 int count = this.sqlStmt.getUpdateCount();
-                this.sqlStmt.postResult();
                 proc.sendCommandComplete(this.sqlStmt, count, resultSet);
                 proc.xQueryFailed = false;
             } catch (SQLException e) {
-                if (!timeout && proc.server.isBlocked(e)) {
-                    SQLiteBusyContext context = proc.getBusyContext();
-                    if (context == null) {
-                        int busyTimeout = proc.server.getBusyTimeout();
-                        context = new SQLiteBusyContext(busyTimeout);
-                        proc.setBusyContext(context);
-                    }
-                    proc.getWorker().busy(proc);
-                    this.async = true;
+                if (handleBlocked(timeout, e)) {
                     return;
                 }
                 
                 if (this.sqlStmt.executionException(e)) {
-                    this.sqlStmt.postResult();
                     proc.sendCommandComplete(this.sqlStmt, 0, false);
                     proc.xQueryFailed = false;
                 } else {
@@ -1351,7 +1337,6 @@ public class PgProcessor extends SQLiteProcessor {
                 
                 // detach only after resultSet finished
                 int n = stmt.getUpdateCount();
-                stmt.postResult();
                 proc.sendCommandComplete(stmt, n, true);
                 proc.xQueryFailed = false;
             } catch (SQLException e) {
@@ -1421,7 +1406,7 @@ public class PgProcessor extends SQLiteProcessor {
                         }
                     }
                     int n = this.curStmt.getUpdateCount();
-                    this.curStmt.postResult();
+                    this.curStmt.complete(true);
                     IoUtils.close(this.curStmt);
                     this.rs = null;
                     proc.sendCommandComplete(this.curStmt, n, true);
@@ -1458,14 +1443,14 @@ public class PgProcessor extends SQLiteProcessor {
                                 }
                             }
                             int n = sqlStmt.getUpdateCount();
-                            sqlStmt.postResult();
+                            sqlStmt.complete(true);
                             IoUtils.close(sqlStmt);
                             this.rs = null;
                             this.curStmt = null;
                             proc.sendCommandComplete(sqlStmt, n, result);
                         } else {
                             int count = sqlStmt.getUpdateCount();
-                            sqlStmt.postResult();
+                            sqlStmt.complete(true);
                             proc.sendCommandComplete(sqlStmt, count, result);
                         }
                         
@@ -1475,22 +1460,12 @@ public class PgProcessor extends SQLiteProcessor {
                             sqlStmt = this.parser.next();
                         }
                     } catch (SQLException e) {
-                        if (!timeout && proc.server.isBlocked(e)) {
-                            sqlStmt.complete(false);
-                            this.curStmt = sqlStmt;
-                            resetTask = false;
-                            SQLiteBusyContext busyContext = proc.getBusyContext();
-                            if (busyContext == null) {
-                                int busyTimeout = proc.server.getBusyTimeout();
-                                busyContext = new SQLiteBusyContext(busyTimeout);
-                                proc.setBusyContext(busyContext);
-                            }
-                            proc.getWorker().busy(proc);
-                            this.async = true;
+                        if (handleBlocked(timeout, e)) {
                             return;
                         }
+                        
                         if (sqlStmt.executionException(e)) {
-                            sqlStmt.postResult();
+                            sqlStmt.complete(true);
                             proc.sendCommandComplete(sqlStmt, 0, false);
                             // try next
                             if (next=this.parser.hasNext()) {
@@ -1536,4 +1511,48 @@ public class PgProcessor extends SQLiteProcessor {
         
     }
 
+    static class SyncProcessTask extends SQLiteQueryTask {
+        
+        public SyncProcessTask(PgProcessor proc) {
+            super(proc);
+        }
+
+        @Override
+        protected void execute() throws IOException {
+            PgProcessor proc = (PgProcessor)this.proc;
+            Portal portal = proc.portal;
+            
+            if (portal != null) { // after bind 
+                SQLStatement sqlStmt = portal.prep.sql;
+                boolean success = !proc.xQueryFailed;
+                boolean timeout = true;
+                
+                try {
+                    checkBusyState();
+                    timeout = false;
+                    sqlStmt.complete(success);
+                } catch (ImplicitCommitException e) {
+                    SQLException cause = e.getCause();
+                    if (handleBlocked(timeout, cause)) {
+                        return;
+                    }
+                    
+                    sqlStmt.complete(false); // rollback
+                    proc.sendErrorResponse(cause);
+                } catch (SQLException cause) {
+                    sqlStmt.complete(false); // rollback
+                    proc.sendErrorResponse(cause);
+                }
+            }
+            
+            proc.portal = null;
+            proc.xQueryFailed = false;
+            proc.needFlush = true;
+            proc.sendReadyForQuery();
+            
+            finish();
+        }
+        
+    }
+    
 }

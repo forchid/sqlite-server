@@ -16,6 +16,7 @@
 package org.sqlite.server;
 
 import java.io.IOException;
+import java.sql.SQLException;
 
 /** SQLite query task
  * 
@@ -29,6 +30,24 @@ public abstract class SQLiteQueryTask extends SQLiteProcessorTask {
     
     protected SQLiteQueryTask(SQLiteProcessor proc) {
         super(proc);
+    }
+    
+    public boolean handleBlocked(boolean timeout, SQLException cause) {
+        SQLiteProcessor proc = this.proc;
+        
+        if (!timeout && proc.server.isBlocked(cause)) {
+            SQLiteBusyContext busyContext = getBusyContext();
+            if (busyContext == null) {
+                int busyTimeout = proc.server.getBusyTimeout();
+                busyContext = new SQLiteBusyContext(busyTimeout);
+                setBusyContext(busyContext);
+            }
+            proc.getWorker().busy(proc);
+            this.async = true;
+            return true;
+        } else {
+            return false;
+        }
     }
     
     public SQLiteBusyContext getBusyContext() {
@@ -49,8 +68,8 @@ public abstract class SQLiteQueryTask extends SQLiteProcessorTask {
     
     @Override
     public void finish() throws IOException {
-        setBusyContext(null);
         this.proc.queryTask = null;
+        setBusyContext(null);
         super.finish();
     }
     

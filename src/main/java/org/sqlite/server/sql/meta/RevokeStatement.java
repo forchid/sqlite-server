@@ -21,6 +21,7 @@ import java.util.Set;
 import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.sql.meta.GrantStatement.Grantee;
+import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
@@ -153,10 +154,13 @@ public class RevokeStatement extends MetaStatement {
     }
     
     @Override
-    public void postResult() {
-        super.postResult();
-        SQLiteProcessor proc = getContext();
-        proc.getServer().flushPrivileges();
+    public void complete(boolean success) throws ImplicitCommitException, IllegalStateException {
+        super.complete(success);
+        
+        if (success) {
+            SQLiteProcessor proc = getContext();
+            proc.getServer().flushPrivileges();
+        }
     }
     
     public static String[] getPrivileges() {

@@ -270,7 +270,7 @@ public abstract class TestDbBase extends TestBase {
         protected boolean hasNextCalled;
         
         private int i = 0;
-        private int n = initArgsList.length;
+        private int n = 1;//initArgsList.length;
         
         protected DbTestEnvIterator(TestDbBase base) {
             this.base = base;
