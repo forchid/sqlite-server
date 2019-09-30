@@ -20,6 +20,7 @@ import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Iterator;
 
 import junit.framework.TestCase;
 
@@ -28,7 +29,7 @@ import junit.framework.TestCase;
  * @since 2019-08-31
  *
  */
-public abstract class TestBase extends TestCase {
+public abstract class TestBase extends TestCase implements Iterable<TestBase> {
     
     static final String LINESEP = System.getProperty("line.separator");
     protected static boolean disableINFO = false, disableERROR = true;
@@ -47,6 +48,31 @@ public abstract class TestBase extends TestCase {
     }
     
     protected abstract void doTest() throws SQLException;
+    
+    public Iterator<TestBase> iterator() {
+        final TestBase base = this;
+        return new Iterator<TestBase> () {
+            
+            boolean hasNext = true;
+
+            @Override
+            public boolean hasNext() {
+                return this.hasNext;
+            }
+
+            @Override
+            public TestBase next() {
+                this.hasNext = false;
+                return base;
+            }
+
+            @Override
+            public void remove() {
+                throw new UnsupportedOperationException();
+            }
+            
+        };
+    }
     
     protected void cleanup() {
         // NOOP

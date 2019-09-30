@@ -22,6 +22,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Iterator;
 
 import org.apache.tomcat.jdbc.pool.DataSource;
 import org.sqlite.server.SQLiteServer;
@@ -40,30 +41,90 @@ public abstract class TestDbBase extends TestBase {
     protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+params;
     protected static String password = "123456";
     
-    protected static final SQLiteServer server;
-    protected static final DataSource dataSource;
-    static {
-        String dataDir= getDataDir();
+    protected static final String dataDir= getDataDir();
+    
+    protected static final String [] environments = {
+        "WAL environment", "DELETE environment"
+    };
+    
+    protected static final String [][] initArgsList = new String[][] {
+        {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
+        {"-D", dataDir, "-p", password, "--journal-mode", "delete"}
+    };
+    
+    protected static final String [][] bootArgsList = new String[][] {
+        {"-D", dataDir, //"--trace-error", "-T",
+            "--worker-count", getWorkCount()+"", "--max-conns", maxConns+"",
+            "--journal-mode", "wal"},
+        {"-D", dataDir, //"--trace-error", "-T", 
+            "--worker-count", getWorkCount()+"", "--max-conns", maxConns+"",
+            "--journal-mode", "delete"}
+    };
+    
+    protected SQLiteServer server;
+    protected DataSource dataSource;
+    
+    static class EnvironmentIterator implements Iterator<TestBase> {
+        private final TestDbBase base;
+        private int i;
+        private int n = 1;//initArgsList.length;
         
-        deleteDataDir(new File(dataDir));
-        String[] initArgs = {"-D", dataDir, "-p", password};
-        SQLiteServer svr = SQLiteServer.create(initArgs);
-        svr.initdb(initArgs);
-        IoUtils.close(svr);
+        EnvironmentIterator(TestDbBase base) {
+            this.base = base;
+        }
         
-        String[] bootArgs = {"-D", dataDir, //"--trace-error", "-T",
-                "--worker-count", getWorkCount()+"", "--max-conns", maxConns+""};
-        server = SQLiteServer.create(bootArgs);
-        server.bootAsync(bootArgs);
+        @Override
+        public boolean hasNext() {
+            boolean hasNext =  i < n;
+            if (!hasNext) {
+                cleanup();
+            }
+            return hasNext;
+        }
         
-        dataSource = new DataSource();
-        dataSource.setMaxActive(getMaxConns());
-        dataSource.setMaxIdle(0);
-        dataSource.setMinIdle(0);
-        dataSource.setDriverClassName("org.postgresql.Driver");
-        dataSource.setUrl(url);
-        dataSource.setUsername(getUserDefault());
-        dataSource.setPassword(password);
+        private void cleanup() {
+            IoUtils.close(base.server);
+            if (base.dataSource != null) {
+                base.dataSource.close(true);
+            }
+            deleteDataDir(new File(dataDir));
+        }
+
+        @Override
+        public TestBase next() {
+            cleanup();
+            
+            TestBase.println("Test in %s", environments[i]);
+            String[] initArgs = initArgsList[i];
+            SQLiteServer svr = SQLiteServer.create(initArgs);
+            svr.initdb(initArgs);
+            IoUtils.close(svr);
+            
+            String[] bootArgs = bootArgsList[i];
+            base.server = SQLiteServer.create(bootArgs);
+            base.server.bootAsync(bootArgs);
+            
+            base.dataSource = new DataSource();
+            base.dataSource.setMaxActive(getMaxConns());
+            base.dataSource.setMaxIdle(0);
+            base.dataSource.setMinIdle(0);
+            base.dataSource.setDriverClassName("org.postgresql.Driver");
+            base.dataSource.setUrl(url);
+            base.dataSource.setUsername(getUserDefault());
+            base.dataSource.setPassword(password);
+            
+            ++i;
+            return base;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+    }
+    
+    public Iterator<TestBase> iterator() {
+        return new EnvironmentIterator(this);
     }
     
     protected static String getUrl(int port, String path) {

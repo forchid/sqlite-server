@@ -53,12 +53,14 @@ public class TestAll extends TestBase {
     
     protected void doTestAll() throws SQLException {
         for(TestBase test: tests) {
-            String className = test.getClass().getName();
-            long start = System.currentTimeMillis();
-            println("%s start", className);
-            test.test();
-            long end = System.currentTimeMillis();
-            println("%s ok(%dms)", className, end - start);
+            for (TestBase t: test) {
+                String className = t.getClass().getName();
+                long start = System.currentTimeMillis();
+                println("%s start", className);
+                test.test();
+                long end = System.currentTimeMillis();
+                println("%s ok(%dms)", className, end - start);
+            }
         }
         tests.clear();
     }

@@ -25,7 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.sqlite.TestDbBase;
-import org.sqlite.util.IoUtils;
 
 /**
  * @author little-pan
@@ -35,11 +34,7 @@ import org.sqlite.util.IoUtils;
 public class ConnectionTest extends TestDbBase {
     
     public static void main(String[] args) throws SQLException {
-        try {
-            new ConnectionTest().test();
-        } finally {
-            IoUtils.close(server);
-        }
+        new ConnectionTest().test();
     }
     
     @Override

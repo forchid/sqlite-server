@@ -51,6 +51,7 @@ import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLContext;
 import org.sqlite.util.IoUtils;
+import org.sqlite.util.StringUtils;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
  * and can be started and stopped.
@@ -71,7 +72,9 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
-    public static final int BUSY_TIMEOUT_DEFAULT  = 50000;
+    // SQLite settings
+    public static final int BUSY_TIMEOUT_DEFAULT = 50000;
+    public static final JournalMode JOURNAL_MODE_DEFAULT = JournalMode.WAL;
     
     // command list
     public static final String CMD_INITDB = "initdb";
@@ -91,6 +94,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected int maxConns = MAX_CONNS_DEFAULT;
     private int maxPid;
     protected int busyTimeout = BUSY_TIMEOUT_DEFAULT;
+    protected JournalMode journalMode = JOURNAL_MODE_DEFAULT;
     private final ConcurrentMap<String, SQLContext> dbWriteLocks;
     protected File dataDir = new File(System.getProperty("user.home"), "sqlite3Data");
     protected boolean trace;
@@ -387,6 +391,9 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.port = Integer.decode(args[++i]);
             } else if ("--data-dir".equals(a) || "-D".equals(a)) {
                 this.dataDir = new File(args[++i]);
+            } else if ("--journal-mode".equals(a)) {
+                String mode = StringUtils.toUpperEnglish(args[++i]);
+                this.journalMode = JournalMode.valueOf(mode);
             } else if ("--max-conns".equals(a)) {
                 this.maxConns = Integer.decode(args[++i]);
             } else if ("--worker-count".equals(a)) {
@@ -445,6 +452,7 @@ public abstract class SQLiteServer implements AutoCloseable {
             InetSocketAddress local = new InetSocketAddress(addr, getPort());
             int backlog = Math.min(getMaxConns() * this.workerCount, 1000);
             this.serverSocket = ServerSocketChannel.open();
+            this.serverSocket.setOption(StandardSocketOptions.SO_REUSEADDR, true);
             this.serverSocket.bind(local, backlog);
             this.serverSocket.configureBlocking(false);
             this.selector = Selector.open();
@@ -673,7 +681,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public SQLiteConfig newSQLiteConfig(int busyTimeout) {
         SQLiteConfig config = new SQLiteConfig();
-        config.setJournalMode(JournalMode.WAL);
+        config.setJournalMode(this.journalMode);
         config.setSynchronous(SynchronousMode.NORMAL);
         config.setBusyTimeout(busyTimeout);
         config.enforceForeignKeys(true);
@@ -946,6 +954,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --host|-H       <host>        Superuser's login host, IP, or '%', default "+HOST_DEFAULT+"\n"+
                 "  --trace|-T                    Trace SQLite server execution\n" +
                 "  --trace-error                 Trace error information of SQLite server execution\n"+
+                "  --journal-mode  <mode>        SQLite journal_mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
                 "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
     }
@@ -962,6 +971,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --trace|-T                    Trace SQLite server execution\n" +
                 "  --trace-error                 Trace error information of SQLite server execution\n"+
                 "  --busy-timeout  <millis>      SQL statement busy timeout, default "+BUSY_TIMEOUT_DEFAULT+"\n"+
+                "  --journal-mode  <mode>        SQLite journal_mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg";
     }
     
