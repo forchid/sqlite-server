@@ -51,7 +51,7 @@ public abstract class TestDbBase extends TestBase {
     
     protected static final String [][] initArgsList = new String[][] {
         {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
-        {"-D", dataDir, "-p", password, "--journal-mode", "delete"}
+        {"-D", dataDir, "-p", password, "--journal-mode", "delete", "-S", "off"}
     };
     
     protected static final String [][] bootArgsList = new String[][] {
@@ -60,7 +60,7 @@ public abstract class TestDbBase extends TestBase {
             "--journal-mode", "wal"},
         {"-D", dataDir, //"--trace-error", //"-T", 
             "--worker-count", getWorkCount()+"", "--max-conns", maxConns+"",
-            "--journal-mode", "delete"}
+            "--journal-mode", "delete", "-S", "off"}
     };
     
     protected DbTestEnv currentEnv;
@@ -244,7 +244,7 @@ public abstract class TestDbBase extends TestBase {
             
             this.dataSource = new DataSource();
             this.dataSource.setMaxActive(getMaxConns());
-            this.dataSource.setMaxIdle(0);
+            this.dataSource.setMaxIdle(10);
             this.dataSource.setMinIdle(0);
             this.dataSource.setDriverClassName("org.postgresql.Driver");
             this.dataSource.setUrl(url);
@@ -270,7 +270,7 @@ public abstract class TestDbBase extends TestBase {
         protected boolean hasNextCalled;
         
         private int i = 0;
-        private int n = 1;//initArgsList.length;
+        private int n = initArgsList.length;
         
         protected DbTestEnvIterator(TestDbBase base) {
             this.base = base;

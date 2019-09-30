@@ -30,6 +30,7 @@ import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Iterator;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
@@ -37,7 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sqlite.SQLiteConfig;
+import org.sqlite.JDBC;
 import org.sqlite.SQLiteConfig.Encoding;
 import org.sqlite.SQLiteConfig.JournalMode;
 import org.sqlite.SQLiteConfig.SynchronousMode;
@@ -52,6 +53,9 @@ import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLContext;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.StringUtils;
+
+import static java.lang.String.*;
+import static org.sqlite.SQLiteConfig.Pragma;
 
 /**The SQLite server that abstracts various server's protocol, based on TCP/IP, 
  * and can be started and stopped.
@@ -72,9 +76,11 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
+    public static final int CONNECT_TIMEOUT_DEFAULT = 30000;
     // SQLite settings
     public static final int BUSY_TIMEOUT_DEFAULT = 50000;
     public static final JournalMode JOURNAL_MODE_DEFAULT = JournalMode.WAL;
+    public static final SynchronousMode SYNCHRONOUS_DEFAULT = SynchronousMode.NORMAL;
     
     // command list
     public static final String CMD_INITDB = "initdb";
@@ -93,8 +99,10 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected int port = PORT_DEFAULT;
     protected int maxConns = MAX_CONNS_DEFAULT;
     private int maxPid;
+    protected int connectTimeout = CONNECT_TIMEOUT_DEFAULT;
     protected int busyTimeout = BUSY_TIMEOUT_DEFAULT;
     protected JournalMode journalMode = JOURNAL_MODE_DEFAULT;
+    protected SynchronousMode synchronous = SYNCHRONOUS_DEFAULT;
     private final ConcurrentMap<String, SQLContext> dbWriteLocks;
     protected File dataDir = new File(System.getProperty("user.home"), "sqlite3Data");
     protected boolean trace;
@@ -396,6 +404,9 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.journalMode = JournalMode.valueOf(mode);
             } else if ("--max-conns".equals(a)) {
                 this.maxConns = Integer.decode(args[++i]);
+            } else if ("--synchronous".equals(a) || "-S".equals(a)) {
+                String mode = StringUtils.toUpperEnglish(args[++i]);
+                this.synchronous = SynchronousMode.valueOf(mode);
             } else if ("--worker-count".equals(a)) {
                 int n = Math.max(1, Integer.decode(args[++i]));
                 this.workerCount = Math.min(MAX_WORKER_COUNT, n);
@@ -658,15 +669,12 @@ public abstract class SQLiteServer implements AutoCloseable {
         }
         trace(log, "SQLite connection {}", url);
         
-        SQLiteConfig config = newSQLiteConfig(3000/* connect timeout */);
-        SQLiteConnection conn = (SQLiteConnection)config.createConnection(url);
-        // init connection
+        // Here shouldn't use SQLiteConfig.createConnection() to create connection:
+        // 1. It maybe lead to busy issue for applying some PRAGMA commands.
+        // 2. The DB resources can't be released when any SQL exception occurs.
+        SQLiteConnection conn = JDBC.createConnection(url, new Properties());
         boolean failed = true;
         try {
-            Statement stmt = conn.createStatement();
-            // reset busy_timeout after connection
-            stmt.execute("pragma busy_timeout = 0;");
-            stmt.close();
             dbIdle();
             failed = false;
             return conn;
@@ -677,18 +685,24 @@ public abstract class SQLiteServer implements AutoCloseable {
         }
     }
     
-    public SQLiteConfig newSQLiteConfig() {
-        return newSQLiteConfig(0);
+    /**
+     * Maybe block so that shouldn't call it when creating it.
+     */
+    public void initConnection(SQLiteConnection connection) throws SQLException {
+        initConnection(connection, 0/* non-blocking mode*/);
     }
     
-    public SQLiteConfig newSQLiteConfig(int busyTimeout) {
-        SQLiteConfig config = new SQLiteConfig();
-        config.setJournalMode(this.journalMode);
-        config.setSynchronous(SynchronousMode.NORMAL);
-        config.setBusyTimeout(busyTimeout);
-        config.enforceForeignKeys(true);
-        config.setEncoding(Encoding.UTF8);
-        return config;
+    /**
+     * Maybe block so that shouldn't call it when creating it.
+     */
+    public void initConnection(SQLiteConnection connection, int busyTimeout) throws SQLException {
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute(format("pragma %s=%s", Pragma.BUSY_TIMEOUT, busyTimeout));
+            stmt.execute(format("pragma %s=%s", Pragma.JOURNAL_MODE, this.journalMode));
+            stmt.execute(format("pragma %s=%s", Pragma.SYNCHRONOUS, this.synchronous));
+            stmt.execute(format("pragma %s=%s", Pragma.FOREIGN_KEYS, true));
+            stmt.execute(format("pragma %s=%s", Pragma.ENCODING, Encoding.UTF8));
+        }
     }
     
     public boolean isStopped() {
@@ -705,6 +719,10 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public int getBusyTimeout() {
         return this.busyTimeout;
+    }
+    
+    public int getConnectTimeout() {
+        return this.connectTimeout;
     }
     
     public String getName() {
@@ -961,9 +979,10 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --host|-H       <host>        Superuser's login host, IP, or '%', default "+HOST_DEFAULT+"\n"+
                 "  --trace|-T                    Trace SQLite server execution\n" +
                 "  --trace-error                 Trace error information of SQLite server execution\n"+
-                "  --journal-mode  <mode>        SQLite journal_mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
+                "  --journal-mode  <mode>        SQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
+                "  --synchronous|-S<sync>        SQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
-                "  --auth-method|-A <authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
+                "  --auth-method|-A<authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
     }
     
     protected String getBootHelp() {
@@ -978,7 +997,8 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --trace|-T                    Trace SQLite server execution\n" +
                 "  --trace-error                 Trace error information of SQLite server execution\n"+
                 "  --busy-timeout  <millis>      SQL statement busy timeout, default "+BUSY_TIMEOUT_DEFAULT+"\n"+
-                "  --journal-mode  <mode>        SQLite journal_mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
+                "  --journal-mode  <mode>        SQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
+                "  --synchronous|-S<sync>        SQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg";
     }
     

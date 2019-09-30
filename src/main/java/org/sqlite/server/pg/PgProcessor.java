@@ -358,8 +358,8 @@ public class PgProcessor extends SQLiteProcessor {
                             authOk();
                         } else {
                             sendAuthenticationMessage();
+                            this.initDone = true;
                         }
-                        this.initDone = true;
                     }
                 }
                 break;
@@ -637,7 +637,7 @@ public class PgProcessor extends SQLiteProcessor {
         this.writeTask.run();
     }
     
-    protected boolean authOk() throws IOException {
+    protected void authOk() throws IOException {
         SQLiteConnection conn = null;
         boolean failed = true;
         try {
@@ -647,15 +647,13 @@ public class PgProcessor extends SQLiteProcessor {
             if (isTrace()) {
                 trace(log, "SQLite init: autoCommit {}", conn.getAutoCommit());
             }
-            setConnection(conn);
-            sendAuthenticationOk();
+            InitQueryTask initTask = new InitQueryTask(this, conn);
+            startQueryTask(initTask);
             failed = false;
-            return true;
         } catch (SQLException cause) {
             sendErrorResponse(cause);
             stop();
             traceError(log, "Can't init database", cause);
-            return false;
         } finally {
             if(failed) {
                 IoUtils.close(conn);
@@ -1245,6 +1243,43 @@ public class PgProcessor extends SQLiteProcessor {
          * The prepared object.
          */
         Prepared prep;
+    }
+    
+    static class InitQueryTask extends SQLiteQueryTask {
+        final SQLiteConnection connection;
+        
+        protected InitQueryTask(PgProcessor proc, SQLiteConnection connection) {
+            super(proc);
+            this.connection = connection;
+        }
+
+        @Override
+        protected void execute() throws IOException {
+            PgProcessor proc = (PgProcessor)this.proc;
+            boolean timeout = true;
+            try {
+                checkBusyState();
+                timeout = false;
+                proc.server.initConnection(connection);
+                proc.setConnection(this.connection);
+                proc.worker.dbIdle();
+            } catch (SQLException e) {
+                long currentTime = System.currentTimeMillis();
+                int passTime = (int)(currentTime - proc.getCreateTime());
+                int connectTimeout = proc.server.getConnectTimeout();
+                int busyTimeout = connectTimeout - passTime;
+                if (busyTimeout < 0 || !handleBlocked(timeout, e, busyTimeout)) {
+                    proc.sendErrorResponse(e);
+                    proc.stop();
+                }
+                return;
+            }
+            
+            proc.sendAuthenticationOk();
+            proc.initDone = true;
+            finish();
+        }
+        
     }
     
     static class XQueryTask extends SQLiteQueryTask {

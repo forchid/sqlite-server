@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -39,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sqlite.SQLiteConfig;
+import org.sqlite.JDBC;
 import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.Db;
 import org.sqlite.server.sql.meta.User;
@@ -153,8 +154,18 @@ public class SQLiteMetaDb implements AutoCloseable {
             throw new IllegalStateException("MetaDb has been closed");
         }
         
-        SQLiteConfig config = this.server.newSQLiteConfig(3000);
-        return (SQLiteConnection)config.createConnection("jdbc:sqlite:"+this.file);
+        final String url = "jdbc:sqlite:"+this.file;
+        SQLiteConnection conn = JDBC.createConnection(url, new Properties());
+        boolean failed = true;
+        try {
+            this.server.initConnection(conn, 3000);
+            failed = false;
+            return conn;
+        } finally {
+            if (failed) {
+                conn.close();
+            }
+        }
     }
     
     public String attachTo(SQLiteConnection conn) throws SQLException {

@@ -80,7 +80,8 @@ public abstract class SQLiteProcessorTask implements Runnable {
     protected void checkBusyState() throws SQLException {
         SQLiteBusyContext ctx = this.proc.getBusyContext();
         if (ctx != null && !ctx.isSleepable() && ctx.isTimeout()) {
-            throw convertError(SQLiteErrorCode.SQLITE_BUSY);
+            String message = "The database file is locked and busy timeout";
+            throw convertError(SQLiteErrorCode.SQLITE_BUSY, message);
         }
         
         if (ctx != null && ctx.isCanceled()) {

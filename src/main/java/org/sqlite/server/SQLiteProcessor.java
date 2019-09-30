@@ -79,6 +79,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     protected final SQLiteServer server;
     protected final int id;
+    protected final long createTime;
     protected String name;
     protected int slot = -1; // slot in SlotAllocator
     protected SQLiteWorker worker;
@@ -93,7 +94,9 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     private String metaSchema = null;
     protected Stack<TransactionStatement> savepointStack;
     
-    protected SQLiteProcessor(SQLiteServer server, SocketChannel channel, int id) throws NetworkException {
+    protected SQLiteProcessor(SQLiteServer server, SocketChannel channel, int id) 
+            throws NetworkException {
+        this.createTime = System.currentTimeMillis();
         this.channel = channel;
         this.server = server;
         this.id = id;
@@ -107,6 +110,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         
         this.writeQueue = new ArrayDeque<>();
         this.savepointStack = new Stack<>();
+    }
+    
+    public long getCreateTime() {
+        return this.createTime;
     }
     
     public int getId() {

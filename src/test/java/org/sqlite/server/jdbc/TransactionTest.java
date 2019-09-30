@@ -293,7 +293,7 @@ public class TransactionTest extends TestDbBase {
                 s.execute("commit");
                 this.ok = true;
             } catch (SQLException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace(System.err);
             }
         }
         

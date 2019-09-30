@@ -33,12 +33,17 @@ public abstract class SQLiteQueryTask extends SQLiteProcessorTask {
     }
     
     public boolean handleBlocked(boolean timeout, SQLException cause) {
+        int busyTimeout = proc.server.getBusyTimeout();
+        return (handleBlocked(timeout, cause, busyTimeout));
+    }
+    
+    public boolean handleBlocked(boolean timeout, SQLException cause, int busyTimeout) {
         SQLiteProcessor proc = this.proc;
         
         if (!timeout && proc.server.isBlocked(cause)) {
             SQLiteBusyContext busyContext = getBusyContext();
             if (busyContext == null) {
-                int busyTimeout = proc.server.getBusyTimeout();
+                busyTimeout = Math.max(0, busyTimeout);
                 busyContext = new SQLiteBusyContext(busyTimeout);
                 setBusyContext(busyContext);
             }
