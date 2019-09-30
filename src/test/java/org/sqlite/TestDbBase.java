@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 import org.apache.tomcat.jdbc.pool.DataSource;
 import org.sqlite.server.SQLiteServer;
@@ -36,12 +37,13 @@ import org.sqlite.util.IoUtils;
 public abstract class TestDbBase extends TestBase {
     protected static final int maxConns = getMaxConns();
     
-    protected static String params = "";//"?loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log";
+    protected static String params = "?socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory";
+    //"?loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log";
     protected static String user = "root";
     protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+params;
     protected static String password = "123456";
     
-    protected static final String dataDir= getDataDir();
+    protected static final String dataDir = getDataDir();
     
     protected static final String [] environments = {
         "WAL environment", "DELETE environment"
@@ -56,75 +58,21 @@ public abstract class TestDbBase extends TestBase {
         {"-D", dataDir, //"--trace-error", "-T",
             "--worker-count", getWorkCount()+"", "--max-conns", maxConns+"",
             "--journal-mode", "wal"},
-        {"-D", dataDir, //"--trace-error", "-T", 
+        {"-D", dataDir, //"--trace-error", //"-T", 
             "--worker-count", getWorkCount()+"", "--max-conns", maxConns+"",
             "--journal-mode", "delete"}
     };
     
-    protected SQLiteServer server;
-    protected DataSource dataSource;
+    protected DbTestEnv currentEnv;
     
-    static class EnvironmentIterator implements Iterator<TestBase> {
-        private final TestDbBase base;
-        private int i;
-        private int n = 1;//initArgsList.length;
-        
-        EnvironmentIterator(TestDbBase base) {
-            this.base = base;
-        }
-        
-        @Override
-        public boolean hasNext() {
-            boolean hasNext =  i < n;
-            if (!hasNext) {
-                cleanup();
-            }
-            return hasNext;
-        }
-        
-        private void cleanup() {
-            IoUtils.close(base.server);
-            if (base.dataSource != null) {
-                base.dataSource.close(true);
-            }
-            deleteDataDir(new File(dataDir));
-        }
-
-        @Override
-        public TestBase next() {
-            cleanup();
-            
-            TestBase.println("Test in %s", environments[i]);
-            String[] initArgs = initArgsList[i];
-            SQLiteServer svr = SQLiteServer.create(initArgs);
-            svr.initdb(initArgs);
-            IoUtils.close(svr);
-            
-            String[] bootArgs = bootArgsList[i];
-            base.server = SQLiteServer.create(bootArgs);
-            base.server.bootAsync(bootArgs);
-            
-            base.dataSource = new DataSource();
-            base.dataSource.setMaxActive(getMaxConns());
-            base.dataSource.setMaxIdle(0);
-            base.dataSource.setMinIdle(0);
-            base.dataSource.setDriverClassName("org.postgresql.Driver");
-            base.dataSource.setUrl(url);
-            base.dataSource.setUsername(getUserDefault());
-            base.dataSource.setPassword(password);
-            
-            ++i;
-            return base;
-        }
-
-        @Override
-        public void remove() {
-            throw new UnsupportedOperationException();
-        }
+    public Iterator<TestEnv> iterator() {
+        return new DbTestEnvIterator(this);
     }
     
-    public Iterator<TestBase> iterator() {
-        return new EnvironmentIterator(this);
+    @Override
+    protected void cleanup() {
+        IoUtils.close(this.currentEnv);
+        super.cleanup();
     }
     
     protected static String getUrl(int port, String path) {
@@ -163,7 +111,7 @@ public abstract class TestDbBase extends TestBase {
     
     protected Connection getConnection(boolean fromPool) throws SQLException {
         if (fromPool) {
-            return dataSource.getConnection();
+            return currentEnv.dataSource.getConnection();
         }
         
         return (getConnection());
@@ -252,10 +200,6 @@ public abstract class TestDbBase extends TestBase {
         
         assertTrue(!dataDir.exists() || dataDir.delete());
     }
-    
-    protected void cleanup() {
-        server.close();
-    }
 
     protected void connectionTest(Connection conn, String sql, String result)
             throws SQLException {
@@ -272,6 +216,90 @@ public abstract class TestDbBase extends TestBase {
             } else {
                 assertTrue(result.equals(stmt.getUpdateCount()+""));
             }
+        }
+    }
+    
+    protected static class DbTestEnv extends TestEnv {
+        
+        protected SQLiteServer server;
+        protected DataSource dataSource;
+        
+        protected final int envIndex;
+        
+        protected DbTestEnv(int envIndex) {
+            int i = envIndex;
+            this.envIndex = envIndex;
+            this.name = environments[envIndex];
+            
+            deleteDataDir(new File(dataDir));
+            
+            String[] initArgs = initArgsList[i];
+            SQLiteServer svr = SQLiteServer.create(initArgs);
+            svr.initdb(initArgs);
+            IoUtils.close(svr);
+            
+            String[] bootArgs = bootArgsList[i];
+            this.server = SQLiteServer.create(bootArgs);
+            this.server.bootAsync(bootArgs);
+            
+            this.dataSource = new DataSource();
+            this.dataSource.setMaxActive(getMaxConns());
+            this.dataSource.setMaxIdle(0);
+            this.dataSource.setMinIdle(0);
+            this.dataSource.setDriverClassName("org.postgresql.Driver");
+            this.dataSource.setUrl(url);
+            this.dataSource.setUsername(getUserDefault());
+            this.dataSource.setPassword(password);
+        }
+        
+        @Override
+        public void close() {
+            if (this.dataSource != null) {
+                this.dataSource.close();
+                sleep(100L);
+            }
+            IoUtils.close(this.server);
+            deleteDataDir(new File(dataDir));
+            
+            super.close();
+        }
+    }
+    
+    protected static class DbTestEnvIterator implements Iterator<TestEnv> {
+        protected final TestDbBase base;
+        protected boolean hasNextCalled;
+        
+        private int i = 0;
+        private int n = initArgsList.length;
+        
+        protected DbTestEnvIterator(TestDbBase base) {
+            this.base = base;
+        }
+        
+        @Override
+        public boolean hasNext() {
+            this.hasNextCalled = true;
+            return (this.i < this.n);
+        }
+
+        @Override
+        public TestEnv next() {
+            if (this.hasNextCalled) {
+                if (hasNext()) {
+                    DbTestEnv env = new DbTestEnv(this.i++);
+                    this.hasNextCalled = false;
+                    return (this.base.currentEnv = env);
+                } else {
+                    throw new NoSuchElementException();
+                }
+            } else {
+                throw new IllegalStateException("hasNext() not called since the last call");
+            }
+        }
+
+        @Override
+        public void remove() {
+            
         }
     }
     

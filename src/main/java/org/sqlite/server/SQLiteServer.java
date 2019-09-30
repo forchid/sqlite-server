@@ -607,6 +607,8 @@ public abstract class SQLiteServer implements AutoCloseable {
         stopWorkers();
         // 3. Close metaDb
         IoUtils.close(this.metaDb);
+        
+        log.info("{} has stopped", this);
     }
     
     protected void stopWorkers() {
@@ -886,6 +888,11 @@ public abstract class SQLiteServer implements AutoCloseable {
         String db = context.getDbName();
         SQLContext holder = this.dbWriteLocks.get(db);
         return (holder == null || holder == context);
+    }
+    
+    @Override
+    public String toString() {
+        return getName();
     }
     
     protected int nextPid() {

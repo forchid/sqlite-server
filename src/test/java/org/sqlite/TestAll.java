@@ -43,26 +43,25 @@ public class TestAll extends TestBase {
 
     @Override
     protected void doTest() throws SQLException {
-        try {
-            addAll();
-            doTestAll();
-        } finally {
-            cleanup();
-        }
+        addAll().doTestAll();
     }
     
-    protected void doTestAll() throws SQLException {
+    @Override
+    protected void cleanup() {
+        this.tests.clear();
+        super.cleanup();
+    }
+    
+    protected TestAll doTestAll() throws SQLException {
         for(TestBase test: tests) {
-            for (TestBase t: test) {
-                String className = t.getClass().getName();
-                long start = System.currentTimeMillis();
-                println("%s start", className);
-                test.test();
-                long end = System.currentTimeMillis();
-                println("%s ok(%dms)", className, end - start);
-            }
+            String className = test.getClass().getName();
+            long start = System.currentTimeMillis();
+            println("%s start", className);
+            test.test();
+            long end = System.currentTimeMillis();
+            println("%s ok(%dms)", className, end - start);
         }
-        tests.clear();
+        return this;
     }
 
     protected TestAll add(TestBase test) {
@@ -70,7 +69,7 @@ public class TestAll extends TestBase {
         return this;
     }
     
-    protected void addAll() {
+    protected TestAll addAll() {
         add(new ConnectionTest()).
         add(new DateTimeUtilsTest()).
         add(new PreparedStatementTest()).
@@ -79,6 +78,8 @@ public class TestAll extends TestBase {
         add(new SQLParserTest()).
         add(new SQLiteServerTest()).
         add(new TransactionTest());
+        
+        return this;
     }
     
 }

@@ -35,6 +35,12 @@ public class SQLReaderTest extends TestBase {
     }
     
     @Override
+    protected void cleanup() {
+        this.ignoreNbc = false;
+        super.cleanup();
+    }
+    
+    @Override
     protected void doTest() throws SQLException {
         sqlTest("");
         sqlTest(" ", " ");

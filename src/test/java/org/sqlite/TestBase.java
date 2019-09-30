@@ -29,17 +29,30 @@ import junit.framework.TestCase;
  * @since 2019-08-31
  *
  */
-public abstract class TestBase extends TestCase implements Iterable<TestBase> {
+public abstract class TestBase extends TestCase implements Iterable<TestEnv> {
     
     static final String LINESEP = System.getProperty("line.separator");
     protected static boolean disableINFO = false, disableERROR = true;
     
+    protected int iteration = 0, iterations = 2;
+    
     public final void test() throws SQLException {
+        long since = System.currentTimeMillis();
         boolean failed = true;
         try {
-            doTest();
+            for (int i = 0; i < this.iterations; ++i) {
+                this.iteration = i;
+                for (TestEnv env : this) {
+                    println("Iteration %d: test in %s", this.iteration, env);
+                    doTest();
+                    env.close();
+                }
+                cleanup();
+            }
+            println("Total time: %dms", (System.currentTimeMillis() - since));
             failed = false;
         } finally {
+            cleanup();
             if (failed) {
                 // wait for logger
                 sleep(1000L);
@@ -49,41 +62,20 @@ public abstract class TestBase extends TestCase implements Iterable<TestBase> {
     
     protected abstract void doTest() throws SQLException;
     
-    public Iterator<TestBase> iterator() {
-        final TestBase base = this;
-        return new Iterator<TestBase> () {
-            
-            boolean hasNext = true;
-
-            @Override
-            public boolean hasNext() {
-                return this.hasNext;
-            }
-
-            @Override
-            public TestBase next() {
-                this.hasNext = false;
-                return base;
-            }
-
-            @Override
-            public void remove() {
-                throw new UnsupportedOperationException();
-            }
-            
-        };
+    public Iterator<TestEnv> iterator() {
+        return new OnceTestEnvIterator();
     }
     
     protected void cleanup() {
         // NOOP
     }
     
-    protected static void println(String format, Object ...args) {
+    public static void println(String format, Object ...args) {
         String f = format + LINESEP;
         printf(System.out, "CONS", f, args);
     }
     
-    protected static void info(String format, Object ...args) {
+    public static void info(String format, Object ...args) {
         if (disableINFO || disableERROR) {
             return;
         }
@@ -92,7 +84,7 @@ public abstract class TestBase extends TestCase implements Iterable<TestBase> {
         printf(System.out, "INFO", f, args);
     }
     
-    protected static void error(String format, Object ...args) {
+    public static void error(String format, Object ...args) {
         if (disableERROR) {
             return;
         }
@@ -101,16 +93,37 @@ public abstract class TestBase extends TestCase implements Iterable<TestBase> {
         printf(System.err, "ERROR", f, args);
     }
     
-    protected static void printf(PrintStream out, String tag, String format, Object ...args) {
-        DateFormat df = new SimpleDateFormat("HH:mm:ss.SSS");
-        String prefix = String.format("%s[%-5s][%s] ", df.format(new Date()), tag, 
+    public static void printf(PrintStream out, String tag, String format, Object ...args) {
+        DateFormat df = new SimpleDateFormat("MM/dd HH:mm:ss.SSS");
+        String prefix = String.format("%s [%-5s][%s] ", df.format(new Date()), tag, 
                 Thread.currentThread().getName());
         out.printf(prefix +format, args);
     }
     
-    protected static void sleep(long millis) {
+    public static void sleep(long millis) {
         try { Thread.sleep(millis); } 
         catch (InterruptedException e) {}
+    }
+    
+    protected static class OnceTestEnvIterator implements Iterator<TestEnv> {
+        
+        protected boolean hasNext = true;
+
+        @Override
+        public boolean hasNext() {
+            return this.hasNext;
+        }
+
+        @Override
+        public TestEnv next() {
+            this.hasNext = false;
+            return new TestEnv();
+        }
+
+        @Override
+        public void remove() {
+            
+        }
     }
     
 }

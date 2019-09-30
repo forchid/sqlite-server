@@ -43,14 +43,15 @@ public class ConnectionTest extends TestDbBase {
         
         singleConnTest();
         
-        multiConnsTest(maxConns-50, maxConns, false, 1);
-        multiConnsTest(maxConns,    maxConns, false, 10);
-        multiConnsTest(maxConns*2,  maxConns, false, 5);
-        
+        multiConnsTest(maxConns-1, maxConns, false, 1);
+        multiConnsTest(maxConns,    maxConns, false, 3);
+        multiConnsTest(maxConns+1,  maxConns, false, 1);
         sleep(1000L);
-        multiConnsTest(maxConns-50, maxConns, true, 2);
-        multiConnsTest(maxConns,    maxConns, true, 10);
-        multiConnsTest(maxConns*2,  maxConns, true, 5);
+        
+        multiConnsTest(maxConns-1, maxConns, true, 1);
+        multiConnsTest(maxConns,    maxConns, true, 3);
+        multiConnsTest(maxConns+1,  maxConns, true, 1);
+        sleep(1000L);
     }
     
     private void singleConnTest() throws SQLException {
