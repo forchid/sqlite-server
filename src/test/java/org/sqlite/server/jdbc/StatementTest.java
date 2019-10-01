@@ -41,7 +41,10 @@ public class StatementTest extends TestDbBase {
     protected void doTest() throws SQLException {
         alterUserTest();
         attachTest();
-        createTableTest();
+        createTableTest(1, false);
+        createTableTest(2, true);
+        createTableTest(1, false);
+        createTableTest(2, true);
         createUserTest();
         databaseDDLTest();
         dropUserTest();
@@ -74,7 +77,7 @@ public class StatementTest extends TestDbBase {
     }
     
     private void simpleScalarQueryTest() throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement stmt = conn.createStatement();
             assertTrue(stmt.execute("select 1;"));
             
@@ -85,15 +88,24 @@ public class StatementTest extends TestDbBase {
         }
     }
     
-    private void createTableTest() throws SQLException {
-        try (Connection conn = getConnection()) {
-            Statement stmt = conn.createStatement();
-            int n = stmt.executeUpdate("create table if not exists accounts("
-                    + "id integer primary key, "
-                    + "name varchar(50) not null,"
-                    + "balance decimal(12,1) not null)");
-            assertTrue(0 == n);
-            stmt.close();
+    private void createTableTest(int iterations, boolean connFromPool) throws SQLException {
+        for (int i = 0; i < iterations; ++i) {
+            try (Connection conn = getConnection(connFromPool)) {
+                conn.setAutoCommit(true);
+                Statement stmt = conn.createStatement();
+                int n = stmt.executeUpdate("create table if not exists accounts("
+                        + "id integer primary key, "
+                        + "name varchar(50) not null,"
+                        + "balance decimal(12,1) not null)");
+                assertTrue(0 == n);
+                
+                n = stmt.executeUpdate("create table if not exists transactions("
+                        + "id integer primary key, "
+                        + "atime datetime not null,"
+                        + "amount decimal(12,1) not null)");
+                assertTrue(0 == n);
+                stmt.close();
+            }
         }
     }
     
@@ -103,7 +115,8 @@ public class StatementTest extends TestDbBase {
     }
     
     private void doAttachTest(String dataDir) throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
+            conn.setAutoCommit(true);
             Statement s = conn.createStatement();
             int n;
             try {
@@ -115,18 +128,18 @@ public class StatementTest extends TestDbBase {
             
             // init
             n = s.executeUpdate("create user test@localhost identified by '123'");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = s.executeUpdate("grant select, insert, create on '"+getDbDefault()+"' to test@localhost");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             s.executeUpdate("drop database if exists 'attach.db'");
             if (dataDir == null) {
                 n = s.executeUpdate("create database 'attach.db'");
             } else {
                 n = s.executeUpdate("create database 'attach.db' location '" + dataDir +"'");
             }
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = s.executeUpdate("grant attach on 'attach.db' to test@localhost");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             // do test
             try (Connection c = getConnection("test", "123")) {
                 Statement sa = c.createStatement();
@@ -148,16 +161,17 @@ public class StatementTest extends TestDbBase {
                 assertTrue("ABC".equals(rs.getString(1)));
                 rs.close();
                 n = sa.executeUpdate("detach database a");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
             }
             // cleanup
             n = s.executeUpdate("revoke attach on 'attach.db' from test@localhost");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = s.executeUpdate("drop database 'attach.db'");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = s.executeUpdate("revoke all on '"+getDbDefault()+"' from test@localhost");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = s.executeUpdate("drop user test@localhost");
+            assertTrue(0 == n);
         }
     }
     
@@ -177,30 +191,30 @@ public class StatementTest extends TestDbBase {
         try (Connection c = getConnection("test02", "0123")) {}
         
         // test outer statement of transaction
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             int n;
             conn.setAutoCommit(false);
             // Simple statement
             Statement outOfTxStmt = conn.createStatement();
             n = outOfTxStmt.executeUpdate("create user 'test-1'@localhost identified by '123'");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             conn.commit();
             conn.setAutoCommit(true);
             n = outOfTxStmt.executeUpdate("alter user 'test-1'@localhost identified by '0123'");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             
             // Prepared statement
             conn.setAutoCommit(false);
             PreparedStatement ps = 
                     conn.prepareStatement("alter user 'test-1'@localhost identified by '1123'");
             n = ps.executeUpdate();
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             conn.commit();
             n = ps.executeUpdate();
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             conn.setAutoCommit(true);
             n = ps.executeUpdate();
-            assertTrue(1 == n);
+            assertTrue(0 == n);
         }
     }
     
@@ -215,12 +229,12 @@ public class StatementTest extends TestDbBase {
         
         // test-1: Database in default data directory
         // create database test
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             int n = s.executeUpdate("drop schema if exists test");
             assertTrue(0 == n);
             n =s.executeUpdate("create database test");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n =s.executeUpdate("create database if not exists test");
             assertTrue(0 == n);
         }
@@ -235,10 +249,10 @@ public class StatementTest extends TestDbBase {
             }
         }
         // drop database test
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             int n = s.executeUpdate("drop schema test");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = s.executeUpdate("drop database if exists test");
             assertTrue(0 == n);
         }
@@ -246,12 +260,12 @@ public class StatementTest extends TestDbBase {
         // test-2: Database in dbDDLTest data directory
         // create database test
         String dataDir = getExtraDir();
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             int n = s.executeUpdate("drop schema if exists test");
             assertTrue(0 == n);
             n =s.executeUpdate("create database test location '" +dataDir+"'");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n =s.executeUpdate("create database if not exists test directory '" +dataDir+"'");
             assertTrue(0 == n);
         }
@@ -266,16 +280,16 @@ public class StatementTest extends TestDbBase {
             }
         }
         // drop database test
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             int n = s.executeUpdate("drop schema test");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = s.executeUpdate("drop database if exists test");
             assertTrue(0 == n);
         }
         
         // test-3: try to create a database named with meta db's name
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             s.executeUpdate("create database 'sqlite3.meta'");
             fail("Can't create a database named by meta db's name");
@@ -284,7 +298,7 @@ public class StatementTest extends TestDbBase {
                 throw e;
             }
         }
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
             s.executeUpdate("create database 'SQLite3.META'");
             fail("Can't create a database named by meta db's name");
@@ -296,20 +310,20 @@ public class StatementTest extends TestDbBase {
     }
     
     private void dropUserTest() throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement stmt = conn.createStatement();
             int n;
             
             n = stmt.executeUpdate("create user test10@localhost identified by '123'");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             n = stmt.executeUpdate("drop user test10@localhost;");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             
             n = stmt.executeUpdate("create user test11@localhost identified by '123' superuser");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             try (Connection c = getConnection("test11", "123")){}
             n = stmt.executeUpdate("drop user test11@localhost;");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             try (Connection c = getConnection("test11", "123")){
                 fail("The user 'test11' has been dropped");
             } catch (SQLException e) {
@@ -319,19 +333,19 @@ public class StatementTest extends TestDbBase {
     }
     
     private void doAlterUserTest(boolean useTx, boolean commitTx, boolean created) throws SQLException {
-        try (Connection conn = getConnection()) {
-            if (useTx) conn.setAutoCommit(false);
+        try (Connection conn = getConnection(true)) {
+            conn.setAutoCommit(!useTx);
             Statement stmt = conn.createStatement();
             int n;
             try {
                 n = stmt.executeUpdate("create user test0@localhost identified by '123'");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
             }
             n = stmt.executeUpdate("alter user test0@localhost identified by '0123'");
-            assertTrue(1 == n);
+            assertTrue(0 == n);
             try {
                 try (Connection c = getConnection("test0", "0123")) {
                     fail("User test@localhost hasn't been granted or tx not committed");
@@ -342,18 +356,18 @@ public class StatementTest extends TestDbBase {
             
             try {
                 n = stmt.executeUpdate("create user test01@'127.0.0.1' identified by '123'");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 n = stmt.executeUpdate("alter user test01@'127.0.0.1' identified by '0123'");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
             } catch (SQLException e) {
                 if (!created) throw e;
             }
             
             try {
                 n = stmt.executeUpdate("create user test02@'localhost' identified by '123' nosuperuser");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 n = stmt.executeUpdate("alter user test02@'localhost' identified by '0123' superuser");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -368,7 +382,7 @@ public class StatementTest extends TestDbBase {
             }
             try {
                 n = stmt.executeUpdate("create user test03@'localhost' identified by '0123' nosuperuser");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -384,7 +398,7 @@ public class StatementTest extends TestDbBase {
             try {
                 n = stmt.executeUpdate("create user test04@'localhost' identified by '123' nosuperuser "
                         + "identified with pg password");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -399,10 +413,10 @@ public class StatementTest extends TestDbBase {
             
             try {
                 n = stmt.executeUpdate("create user test05@'localhost' identified by '123' nosuperuser");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 n = stmt.executeUpdate("alter user test05@'localhost' identified by '0123' superuser "
                         + "identified with pg trust");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -416,8 +430,12 @@ public class StatementTest extends TestDbBase {
                 if (!useTx) throw e;
             }
             
-            if (useTx && commitTx) {
-                conn.commit();
+            if (useTx) {
+                if (commitTx) {
+                    conn.commit();
+                } else {
+                    conn.rollback();
+                }
             }
         }
     }
@@ -439,20 +457,20 @@ public class StatementTest extends TestDbBase {
     }
     
     private void doCreateUserTest(boolean useTx, boolean commitTx, boolean created) throws SQLException {
-        try (Connection conn = getConnection()) {
-            if (useTx) conn.setAutoCommit(false);
+        try (Connection conn = getConnection(true)) {
+            conn.setAutoCommit(!useTx);
             Statement stmt = conn.createStatement();
             int n;
             try {
                 n = stmt.executeUpdate("create user test@localhost identified by '123'");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
             }
             try {
                 n = stmt.executeUpdate("create user test@localhost identified by '123'");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 fail("User test@localhost existing yet");
             } catch (SQLException e) {
                 // OK
@@ -466,9 +484,9 @@ public class StatementTest extends TestDbBase {
             
             try {
                 n = stmt.executeUpdate("create user test1@localhost identified by '123'");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 n = stmt.executeUpdate("create user test1@'127.0.0.1' identified by '123'");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -476,7 +494,7 @@ public class StatementTest extends TestDbBase {
             
             try {
                 n = stmt.executeUpdate("create user test2@'localhost' identified by '123' superuser");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -491,7 +509,7 @@ public class StatementTest extends TestDbBase {
             }
             try {
                 n = stmt.executeUpdate("create user test3@'localhost' identified by '123' nosuperuser");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -506,7 +524,7 @@ public class StatementTest extends TestDbBase {
             try {
                 n = stmt.executeUpdate("create user test4@'localhost' identified by '123' nosuperuser "
                         + "identified with pg password");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -521,7 +539,7 @@ public class StatementTest extends TestDbBase {
             try {
                 n = stmt.executeUpdate("create user test5@'localhost' identified by '123' nosuperuser "
                         + "identified with pg trust");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -536,7 +554,7 @@ public class StatementTest extends TestDbBase {
             try {
                 n = stmt.executeUpdate("create user test6@'localhost' identified by '123' superuser "
                         + "identified with pg trust");
-                assertTrue(1 == n);
+                assertTrue(0 == n);
                 assertTrue(!created);
             } catch (SQLException e) {
                 if (!created) throw e;
@@ -548,14 +566,18 @@ public class StatementTest extends TestDbBase {
                 if (!useTx || created) throw e;
             }
             
-            if (useTx && commitTx) {
-                conn.commit();
+            if (useTx) {
+                if (commitTx) {
+                    conn.commit();
+                } else {
+                    conn.rollback();
+                }
             }
         }
     }
     
     private void nestedBlockCommentTest() throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             Statement stmt = conn.createStatement();
             
             assertFalse(stmt.execute("/*/**/*/"));
@@ -593,7 +615,7 @@ public class StatementTest extends TestDbBase {
     }
     
     private void doPragmaTest(String sql, boolean resultSet, String result) throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             assertTrue((resultSet && result != null) || (!resultSet && result == null));
             Statement stmt = conn.createStatement();
             boolean res = stmt.execute(sql);
@@ -617,7 +639,7 @@ public class StatementTest extends TestDbBase {
     }
     
     private void insertTest() throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             initTableAccounts(conn);
             Statement s = conn.createStatement();
             ResultSet rs;
@@ -645,7 +667,7 @@ public class StatementTest extends TestDbBase {
     }
     
     private void insertReturningTest(boolean tx, boolean commit) throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             initTableAccounts(conn);
             doInsertReturningTest(conn, tx, commit);
         }
@@ -874,7 +896,7 @@ public class StatementTest extends TestDbBase {
     }
     
     private void selectForUpdateTest() throws SQLException {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = getConnection(true)) {
             initTableAccounts(conn);
             Statement s = conn.createStatement();
             ResultSet rs;

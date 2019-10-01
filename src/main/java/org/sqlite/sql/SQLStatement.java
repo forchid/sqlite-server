@@ -164,7 +164,14 @@ public class SQLStatement implements AutoCloseable {
     }
     
     public int getUpdateCount() throws SQLException {
-        return this.getJdbcStatement().getUpdateCount();
+        switch (this.command) {
+        case "INSERT":
+        case "UPDATE":
+        case "DELETE":
+            return this.getJdbcStatement().getUpdateCount();
+        default:
+            return 0;
+        }
     }
     
     protected void checkPermission() throws SQLException {
@@ -227,6 +234,7 @@ public class SQLStatement implements AutoCloseable {
             String sql = getExecutableSQL();
             resultSet = this.jdbcStatement.execute(sql);
         }
+        context.trace(log, "updateCount {}", getUpdateCount());
         
         return resultSet;
     }

@@ -809,7 +809,7 @@ public class PgProcessor extends SQLiteProcessor {
             writeString("BEGIN");
             break;
         default:
-            server.trace(log, "check CommandComplete for command {}", command);
+            server.trace(log, "check CommandComplete: {}", command);
             writeStringPart("UPDATE ");
             writeString(updateCount + "");
             break;

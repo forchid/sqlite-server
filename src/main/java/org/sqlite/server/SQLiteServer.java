@@ -520,6 +520,10 @@ public abstract class SQLiteServer implements AutoCloseable {
         throw new IllegalStateException("No available worker");
     }
     
+    public int getWorkerCount() {
+        return this.workerCount;
+    }
+    
     public void dbIdle() {
         SQLiteWorker[] workers = this.workers;
         for (int i = 0, n = workers.length; i < n; ++i) {

@@ -35,10 +35,9 @@ import org.sqlite.util.IoUtils;
  *
  */
 public abstract class TestDbBase extends TestBase {
-    protected static final int maxConns = getMaxConns();
     
-    protected static String params = "?socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory";
-    //"?loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log";
+    protected static String params = "?socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
+            ;//+"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log";
     protected static String user = "root";
     protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+params;
     protected static String password = "123456";
@@ -51,21 +50,32 @@ public abstract class TestDbBase extends TestBase {
     
     protected static final String [][] initArgsList = new String[][] {
         {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
-        {"-D", dataDir, "-p", password, "--journal-mode", "delete", "-S", "off"}
+        {"-D", dataDir, "-p", password, "--journal-mode", "delete", 
+            "-S", "off"
+        }
     };
     
     protected static final String [][] bootArgsList = new String[][] {
         {"-D", dataDir, //"--trace-error", "-T",
-            "--worker-count", getWorkCount()+"", "--max-conns", maxConns+"",
-            "--journal-mode", "wal"},
+            "--worker-count", "4", "--max-conns", "50",
+            "--journal-mode", "wal"
+        },
         {"-D", dataDir, //"--trace-error", //"-T", 
-            "--worker-count", getWorkCount()+"", "--max-conns", maxConns+"",
-            "--journal-mode", "delete", "-S", "off"}
+            "--worker-count", "4", "--max-conns", "50",
+            "--journal-mode", "delete", "-S", "off"
+        }
     };
     
     protected DbTestEnv currentEnv;
+    protected int envIndex, envMax;
+    
+    protected void init() {
+        this.envIndex = 0;
+        this.envMax   = initArgsList.length;
+    }
     
     public Iterator<TestEnv> iterator() {
+        this.init();
         return new DbTestEnvIterator(this);
     }
     
@@ -129,12 +139,12 @@ public abstract class TestDbBase extends TestBase {
         return SQLiteServer.PORT_DEFAULT;
     }
     
-    protected static int getWorkCount() {
-        return 4;
+    protected int getWorkCount() {
+        return this.currentEnv.getWorkerCount();
     }
     
-    protected static int getMaxConns() {
-        return 50;
+    protected int getMaxConns() {
+        return this.currentEnv.getMaxConns();
     }
     
     protected static String getDataDir() {
@@ -184,9 +194,9 @@ public abstract class TestDbBase extends TestBase {
                 if (f.isFile()) {
                     boolean ok = f.delete();
                     // wait for sqlite3 closing DB
-                    for (int i = 0;!ok && i < 5; ++i) {
+                    for (int i = 0;!ok && i < 10; ++i) {
                         try {
-                            Thread.sleep(50L);
+                            Thread.sleep(100L);
                             ok = f.delete();
                         } catch (InterruptedException e) {}
                     }
@@ -220,7 +230,6 @@ public abstract class TestDbBase extends TestBase {
     }
     
     protected static class DbTestEnv extends TestEnv {
-        
         protected SQLiteServer server;
         protected DataSource dataSource;
         
@@ -243,13 +252,22 @@ public abstract class TestDbBase extends TestBase {
             this.server.bootAsync(bootArgs);
             
             this.dataSource = new DataSource();
-            this.dataSource.setMaxActive(getMaxConns());
+            int maxActive = this.server.getMaxConns() * getWorkerCount();
+            this.dataSource.setMaxActive(maxActive);
             this.dataSource.setMaxIdle(10);
             this.dataSource.setMinIdle(0);
             this.dataSource.setDriverClassName("org.postgresql.Driver");
             this.dataSource.setUrl(url);
             this.dataSource.setUsername(getUserDefault());
             this.dataSource.setPassword(password);
+        }
+        
+        public int getWorkerCount() {
+            return this.server.getWorkerCount();
+        }
+        
+        public int getMaxConns() {
+            return this.server.getMaxConns();
         }
         
         @Override
@@ -269,9 +287,6 @@ public abstract class TestDbBase extends TestBase {
         protected final TestDbBase base;
         protected boolean hasNextCalled;
         
-        private int i = 0;
-        private int n = initArgsList.length;
-        
         protected DbTestEnvIterator(TestDbBase base) {
             this.base = base;
         }
@@ -279,14 +294,14 @@ public abstract class TestDbBase extends TestBase {
         @Override
         public boolean hasNext() {
             this.hasNextCalled = true;
-            return (this.i < this.n);
+            return (base.envIndex < base.envMax);
         }
 
         @Override
         public TestEnv next() {
             if (this.hasNextCalled) {
                 if (hasNext()) {
-                    DbTestEnv env = new DbTestEnv(this.i++);
+                    DbTestEnv env = new DbTestEnv(base.envIndex++);
                     this.hasNextCalled = false;
                     return (this.base.currentEnv = env);
                 } else {
