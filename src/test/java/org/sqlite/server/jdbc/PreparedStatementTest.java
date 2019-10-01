@@ -44,7 +44,7 @@ public class PreparedStatementTest extends TestDbBase {
     }
     
     private void batchTest(boolean tx) throws SQLException {
-        //try (Connection conn = getConnection(5432, "postgres", "postgres", "123456")) {
+        //try (Connection conn = getConnection(5432, "postgres?preferQueryMode=simple", "postgres", "123456")) {
         try (Connection conn = getConnection()) {
             PreparedStatement ps;
             Statement s;
@@ -56,12 +56,15 @@ public class PreparedStatementTest extends TestDbBase {
             conn.setAutoCommit(!tx);
             
             // Simple batch test
+            //sql = "insert into accounts(id, name, balance)values(?, ?, ?)";
             sql = "insert into accounts(name, balance)values(?, ?)";
             ps = conn.prepareStatement(sql);
+            //ps.setLong(++i, 1);
             ps.setString(++i, "Tom");
             ps.setBigDecimal(++i, new BigDecimal(30000));
             ps.addBatch();
             i = 0;
+            //ps.setLong(++i, 2);
             ps.setString(++i, "Ben");
             ps.setBigDecimal(++i, new BigDecimal(25000));
             ps.addBatch();
@@ -83,6 +86,7 @@ public class PreparedStatementTest extends TestDbBase {
             sql = "insert into accounts(id, name, balance)values(?, ?, ?)";
             ps = conn.prepareStatement(sql);
             i = 0;
+            //ps.setLong(++i, 3);
             ps.setNull(++i, Types.BIGINT);
             ps.setString(++i, "James");
             ps.setBigDecimal(++i, new BigDecimal(50000));
@@ -96,15 +100,16 @@ public class PreparedStatementTest extends TestDbBase {
                 ps.executeBatch();
                 fail("Duplicate primary key 3");
             } catch (SQLException e) {
+                boolean simple = this.currentEnv.isSimpleQuery();
                 // check: one batch should be atomic
                 rs = s.executeQuery("select count(*) from accounts");
                 assertTrue(rs.next());
-                assertTrue(rs.getInt(1) == (tx? 3: 2));
+                assertTrue(rs.getInt(1) == (tx ||simple? 3: 2));
                 assertTrue(!rs.next());
                 rs.close();
                 rs = s.executeQuery("select max(id) from accounts");
                 assertTrue(rs.next());
-                assertTrue(rs.getInt(1) == (tx? 3: 2));
+                assertTrue(rs.getInt(1) == (tx ||simple? 3: 2));
                 assertTrue(!rs.next());
                 rs.close();
                 if (tx) {

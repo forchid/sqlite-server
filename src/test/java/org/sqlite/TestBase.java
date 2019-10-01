@@ -34,7 +34,7 @@ public abstract class TestBase extends TestCase implements Iterable<TestEnv> {
     static final String LINESEP = System.getProperty("line.separator");
     protected static boolean disableINFO = false, disableERROR = true;
     
-    protected int iteration = 0, iterations = 2;
+    protected int iteration = 0, iterations = 1;
     
     public final void test() throws SQLException {
         long since = System.currentTimeMillis();
@@ -43,7 +43,7 @@ public abstract class TestBase extends TestCase implements Iterable<TestEnv> {
             for (int i = 0; i < this.iterations; ++i) {
                 this.iteration = i;
                 for (TestEnv env : this) {
-                    println("Iteration %d: test in %s", this.iteration, env);
+                    println("Iteration %d >> test in %s", this.iteration, env);
                     doTest();
                     env.close();
                 }

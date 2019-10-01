@@ -36,23 +36,40 @@ import org.sqlite.util.IoUtils;
  */
 public abstract class TestDbBase extends TestBase {
     
-    protected static String params = "?socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
-            ;//+"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log";
-    protected static String user = "root";
-    protected static String url = "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+params;
-    protected static String password = "123456";
-    
     protected static final String dataDir = getDataDir();
     
+    protected static String user = "root";
+    protected static String password = "123456";
+    
     protected static final String [] environments = {
-        "WAL environment", "DELETE environment"
+        "SQLite WAL pg extended query environment", "SQLite DELETE pg extended query environment",
+        "SQLite WAL pg simple query environment", "SQLite DELETE pg simple query environment",
+    };
+    
+    protected static final String [] urls = {
+        "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
+            "?preferQueryMode=extended&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
+            ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
+        "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
+            "?preferQueryMode=extended&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
+            ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
+        "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
+            "?preferQueryMode=simple&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
+            ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
+        "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
+            "?preferQueryMode=simple&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
+            ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
     };
     
     protected static final String [][] initArgsList = new String[][] {
         {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
         {"-D", dataDir, "-p", password, "--journal-mode", "delete", 
             "-S", "off"
-        }
+        },
+        {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
+        {"-D", dataDir, "-p", password, "--journal-mode", "delete", 
+            "-S", "off"
+        },
     };
     
     protected static final String [][] bootArgsList = new String[][] {
@@ -63,7 +80,15 @@ public abstract class TestDbBase extends TestBase {
         {"-D", dataDir, //"--trace-error", //"-T", 
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "delete", "-S", "off"
-        }
+        },
+        {"-D", dataDir, //"--trace-error", "-T",
+            "--worker-count", "4", "--max-conns", "50",
+            "--journal-mode", "wal"
+        },
+        {"-D", dataDir, //"--trace-error", //"-T", 
+            "--worker-count", "4", "--max-conns", "50",
+            "--journal-mode", "delete", "-S", "off"
+        },
     };
     
     protected DbTestEnv currentEnv;
@@ -116,6 +141,7 @@ public abstract class TestDbBase extends TestBase {
     }
     
     protected Connection getConnection() throws SQLException {
+        String url = getUrl();
         return (getConnection(url, user, password));
     }
     
@@ -125,6 +151,10 @@ public abstract class TestDbBase extends TestBase {
         }
         
         return (getConnection());
+    }
+    
+    protected String getUrl() {
+        return (urls[this.currentEnv.envIndex]);
     }
     
     protected static String getUserDefault() {
@@ -233,6 +263,7 @@ public abstract class TestDbBase extends TestBase {
         protected SQLiteServer server;
         protected DataSource dataSource;
         
+        protected final boolean simpleQuery;
         protected final int envIndex;
         
         protected DbTestEnv(int envIndex) {
@@ -251,6 +282,7 @@ public abstract class TestDbBase extends TestBase {
             this.server = SQLiteServer.create(bootArgs);
             this.server.bootAsync(bootArgs);
             
+            String url = urls[i];
             this.dataSource = new DataSource();
             int maxActive = this.server.getMaxConns() * getWorkerCount();
             this.dataSource.setMaxActive(maxActive);
@@ -260,6 +292,8 @@ public abstract class TestDbBase extends TestBase {
             this.dataSource.setUrl(url);
             this.dataSource.setUsername(getUserDefault());
             this.dataSource.setPassword(password);
+            
+            this.simpleQuery = url.contains("preferQueryMode=simple");
         }
         
         public int getWorkerCount() {
@@ -268,6 +302,10 @@ public abstract class TestDbBase extends TestBase {
         
         public int getMaxConns() {
             return this.server.getMaxConns();
+        }
+        
+        public boolean isSimpleQuery() {
+            return this.simpleQuery;
         }
         
         @Override
