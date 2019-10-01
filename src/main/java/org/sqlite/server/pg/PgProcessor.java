@@ -1398,6 +1398,10 @@ public class PgProcessor extends SQLiteProcessor {
         // ResultSet remaining state
         SQLStatement curStmt;
         ResultSet rs;
+        // Complete blocked state
+        private boolean completeBlocked;
+        private boolean resultSet;
+        private int updateCount;
         
         QueryTask(PgProcessor proc, String query) {
             super(proc);
@@ -1412,45 +1416,56 @@ public class PgProcessor extends SQLiteProcessor {
             try {
                 boolean next = true;
                 
-                if (this.rs == null) {
-                    // check empty query string
-                    for (; sqlStmt == null;) {
-                        if (this.parser.hasNext()) {
-                            SQLStatement s = this.parser.next();
-                            if (s.isEmpty()) {
-                                continue;
+                if (getBusyContext() == null) {
+                    if (this.rs == null) {
+                        // check empty query string
+                        for (; sqlStmt == null;) {
+                            if (this.parser.hasNext()) {
+                                SQLStatement s = this.parser.next();
+                                if (s.isEmpty()) {
+                                    continue;
+                                }
+                                sqlStmt = s;
                             }
-                            sqlStmt = s;
+                            break;
                         }
-                        break;
-                    }
-                    if (sqlStmt == null) {
-                        proc.server.trace(log, "query string empty");
-                        proc.needFlush = true;
-                        proc.sendEmptyQueryResponse();
-                        next = false;
-                    }
-                } else {
-                    // Continue write remaining resultSet
-                    for (; this.rs.next(); ) {
-                        proc.sendDataRow(this.rs, null);
-                        if (proc.canFlush()) {
-                            proc.enableWrite();
+                        if (sqlStmt == null) {
+                            proc.server.trace(log, "query string empty");
+                            proc.needFlush = true;
+                            proc.sendEmptyQueryResponse();
+                            next = false;
+                        }
+                    } else {
+                        // Continue write remaining resultSet
+                        for (; this.rs.next(); ) {
+                            proc.sendDataRow(this.rs, null);
+                            if (proc.canFlush()) {
+                                proc.enableWrite();
+                                resetTask = false;
+                                return;
+                            }
+                        }
+                        int count = this.curStmt.getUpdateCount();
+                        SQLStatement stmt = success(sqlStmt, count, true);
+                        if (this.completeBlocked) {
                             resetTask = false;
                             return;
                         }
+                        sqlStmt = stmt;
+                        next = sqlStmt != null;
                     }
-                    int n = this.curStmt.getUpdateCount();
-                    this.curStmt.complete(true);
-                    IoUtils.close(this.curStmt);
-                    this.rs = null;
-                    proc.sendCommandComplete(this.curStmt, n, true);
-                    
-                    // try next
-                    if (next=this.parser.hasNext()) {
-                        IoUtils.close(sqlStmt);
-                        sqlStmt = this.parser.next();
-                    }
+                } else {
+                    if (this.completeBlocked) {
+                        assert this.rs == null;
+                        // retry to complete
+                        SQLStatement stmt = success(sqlStmt, this.updateCount, this.resultSet);
+                        if (this.completeBlocked) {
+                            resetTask = false;
+                            return;
+                        }
+                        sqlStmt = stmt;
+                        next = sqlStmt != null;
+                    } // else execution blocked
                 }
                 
                 for (; next; ) {
@@ -1461,6 +1476,7 @@ public class PgProcessor extends SQLiteProcessor {
                         checkBusyState();
                         timeout = false;
                         boolean result = sqlStmt.execute(0);
+                        setBusyContext(null);
                         if (result) {
                             ResultSet rs = sqlStmt.getResultSet();
                             ResultSetMetaData meta = rs.getMetaData();
@@ -1477,36 +1493,39 @@ public class PgProcessor extends SQLiteProcessor {
                                     return;
                                 }
                             }
-                            int n = sqlStmt.getUpdateCount();
-                            sqlStmt.complete(true);
-                            IoUtils.close(sqlStmt);
-                            this.rs = null;
-                            this.curStmt = null;
-                            proc.sendCommandComplete(sqlStmt, n, result);
+                            int count = sqlStmt.getUpdateCount();
+                            SQLStatement stmt = success(sqlStmt, count, result);
+                            if (this.completeBlocked) {
+                                resetTask = false;
+                                return;
+                            }
+                            sqlStmt = stmt;
+                            next = sqlStmt != null;
                         } else {
                             int count = sqlStmt.getUpdateCount();
-                            sqlStmt.complete(true);
-                            proc.sendCommandComplete(sqlStmt, count, result);
-                        }
-                        
-                        // try next
-                        if (next=this.parser.hasNext()) {
-                            IoUtils.close(sqlStmt);
-                            sqlStmt = this.parser.next();
+                            SQLStatement stmt = success(sqlStmt, count, result);
+                            if (this.completeBlocked) {
+                                resetTask = false;
+                                return;
+                            }
+                            sqlStmt = stmt;
+                            next = sqlStmt != null;
                         }
                     } catch (SQLException e) {
                         if (handleBlocked(timeout, e)) {
+                            this.curStmt = sqlStmt;
+                            resetTask = false;
                             return;
                         }
                         
                         if (sqlStmt.executionException(e)) {
-                            sqlStmt.complete(true);
-                            proc.sendCommandComplete(sqlStmt, 0, false);
-                            // try next
-                            if (next=this.parser.hasNext()) {
-                                IoUtils.close(sqlStmt);
-                                sqlStmt = this.parser.next();
+                            SQLStatement stmt = success(sqlStmt, 0, false);
+                            if (this.completeBlocked) {
+                                resetTask = false;
+                                return;
                             }
+                            sqlStmt = stmt;
+                            next = sqlStmt != null;
                         } else {
                             throw e;
                         }
@@ -1542,6 +1561,47 @@ public class PgProcessor extends SQLiteProcessor {
                 proc.sendReadyForQuery();
             }
             finish();
+        }
+        
+        // Handle complete(true)
+        SQLStatement success(SQLStatement sqlStmt, int updateCount, boolean resultSet) 
+                throws SQLException, IOException {
+            PgProcessor proc = (PgProcessor)this.proc;
+            boolean timeout = true;
+            try {
+                // reset busy context
+                checkBusyState();
+                timeout = false;
+                sqlStmt.complete(true);
+                setBusyContext(null);
+                this.completeBlocked = false;
+            } catch (ImplicitCommitException e) {
+                SQLException cause = e.getCause();
+                if (handleBlocked(timeout, cause)) {
+                    this.curStmt = sqlStmt;
+                    this.updateCount = updateCount;
+                    this.resultSet = resultSet;
+                    this.completeBlocked = true;
+                    this.async = true;
+                    return null;
+                }
+                this.completeBlocked = false;
+                throw cause;
+            }
+            
+            IoUtils.close(sqlStmt);
+            this.curStmt = null;
+            this.rs = null;
+            this.updateCount = 0;
+            this.resultSet = false;
+            proc.sendCommandComplete(sqlStmt, updateCount, resultSet);
+            
+            // try next
+            if (this.parser.hasNext()) {
+                return this.parser.next();
+            }
+            
+            return null;
         }
         
     }
