@@ -234,7 +234,6 @@ public class SQLStatement implements AutoCloseable {
             String sql = getExecutableSQL();
             resultSet = this.jdbcStatement.execute(sql);
         }
-        context.trace(log, "updateCount {}", getUpdateCount());
         
         return resultSet;
     }
