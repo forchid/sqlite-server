@@ -628,6 +628,11 @@ public class StatementTest extends TestDbBase {
                 assertTrue(result == null && stmt.getUpdateCount() == 0);
             }
             
+            if (this.currentEnv.isSimpleQuery()) {
+                // Simple mode does not support metaData in pgJDBC
+                return;
+            }
+            
             PreparedStatement ps = conn.prepareStatement(sql);
             ResultSetMetaData meta = ps.getMetaData();
             if (result == null) {
