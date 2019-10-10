@@ -261,7 +261,14 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                     return parseSavepoint();
                 case 'e':
                 case 'E':
-                    return parseSelect();
+                    c = nextChar();
+                    if ('l' == c || 'L' == c) {
+                        return parseSelect();
+                    }
+                    if ('t' == c || 'T' == c) {
+                        return parseSet();
+                    }
+                    throw syntaxError();
                 case 'h':
                 case 'H':
                     return parseShow();
@@ -466,77 +473,8 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             }
             // Parse: transaction mode
             if (!nextEnd()) {
-                for (;;) {
-                    char c = nextChar();
-                    switch (c) {
-                    case 'i':
-                    case 'I':
-                        // Parse: isolation level
-                        nextString("solation");
-                        skipIgnorable();
-                        nextString("level");
-                        skipIgnorable();
-                        c = nextChar();
-                        switch (c) {
-                        case 'r':
-                        case 'R':
-                            if (nextStringIf("ead") != -1) {
-                                skipIgnorable();
-                                if (nextStringIf("uncommitted") != -1) {
-                                    stmt.setIsolationLevel(TransactionStatement.READ_UNCOMMITTED);
-                                    break;
-                                } else if (nextStringIf("committed") != -1) {
-                                    stmt.setIsolationLevel(TransactionStatement.READ_COMMITTED);
-                                    break;
-                                }
-                            } else if (nextStringIf("epeatable") != -1) {
-                                skipIgnorable();
-                                if (nextStringIf("read") != -1) {
-                                    stmt.setIsolationLevel(TransactionStatement.REPEATABLE_READ);
-                                    break;
-                                }
-                            }
-                            stmt.close();
-                            throw syntaxError();
-                        case 's':
-                        case 'S':
-                            nextString("erializable");
-                            stmt.setIsolationLevel(TransactionStatement.SERIALIZABLE);
-                            break;
-                        default:
-                            stmt.close();
-                            throw syntaxError(); 
-                        }
-                        break;
-                    case 'r':
-                    case 'R':
-                        // Parse: read only | read write
-                        nextString("ead");
-                        skipIgnorable();
-                        if (nextStringIf("only") != -1) {
-                            stmt.setReadOnly(true);
-                            break;
-                        } else if (nextStringIf("write") != -1) {
-                            stmt.setReadOnly(false);
-                            break;
-                        }
-                        stmt.close();
-                        throw syntaxError(); 
-                    default:
-                        stmt.close();
-                        throw syntaxError(); 
-                    }
-                    
-                    if (nextEnd()) {
-                        break;
-                    }
-                    if (nextCharIf(',') != -1) {
-                        skipIgnorableIf();
-                        continue;
-                    }
-                    stmt.close();
-                    throw syntaxError(); 
-                } // for
+                TransactionMode mode = parseTransactionMode();
+                stmt.setTransactionMode(mode);
             }
         }
         
@@ -866,7 +804,7 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     }
     
     protected SQLStatement parseSelect() {
-        nextString("lect");
+        nextString("ect");
         if (skipIgnorableIf() != -1 && skipToIdentifierIf("sleep") != -1) {
             // Parse for supporting simple sleep()
             return parseSelectSleep();
@@ -916,6 +854,36 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         SelectSleepStatement stmt = new SelectSleepStatement(this.sql);
         stmt.setSecond(second);
+        return stmt;
+    }
+    
+    protected SQLStatement parseSet() {
+        skipIgnorable();
+        
+        if (nextStringIf("transaction") != -1) {
+            skipIgnorable();
+            return parseSetTransaction(false);
+        }
+        if (nextStringIf("session") != -1) {
+            skipIgnorable();
+            if (nextStringIf("characteristics") != -1) {
+                skipIgnorable();
+                nextString("as");
+                skipIgnorable();
+                nextString("transaction");
+                skipIgnorable();
+                return parseSetTransaction(true);
+            }
+        }
+        
+        throw syntaxError();
+    }
+    
+    protected SQLStatement parseSetTransaction(boolean sessionScope) {
+        TransactionMode mode = parseTransactionMode();
+        SetTransactionStatement stmt = new SetTransactionStatement(this.sql);
+        stmt.setSessionScope(sessionScope);
+        stmt.setTransactionMode(mode);
         return stmt;
     }
     
@@ -983,6 +951,78 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         return stmt;
+    }
+    
+    protected TransactionMode parseTransactionMode() {
+        TransactionMode mode = new TransactionMode();
+        for (;;) {
+            char c = nextChar();
+            switch (c) {
+            case 'i':
+            case 'I':
+                // Parse: isolation level
+                nextString("solation");
+                skipIgnorable();
+                nextString("level");
+                skipIgnorable();
+                c = nextChar();
+                switch (c) {
+                case 'r':
+                case 'R':
+                    if (nextStringIf("ead") != -1) {
+                        skipIgnorable();
+                        if (nextStringIf("uncommitted") != -1) {
+                            mode.setIsolationLevel(TransactionMode.READ_UNCOMMITTED);
+                            break;
+                        } else if (nextStringIf("committed") != -1) {
+                            mode.setIsolationLevel(TransactionMode.READ_COMMITTED);
+                            break;
+                        }
+                    } else if (nextStringIf("epeatable") != -1) {
+                        skipIgnorable();
+                        if (nextStringIf("read") != -1) {
+                            mode.setIsolationLevel(TransactionMode.REPEATABLE_READ);
+                            break;
+                        }
+                    }
+                    throw syntaxError();
+                case 's':
+                case 'S':
+                    nextString("erializable");
+                    mode.setIsolationLevel(TransactionMode.SERIALIZABLE);
+                    break;
+                default:
+                    throw syntaxError(); 
+                }
+                break;
+            case 'r':
+            case 'R':
+                // Parse: read only | read write
+                nextString("ead");
+                skipIgnorable();
+                if (nextStringIf("only") != -1) {
+                    mode.setReadOnly(true);
+                    break;
+                } else if (nextStringIf("write") != -1) {
+                    mode.setReadOnly(false);
+                    break;
+                }
+                throw syntaxError(); 
+            default:
+                throw syntaxError(); 
+            }
+            
+            if (nextEnd()) {
+                break;
+            }
+            if (nextCharIf(',') != -1) {
+                skipIgnorableIf();
+                continue;
+            }
+            throw syntaxError(); 
+        } // for
+        
+        return mode;
     }
 
     protected SQLStatement parseRelease() {

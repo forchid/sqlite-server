@@ -30,15 +30,10 @@ public class TransactionStatement extends SQLStatement {
     public static final int IMMEDIATE  = 2;
     public static final int EXCLUSIVE  = 4;
     
-    public static final int READ_UNCOMMITTED = 1;
-    public static final int READ_COMMITTED   = 2;
-    public static final int REPEATABLE_READ  = 3;
-    public static final int SERIALIZABLE     = 4;
-    
+    protected TransactionMode transactionMode = new TransactionMode();
     protected String savepointName;
-    private boolean ready, readOnly;
+    private boolean ready;
     protected int behavior = DEFERRED;
-    protected int isolationLevel = SERIALIZABLE;
     
     public TransactionStatement(String sql, String command) {
         super(sql, command);
@@ -139,37 +134,12 @@ public class TransactionStatement extends SQLStatement {
         return ("COMMIT".equals(cmd) || "END".equals(cmd));
     }
     
-    public int getIsolationLevel() {
-        return this.isolationLevel;
-    }
-
-    public void setIsolationLevel(int isolationLevel) throws IllegalArgumentException {
-        switch (isolationLevel) {
-        case READ_UNCOMMITTED:
-        case READ_COMMITTED:
-        case REPEATABLE_READ:
-        case SERIALIZABLE:
-            break;
-        default:
-            throw new IllegalArgumentException("isolationLevel " + isolationLevel);
-        }
-        this.isolationLevel = isolationLevel;
-    }
-    
     public boolean isRollback() {
         return ("ROLLBACK".equals(getCommand()));
     }
     
     public boolean isSavepoint() {
         return ("SAVEPOINT".equals(getCommand()));
-    }
-    
-    public boolean isReadOnly() {
-        return readOnly;
-    }
-
-    public void setReadOnly(boolean readOnly) {
-        this.readOnly = readOnly;
     }
     
     public boolean isRelease() {
@@ -202,6 +172,22 @@ public class TransactionStatement extends SQLStatement {
 
     public void setExclusive(boolean exclusive) {
         this.behavior = exclusive? EXCLUSIVE: 0;
+    }
+    
+    public TransactionMode getTransactionMode() {
+        return transactionMode;
+    }
+
+    public void setTransactionMode(TransactionMode transactionMode) {
+        this.transactionMode = transactionMode;
+    }
+    
+    public boolean isReadOnly() {
+        return (this.transactionMode.isReadOnly());
+    }
+    
+    public int getIsolationLevel() {
+        return (this.transactionMode.getIsolationLevel());
     }
     
 }
