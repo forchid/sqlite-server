@@ -29,6 +29,7 @@ import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
+import org.sqlite.sql.Transaction;
 import org.sqlite.util.IoUtils;
 
 import static org.sqlite.util.ConvertUtils.*;
@@ -103,24 +104,22 @@ public class InsertReturningStatement extends InsertSelectStatement {
             this.resultSet = false;
             this.lowId = this.highId = null;
             boolean autoCommit = context.isAutoCommit();
-            if (autoCommit && !this.implicitTx) {
+            if (autoCommit && !inImplicitTx()) {
                 this.step = TX_BEGIN;
-                context.trace(log, "Step. INIT -> TX_BEGIN: autoCommit = {}, implicitTx = {}", 
-                        autoCommit, this.implicitTx);
+                context.trace(log, "Step. INIT -> TX_BEGIN: autoCommit = {}", autoCommit);
             } else {
                 this.step = SELECT_LOWID;
-                context.trace(log, "Step. INIT -> SELECT_LOWID: autoCommit = {}, implicitTx = {}", 
-                        autoCommit, this.implicitTx);
+                context.trace(log, "Step. INIT -> SELECT_LOWID: autoCommit = {}", autoCommit);
             }
         case TX_BEGIN:
             if (TX_BEGIN == this.step) {
                 // Transaction control for multiple-step operations
-                assert context.isAutoCommit() && !this.implicitTx;
+                assert context.isAutoCommit() && !inImplicitTx();
                 context.dbWriteLock();
                 super.execute("begin immediate");
-                this.implicitTx = true;
+                context.setTransaction(new Transaction(context, true));
                 this.step = SELECT_LOWID;
-                context.trace(log, "Step. TX_BEGIN -> SELECT_LOWID: implicitTx = {}", this.implicitTx);
+                context.trace(log, "Step. TX_BEGIN -> SELECT_LOWID: start an implicit tx");
             }
         case SELECT_LOWID:
             this.maxRowidSelect.execute(1);
@@ -184,7 +183,7 @@ public class InsertReturningStatement extends InsertSelectStatement {
             rows = getUpdateCount();
             // Do execute
             this.resultSet = this.returningSelect.execute(rows);
-            if (this.implicitTx) {
+            if (inImplicitTx()) {
                 this.step = TX_END; // called until complete()
                 context.trace(log, "Step. SELECT_RETURNING -> TX_END: lowId = {}, highId = {}, resultSet = {}", 
                         this.lowId, this.highId, this.resultSet);
@@ -201,13 +200,13 @@ public class InsertReturningStatement extends InsertSelectStatement {
     
     @Override
     public void complete(boolean success) throws IllegalStateException {
-        if (this.implicitTx) {
+        if (inImplicitTx()) {
             if (success && this.step != TX_END) {
                 throw new IllegalStateException("step not the step TX_END: " + this.step);
             }
             super.complete(success);
             this.step = INIT;
-            context.trace(log, "Step. TX_END -> INIT: lowId = {}, highId = {}, resultSet = {}", 
+            this.context.trace(log, "Step. TX_END -> INIT: lowId = {}, highId = {}, resultSet = {}", 
                     this.lowId, this.highId, this.resultSet);
         } else {
             if (success && this.step != INIT) {

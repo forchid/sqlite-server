@@ -37,7 +37,7 @@ public class SelectStatement extends SQLStatement {
     
     @Override
     protected void checkReadOnly() throws SQLException {
-        if (isForUpdate() && this.context.isReadOnly()) {
+        if (isForUpdate() && inReadOnlyTx()) {
             String message = "Attempt to write a readonly transaction";
             throw convertError(SQLiteErrorCode.SQLITE_READONLY, message);
         } else {
@@ -47,7 +47,7 @@ public class SelectStatement extends SQLStatement {
     
     @Override
     protected boolean isWritable() {
-        return (isForUpdate() && !this.context.isReadOnly());
+        return (isForUpdate() && !inReadOnlyTx());
     }
     
     public boolean isForUpdate() {

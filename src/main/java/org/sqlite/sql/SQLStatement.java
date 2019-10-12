@@ -43,7 +43,6 @@ public class SQLStatement implements AutoCloseable {
     protected Statement jdbcStatement;
     protected boolean prepared;
     private boolean open = true;
-    protected boolean implicitTx;
     
     protected boolean query;
     protected boolean comment;
@@ -223,9 +222,9 @@ public class SQLStatement implements AutoCloseable {
         context.trace(log, "execute sql \"{}\"", this);
         if (this.prepared) {
             // Execute batch prepared statement in an explicit transaction for ACID
-            if (autoCommit && writable && !this.implicitTx) {
+            if (autoCommit && writable && context.getTransaction() == null) {
                 execute("begin immediate");
-                this.implicitTx = true;
+                context.setTransaction(new Transaction(context, true));
                 context.trace(log, "tx: begin an implicit transaction");
             }
             PreparedStatement ps = getPreparedStatement();
@@ -246,6 +245,21 @@ public class SQLStatement implements AutoCloseable {
         
     }
     
+    public boolean inImplicitTx() {
+        Transaction tx = this.context.getTransaction();
+        return (tx != null && tx.isImplicit());
+    }
+    
+    public boolean inReadOnlyTx() {
+        SQLContext context = this.context;
+        Transaction tx = context.getTransaction();
+        if (tx == null) {
+            return context.isReadOnly();
+        } else {
+            return tx.isReadOnly();
+        }
+    }
+    
     /**Cleanup work after the whole execution of this statement complete
      * 
      * @param success the execution of this statement is successful or not
@@ -257,7 +271,7 @@ public class SQLStatement implements AutoCloseable {
         final boolean autoCommit = context.isAutoCommit();
         context.trace(log, "tx: autoCommit {} <-", autoCommit);
         
-        if (this.implicitTx) {
+        if (inImplicitTx()) {
             assert autoCommit;
             if (success) {
                 try {
@@ -275,7 +289,7 @@ public class SQLStatement implements AutoCloseable {
                     throw new IllegalStateException("Can't rollback an implicit transaction", e);
                 }
             }
-            this.implicitTx = false;
+            context.setTransaction(null);
         }
         
         if (autoCommit) {

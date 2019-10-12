@@ -697,7 +697,9 @@ public class SQLParserTest extends TestBase {
         deferred = false; immediate = false; exclusive = true;
         readOnly = true;
         txBeginTest("begin read only", 1, true, immediate, false, readOnly);
+        txBeginTest("begin", 1, true, immediate, false, null);
         txBeginTest("begin exclusive transaction read only", 1, deferred, immediate, exclusive, readOnly);
+        txBeginTest("begin exclusive transaction", 1, deferred, immediate, exclusive, null);
         txBeginTest("begin exclusive transaction isolation level serializable, read only", 
                 1, deferred, immediate, exclusive, readOnly, TransactionMode.SERIALIZABLE);
         txBeginTest("begin exclusive transaction read only,isolation level serializable", 
@@ -706,6 +708,8 @@ public class SQLParserTest extends TestBase {
                 1, deferred, immediate, exclusive, readOnly, TransactionMode.READ_COMMITTED);
         txBeginTest("start exclusive transaction read only, isolation level read committed", 
                 1, deferred, immediate, exclusive, readOnly, TransactionMode.READ_COMMITTED);
+        txBeginTest("start exclusive transaction isolation level read committed", 
+                1, deferred, immediate, exclusive, null, TransactionMode.READ_COMMITTED);
         readOnly = false;
         txBeginTest("begin read write;", 1, true, immediate, false, readOnly);
         txBeginTest("begin EXCLUSIVE transaction read write;", 1, deferred, immediate, exclusive, readOnly);
@@ -720,12 +724,16 @@ public class SQLParserTest extends TestBase {
         
         txSetTransactionTest("set transaction read only, isolation level serializable", 
                 1, false, true);
+        txSetTransactionTest("set transaction isolation level serializable", 
+                1, false, null);
         txSetTransactionTest("set transaction isolation level serializable, read only", 
                 1, false, true);
         txSetTransactionTest("set transaction isolation level serializable, read write", 
                 1, false, false);
         txSetTransactionTest("set session characteristics as transaction isolation level serializable, read only", 
                 1, true, true);
+        txSetTransactionTest("set session characteristics as transaction isolation level serializable", 
+                1, true, null);
         txSetTransactionTest("set session characteristics as transaction read only, isolation level serializable", 
                 1, true, true);
         txSetTransactionTest("set session characteristics as transaction isolation level serializable, read write", 
@@ -736,6 +744,8 @@ public class SQLParserTest extends TestBase {
                 1, true, false, TransactionMode.READ_COMMITTED);
         txSetTransactionTest("set session characteristics as transaction read write, isolation level read committed", 
                 1, true, false, TransactionMode.READ_COMMITTED);
+        txSetTransactionTest("set session characteristics as transaction isolation level read committed", 
+                1, true, null, TransactionMode.READ_COMMITTED);
         
         // show
         showDatabasesTest("show databases", 1, false);
@@ -1347,17 +1357,17 @@ public class SQLParserTest extends TestBase {
     
     private void txBeginTest(String sqls, int stmts, 
             boolean deferred, boolean immediate, boolean exclusive) {
-        txBeginTest(sqls, stmts, deferred, immediate, exclusive, false, TransactionMode.SERIALIZABLE);
+        txBeginTest(sqls, stmts, deferred, immediate, exclusive, null, TransactionMode.SERIALIZABLE);
     }
     
     private void txBeginTest(String sqls, int stmts, 
-            boolean deferred, boolean immediate, boolean exclusive, boolean readOnly) {
+            boolean deferred, boolean immediate, boolean exclusive, Boolean readOnly) {
         txBeginTest(sqls, stmts, deferred, immediate, exclusive, readOnly, TransactionMode.SERIALIZABLE);
     }
     
     private void txBeginTest(String sqls, int stmts, 
             boolean deferred, boolean immediate, boolean exclusive,
-            boolean readOnly, int isolation) {
+            Boolean readOnly, int isolation) {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
         for (SQLStatement stmt: parser) {
@@ -1378,7 +1388,8 @@ public class SQLParserTest extends TestBase {
             assertTrue(deferred == tx.isDeferred());
             assertTrue(immediate == tx.isImmediate());
             assertTrue(exclusive == tx.isExclusive());
-            assertTrue(readOnly == tx.isReadOnly());
+            assertTrue((readOnly == null && tx.isReadOnly() == null)
+                    || readOnly.booleanValue() == tx.isReadOnly());
             assertTrue(isolation == tx.getIsolationLevel());
             ++i;
             parser.remove();
@@ -1386,11 +1397,11 @@ public class SQLParserTest extends TestBase {
         overTest(parser, i, stmts);
     }
     
-    private void txSetTransactionTest(String sqls, int stmts, boolean sessionScope, boolean readOnly) {
+    private void txSetTransactionTest(String sqls, int stmts, boolean sessionScope, Boolean readOnly) {
         txSetTransactionTest(sqls, stmts, sessionScope, readOnly, TransactionMode.SERIALIZABLE);
     }
     
-    private void txSetTransactionTest(String sqls, int stmts, boolean sessionScope, boolean readOnly, 
+    private void txSetTransactionTest(String sqls, int stmts, boolean sessionScope, Boolean readOnly, 
             int isolation) {
         SQLParser parser = new SQLParser(sqls);
         int i = 0;
@@ -1403,8 +1414,10 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
             SetTransactionStatement setTx = (SetTransactionStatement)stmt;
+            TransactionMode mode = setTx.getTransactionMode();
             assertTrue(sessionScope == setTx.isSessionScope());
-            assertTrue(readOnly == setTx.getTransactionMode().isReadOnly());
+            assertTrue((readOnly == null && mode.isReadOnly() == null)
+                    || readOnly.booleanValue() == mode.isReadOnly());
             assertTrue(isolation == setTx.getTransactionMode().getIsolationLevel());
             ++i;
             parser.remove();

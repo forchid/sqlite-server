@@ -56,7 +56,7 @@ public class TransactionStatement extends SQLStatement {
     
     @Override
     public void preExecute(int maxRows) throws SQLException, IllegalStateException {
-        assert !this.implicitTx;
+        assert !inImplicitTx();
         super.preExecute(maxRows);
         
         if (this.context.isAutoCommit() && (isBegin() || isSavepoint())) {
@@ -67,6 +67,8 @@ public class TransactionStatement extends SQLStatement {
     
     @Override
     protected boolean doExecute(int maxRows) throws SQLException {
+        assert !inImplicitTx();
+        
         boolean prepared = this.ready;
         boolean failed = true;
         try {
@@ -87,7 +89,7 @@ public class TransactionStatement extends SQLStatement {
     
     @Override
     public void complete(boolean success) throws IllegalStateException {
-        assert !this.implicitTx;
+        assert !inImplicitTx();
         
         String command = this.command;
         switch (command) {
@@ -114,7 +116,8 @@ public class TransactionStatement extends SQLStatement {
     @Override
     public String getExecutableSQL() throws SQLException {
         if (this.isDeferred() && isBegin()) {
-            if (isReadOnly()) {
+            final Boolean readOnly = isReadOnly();
+            if (readOnly != null && readOnly) {
                 return "begin";
             }
             // deferred -> immediate: 
@@ -182,7 +185,7 @@ public class TransactionStatement extends SQLStatement {
         this.transactionMode = transactionMode;
     }
     
-    public boolean isReadOnly() {
+    public Boolean isReadOnly() {
         return (this.transactionMode.isReadOnly());
     }
     

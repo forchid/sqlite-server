@@ -29,7 +29,8 @@ import org.slf4j.Logger;
  */
 public abstract class SQLContext {
     
-    protected boolean readOnly;
+    protected boolean readOnly; // session level
+    protected Transaction transaction;
     
     protected SQLContext() {
         
@@ -68,6 +69,18 @@ public abstract class SQLContext {
     
     public void setReadOnly(boolean readOnly) {
         this.readOnly = readOnly;
+    }
+    
+    public Transaction getTransaction() {
+        return this.transaction;
+    }
+    
+    public void setTransaction(Transaction transaction) throws IllegalStateException {
+        if (this.transaction != null && transaction != null) {
+            throw new IllegalStateException("A transaction pending");
+        }
+        
+        this.transaction = transaction;
     }
     
     public abstract void checkReadOnly(SQLStatement sqlStmt) throws SQLException;

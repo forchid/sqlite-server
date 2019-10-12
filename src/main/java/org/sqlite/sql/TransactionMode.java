@@ -29,7 +29,7 @@ public class TransactionMode {
     public static final int SERIALIZABLE     = 4;
     
     protected int isolationLevel;
-    private boolean readOnly;
+    private Boolean readOnly; // null if not set
     
     public TransactionMode() {
         this.isolationLevel = SERIALIZABLE;
@@ -52,11 +52,11 @@ public class TransactionMode {
         this.isolationLevel = isolationLevel;
     }
 
-    public boolean isReadOnly() {
+    public Boolean isReadOnly() {
         return readOnly;
     }
 
-    public void setReadOnly(boolean readOnly) {
+    public void setReadOnly(Boolean readOnly) {
         this.readOnly = readOnly;
     }
     

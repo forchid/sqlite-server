@@ -44,6 +44,7 @@ import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLStatement;
+import org.sqlite.sql.Transaction;
 import org.sqlite.sql.TransactionStatement;
 import org.sqlite.util.IoUtils;
 import static org.sqlite.util.ConvertUtils.*;
@@ -270,7 +271,9 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     // SQLContext methods
     @Override
     public void checkReadOnly(SQLStatement sqlStmt) throws SQLException {
-        if (this.isReadOnly() && !sqlStmt.isQuery() && !sqlStmt.isTransaction()) {
+        final boolean readOnly = sqlStmt.inReadOnlyTx();
+        
+        if (readOnly && !sqlStmt.isQuery() && !sqlStmt.isTransaction()) {
             String message = "Attempt to write a readonly transaction";
             throw convertError(SQLiteErrorCode.SQLITE_READONLY, message);
         }
@@ -329,12 +332,13 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     @Override
     protected void prepareTransaction(TransactionStatement txSql) {
         this.server.trace(log, "tx: begin");
+        Transaction tx = new Transaction(this, txSql.getTransactionMode());
+        setTransaction(tx);
         this.savepointStack.clear();
         SQLiteConnection conn = getConnection();
         conn.getConnectionConfig().setAutoCommit(false);
         this.savepointStack.push(txSql);
-        setReadOnly(txSql.isReadOnly());
-        trace(log, "readOnly {} in '{}'", this.readOnly, this);
+        trace(log, "readOnly {}, session readOnly {} in '{}'", this.readOnly, tx.isReadOnly(), this);
     }
     
     @Override
@@ -347,7 +351,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         getConnection().getConnectionConfig()
         .setAutoCommit(true);
         this.savepointStack.clear();
-        setReadOnly(false);
+        setTransaction(null);
     }
     
     @Override
@@ -380,7 +384,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
         
         if (isAutoCommit()) {
-            setReadOnly(false);
+            setTransaction(null);
             detachMetaDb();
         }
     }
