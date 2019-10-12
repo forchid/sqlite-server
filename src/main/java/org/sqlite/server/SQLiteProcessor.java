@@ -338,7 +338,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         SQLiteConnection conn = getConnection();
         conn.getConnectionConfig().setAutoCommit(false);
         this.savepointStack.push(txSql);
-        trace(log, "readOnly {}, session readOnly {} in '{}'", this.readOnly, tx.isReadOnly(), this);
+        trace(log, "tx readOnly {}, '{}' readOnly {}", tx.isReadOnly(), this, this.readOnly);
     }
     
     @Override
