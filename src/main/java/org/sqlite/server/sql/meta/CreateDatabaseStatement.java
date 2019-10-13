@@ -20,7 +20,6 @@ import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteErrorCode;
-import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;

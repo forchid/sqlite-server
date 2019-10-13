@@ -8,7 +8,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Use NIO infrastructure for supporting many connections by a few threads, SQLite server workers is default CPU cores
 + Added some SQL statements that include CREATE USER, ALTER USER, DROP USER, GRANT, REVOKE, SHOW GRANTS, CREATE DATABASE, SHOW DATABASES, DROP DATABASE for administrative purposes
 + Added some SQL functions such as USER(), CURRENT_USER(), VERSION(), SERVER_VERSION(), DATABASE(), CURRENT_DATABASE(), START_TIME(), SYSDATE(), CLOCK_TIMESTAMP(), SLEEP(N)
-+ Added BEGIN READ ONLY | READ WRITE to support read only or read write transaction in a connection
++ Added "BEGIN READ ONLY | READ WRITE", "set {transaction | session characteristics as transaction} read only | read write" to support read only or read write transaction in a connection
 + Support "INSERT INTO ...{VALUES()... | SELECT ...} RETURNING ..." statement of PostgreSQL style
 + Added "SELECT ... FOR UPDATE" for support pessimistic lock by SQLite reserved lock
 

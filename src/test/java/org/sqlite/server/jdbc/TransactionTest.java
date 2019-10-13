@@ -20,6 +20,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.TestDbBase;
@@ -40,7 +41,10 @@ public class TransactionTest extends TestDbBase {
     protected void doTest() throws SQLException {
         initTableAccounts();
         nestedConnTxTest();
-        readOnlyTxTest();
+        readOnlyTxTest(1);
+        readOnlyTxTest(2);
+        readOnlyTxTest(10);
+        readOnlyTxTest(100);
         
         rrTxTest(100, 10);
         rrTxTest(100, 50);
@@ -126,34 +130,157 @@ public class TransactionTest extends TestDbBase {
         }
     }
     
-    private void readOnlyTxTest() throws SQLException {
-        try (Connection conn = getConnection()) {
-            Statement stmt = conn.createStatement();
-            stmt.executeUpdate("begin read only");
-            connectionTest(conn, "select 1", "1");
-            
+    private void readOnlyTxTest(int concs) throws SQLException {
+        final AtomicBoolean success = new AtomicBoolean(true);
+        Thread[] readers = new Thread[concs];
+        for (int i = 0; i < concs; ++i) {
+            Thread t = new Thread("reader-"+i) {
+                {setDaemon(true);}
+                @Override
+                public void run() {
+                    boolean failed = true;
+                    try {
+                        // Case-1. "read only" transaction mode in BEGIN
+                        try (Connection conn = getConnection()) {
+                            Statement stmt = conn.createStatement();
+                            
+                            stmt.executeUpdate("begin read only");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, true);
+                            stmt.execute("rollback");
+                        }
+                        
+                        // Case-2. "read only" transaction mode in "SET TRANSACTION"
+                        try (Connection conn = getConnection()) {
+                            Statement stmt = conn.createStatement();
+                            
+                            stmt.executeUpdate("begin");
+                            stmt.executeUpdate("SET TRANSACTION read only");
+                            connectionTest(conn, "select 1", "1");
+                            try {
+                                stmt.executeUpdate("SET TRANSACTION read only");
+                                fail("\"SET TRANSACTION\" only is the first statement in transaction");
+                            } catch (SQLException e) {
+                                if (!"25001".equals(e.getSQLState())) throw e;
+                            }
+                            doReadOnlyTxTest(stmt, true);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin");
+                            stmt.executeUpdate("SET TRANSACTION read write");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, false);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin read only");
+                            stmt.executeUpdate("SET TRANSACTION read only");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, true);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin read only");
+                            stmt.executeUpdate("SET TRANSACTION read write");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, false);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin read write");
+                            stmt.executeUpdate("SET TRANSACTION read only");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, true);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin read write");
+                            stmt.executeUpdate("SET TRANSACTION read write");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, false);
+                            stmt.execute("rollback");
+                        }
+                        
+                        // Case-2. "read only" transaction mode in "SET SESSION characteristics as TRANSACTION"
+                        try (Connection conn = getConnection()) {
+                            Statement stmt = conn.createStatement();
+                            conn.setReadOnly(true);
+                            
+                            stmt.executeUpdate("begin");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, true);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin read only");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, true);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin read write");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, false);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin");
+                            stmt.executeUpdate("set transaction read only");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, true);
+                            stmt.execute("rollback");
+                            
+                            stmt.executeUpdate("begin");
+                            stmt.executeUpdate("set transaction read write");
+                            connectionTest(conn, "select 1", "1");
+                            doReadOnlyTxTest(stmt, false);
+                            stmt.execute("rollback");
+                        }
+                        failed = false;
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    } finally {
+                        if (failed) {
+                            success.set(false);
+                        }
+                    }
+                }
+            };
+            readers[i] = t;
+        }
+        
+        for (int i = 0; i < concs; ++i) {
+            Thread t = readers[i];
+            t.start();
+        }
+        for (int i = 0; i < concs; ++i) {
+            Thread t = readers[i];
             try {
-                stmt.executeUpdate("insert into accounts(name, balance)values('Peter', 100000)");
-                fail("Can't insert in a read only transaction");
-            } catch (SQLException e) {
-                if (!"25000".equals(e.getSQLState())) throw e;
+                t.join();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
-            
-            try {
-                stmt.executeUpdate("update accounts set balance=balance+1000 where id=1");
-                fail("Can't update in a read only transaction");
-            } catch (SQLException e) {
-                if (!"25000".equals(e.getSQLState())) throw e;
-            }
-            
-            try {
-                stmt.executeUpdate("DELETE from accounts where id=1");
-                fail("Can't delete in a read only transaction");
-            } catch (SQLException e) {
-                if (!"25000".equals(e.getSQLState())) throw e;
-            }
-            
-            stmt.execute("rollback");
+        }
+        
+        assertTrue(success.get());
+    }
+    
+    private void doReadOnlyTxTest(Statement stmt, final boolean readOnly) throws SQLException {
+        try {
+            stmt.executeUpdate("insert into accounts(name, balance)values('Peter', 100000)");
+            if (readOnly) fail("Can't insert in a read only transaction");
+        } catch (SQLException e) {
+            if (!"25000".equals(e.getSQLState())) throw e;
+            if (!readOnly) throw e;
+        }
+        
+        try {
+            stmt.executeUpdate("update accounts set balance=balance+1000 where id=1");
+            if (readOnly) fail("Can't update in a read only transaction");
+        } catch (SQLException e) {
+            if (!"25000".equals(e.getSQLState())) throw e;
+            if (!readOnly) throw e;
+        }
+        
+        try {
+            stmt.executeUpdate("DELETE from accounts where id=1");
+            if (readOnly) fail("Can't delete in a read only transaction");
+        } catch (SQLException e) {
+            if (!"25000".equals(e.getSQLState())) throw e;
+            if (!readOnly) throw e;
         }
     }
     

@@ -20,7 +20,6 @@ import static java.lang.String.*;
 import java.sql.SQLException;
 
 import org.sqlite.SQLiteErrorCode;
-import org.sqlite.server.MetaStatement;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;

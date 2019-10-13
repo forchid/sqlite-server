@@ -32,7 +32,7 @@ public class TransactionStatement extends SQLStatement {
     
     protected TransactionMode transactionMode = new TransactionMode();
     protected String savepointName;
-    private boolean ready;
+    private boolean isReadyStmt;
     protected int behavior = DEFERRED;
     
     public TransactionStatement(String sql, String command) {
@@ -61,7 +61,7 @@ public class TransactionStatement extends SQLStatement {
         
         if (this.context.isAutoCommit() && (isBegin() || isSavepoint())) {
             this.context.prepareTransaction(this);
-            this.ready = true;
+            this.isReadyStmt = true;
         }
     }
     
@@ -69,7 +69,7 @@ public class TransactionStatement extends SQLStatement {
     protected boolean doExecute(int maxRows) throws SQLException {
         assert !inImplicitTx();
         
-        boolean prepared = this.ready;
+        boolean prepared = this.isReadyStmt;
         boolean failed = true;
         try {
             boolean resultSet = super.doExecute(maxRows);
@@ -82,8 +82,15 @@ public class TransactionStatement extends SQLStatement {
         } finally {
             if (failed && prepared) {
                 this.context.resetAutoCommit();
-                this.ready = false;
+                this.isReadyStmt = false;
             }
+        }
+    }
+    
+    @Override
+    protected void setFirstStatementInTx() {
+        if (!this.isReadyStmt) {
+            super.setFirstStatementInTx();
         }
     }
     

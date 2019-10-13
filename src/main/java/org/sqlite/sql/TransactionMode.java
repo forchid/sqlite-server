@@ -15,6 +15,8 @@
  */
 package org.sqlite.sql;
 
+import static java.lang.String.*;
+
 /**Transaction mode: isolation level, read only or read write.
  * 
  * @author little-pan
@@ -58,6 +60,29 @@ public class TransactionMode {
 
     public void setReadOnly(Boolean readOnly) {
         this.readOnly = readOnly;
+    }
+    
+    @Override
+    public String toString() {
+        String isolation;
+        switch (this.isolationLevel) {
+        case READ_UNCOMMITTED:
+            isolation = "READ UNCOMMITTED";
+            break;
+        case READ_COMMITTED:
+            isolation = "READ COMMITTED";
+            break;
+        case REPEATABLE_READ:
+            isolation = "REPEATABLE READ";
+            break;
+        case SERIALIZABLE:
+            isolation = "SERIALIZABLE";
+            break;
+        default:
+            throw new IllegalArgumentException("isolation " + isolationLevel);
+        }
+        
+        return (format("TransactionMode[isolation %s, readOnly %s]", isolation, this.readOnly));
     }
     
 }

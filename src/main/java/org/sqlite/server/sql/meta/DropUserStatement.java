@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.sqlite.SQLiteErrorCode;
-import org.sqlite.server.MetaStatement;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;

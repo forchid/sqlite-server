@@ -15,6 +15,8 @@
  */
 package org.sqlite.sql;
 
+import static java.lang.String.*;
+
 /** An instance that manages a transaction state.
  * 
  * @author little-pan
@@ -24,9 +26,9 @@ package org.sqlite.sql;
 public class Transaction {
     
     protected final SQLContext context;
-    protected final TransactionMode mode;
-    protected final boolean readOnly;
     protected final boolean implicit;
+    protected final TransactionMode mode;
+    protected boolean readOnly;
     
     protected SQLStatement firstStatement;
     
@@ -75,8 +77,19 @@ public class Transaction {
         return (this.readOnly);
     }
     
+    public void setReadOnly(boolean readOnly) {
+        this.readOnly = readOnly;
+        this.mode.setReadOnly(readOnly);
+    }
+    
     public boolean isImplicit() {
         return implicit;
+    }
+    
+    @Override
+    public String toString() {
+        return (format("Transaction[readOnly %s, implicit %s, %s]", 
+                this.readOnly, this.implicit, this.mode));
     }
     
 }

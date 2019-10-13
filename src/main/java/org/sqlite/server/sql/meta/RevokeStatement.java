@@ -18,7 +18,6 @@ package org.sqlite.server.sql.meta;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.sql.meta.GrantStatement.Grantee;
 import org.sqlite.sql.ImplicitCommitException;

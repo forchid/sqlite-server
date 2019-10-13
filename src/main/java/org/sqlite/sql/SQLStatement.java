@@ -224,8 +224,9 @@ public class SQLStatement implements AutoCloseable {
             // Execute batch prepared statement in an explicit transaction for ACID
             if (autoCommit && writable && context.getTransaction() == null) {
                 execute("begin immediate");
-                context.setTransaction(new Transaction(context, true));
-                context.trace(log, "tx: begin an implicit transaction");
+                Transaction tx = new Transaction(context, true);
+                context.setTransaction(tx);
+                context.trace(log, "tx: begin an implicit {}", tx);
             }
             PreparedStatement ps = getPreparedStatement();
             resultSet = ps.execute();
@@ -233,6 +234,7 @@ public class SQLStatement implements AutoCloseable {
             String sql = getExecutableSQL();
             resultSet = this.jdbcStatement.execute(sql);
         }
+        context.trace(log, "execute in tx {}", context.getTransaction());
         
         return resultSet;
     }
@@ -242,7 +244,14 @@ public class SQLStatement implements AutoCloseable {
     }
     
     protected void postExecute(boolean resultSet) throws SQLException {
-        
+        setFirstStatementInTx();
+    }
+    
+    protected void setFirstStatementInTx() {
+        Transaction tx = this.context.getTransaction();
+        if (tx != null && tx.getFirstStatement() == null) {
+            tx.setFirstStatement(this);
+        }
     }
     
     public boolean inImplicitTx() {

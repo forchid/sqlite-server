@@ -18,7 +18,6 @@ package org.sqlite.server.sql.meta;
 import java.sql.SQLException;
 
 import org.sqlite.SQLiteErrorCode;
-import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;

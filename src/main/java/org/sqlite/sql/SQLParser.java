@@ -24,15 +24,16 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-import org.sqlite.server.MetaStatement;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
+import org.sqlite.server.sql.local.SetTransactionStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
 import org.sqlite.server.sql.meta.DropDatabaseStatement;
 import org.sqlite.server.sql.meta.DropUserStatement;
 import org.sqlite.server.sql.meta.GrantStatement;
+import org.sqlite.server.sql.meta.MetaStatement;
 import org.sqlite.server.sql.meta.RevokeStatement;
 import org.sqlite.server.sql.meta.ShowDatabasesStatement;
 import org.sqlite.server.sql.meta.ShowGrantsStatement;

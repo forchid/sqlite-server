@@ -93,6 +93,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     private SQLiteConnection connection;
     private String metaSchema = null;
+    protected SQLiteLocalDb localDb;
     protected Stack<TransactionStatement> savepointStack;
     
     protected SQLiteProcessor(SQLiteServer server, SocketChannel channel, int id) 
@@ -111,6 +112,31 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         
         this.writeQueue = new ArrayDeque<>();
         this.savepointStack = new Stack<>();
+    }
+    
+    public SQLiteLocalDb attachLocalDb() throws SQLException {
+        SQLiteLocalDb localDb = this.localDb;
+        if (localDb == null) {
+            this.localDb = localDb = new SQLiteLocalDb(this);
+        }
+        
+        return localDb.attach();
+    }
+    
+    public SQLiteProcessor detachLocalDb() throws IllegalStateException {
+        SQLiteLocalDb localDb = this.localDb;
+        if (localDb != null && isAutoCommit()) {
+            try {
+                if (localDb.detach()) {
+                    this.localDb = null;
+                    trace(log, "detach localDb {}", localDb);
+                }
+            } catch (SQLException e) {
+                throw new IllegalStateException("Datach localDb error", e);
+            }
+        }
+        
+        return this;
     }
     
     public long getCreateTime() {
@@ -133,7 +159,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         return this.server;
     }
     
-    protected User getUser() {
+    public User getUser() {
         return this.user;
     }
     
@@ -161,11 +187,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         return getServer().getMetaDb();
     }
     
-    protected String getMetaSchema() {
+    public String getMetaSchema() {
         return this.metaSchema;
     }
     
-    protected void attachMetaDb() throws SQLException {
+    public void attachMetaDb() throws SQLException {
         if (this.metaSchema == null) {
             SQLiteConnection conn = getConnection();
             this.metaSchema = getMetaDb().attachTo(conn);
@@ -173,7 +199,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
     }
     
-    protected void detachMetaDb() throws IllegalStateException {
+    public void detachMetaDb() throws IllegalStateException {
         SQLiteConnection conn = getConnection();
         if (this.metaSchema == null || !isAutoCommit()) {
             return;
@@ -321,12 +347,13 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     @Override
     public void traceError(Logger log, String tag, String message, Throwable cause) {
-        this.traceError(log, tag, message, cause);
+        this.server.traceError(log, tag, message, cause);
     }
     
     @Override
     public void transactionComplelete() {
-        this.getWorker().dbIdle();
+        getWorker().dbIdle();
+        detachLocalDb();
     }
     
     @Override
@@ -338,7 +365,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         SQLiteConnection conn = getConnection();
         conn.getConnectionConfig().setAutoCommit(false);
         this.savepointStack.push(txSql);
-        trace(log, "tx readOnly {}, '{}' readOnly {}", tx.isReadOnly(), this, this.readOnly);
+        trace(log, "{}, '{}' readOnly {}", tx, this, this.readOnly);
     }
     
     @Override
@@ -838,6 +865,11 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     @Override
+    public String toString() {
+        return this.name;
+    }
+    
+    @Override
     public void close() {
         stop();
         if (!isOpen()) {
@@ -862,9 +894,5 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         
         this.server.trace(log, "Close: id {}", this.id);
     }
-    
-    public String toString() {
-        return this.name;
-    }
-    
+
 }

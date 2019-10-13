@@ -20,7 +20,6 @@ import static java.lang.String.format;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.sqlite.server.MetaStatement;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;

@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.server;
+package org.sqlite.server.sql.meta;
 
 import java.sql.SQLException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteErrorCode;
-import org.sqlite.server.sql.meta.User;
+import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLStatement;
 
@@ -69,9 +69,9 @@ public abstract class MetaStatement extends SQLStatement {
     public void complete(boolean success) throws IllegalStateException {
         super.complete(success);
         
-        if (this.context.isAutoCommit()) {
-            SQLiteProcessor proc = getContext();
-            proc.detachMetaDb();
+        SQLiteProcessor context = this.getContext();
+        if (context.isAutoCommit()) {
+            context.detachMetaDb();
         }
     }
     
