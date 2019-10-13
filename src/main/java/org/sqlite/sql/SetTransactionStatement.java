@@ -27,7 +27,7 @@ public class SetTransactionStatement extends SQLStatement {
     protected TransactionMode transactionMode;
     
     public SetTransactionStatement(String sql) {
-        super(sql, "SET");
+        super(sql, "SET TRANSACTION");
     }
 
     public boolean isSessionScope() {

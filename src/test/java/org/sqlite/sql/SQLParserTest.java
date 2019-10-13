@@ -1407,7 +1407,7 @@ public class SQLParserTest extends TestBase {
         int i = 0;
         for (SQLStatement stmt: parser) {
             info("Test SET %s", stmt);
-            assertTrue("SET".equals(stmt.getCommand()));
+            assertTrue("SET TRANSACTION".equals(stmt.getCommand()));
             assertTrue(stmt instanceof SetTransactionStatement);
             assertTrue(!stmt.isQuery());
             assertTrue(!stmt.isEmpty());
