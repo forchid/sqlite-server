@@ -24,7 +24,7 @@ import org.sqlite.server.SQLiteLocalDb;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLStatement;
 
-/** A statement that executes in SQLite server local(session level) database.
+/** A statement that non-blocking executes in SQLite server local(session level) database.
  * 
  * @author little-pan
  * @since 2019-10-13
@@ -49,26 +49,38 @@ public abstract class LocalStatement extends SQLStatement {
     
     @Override
     public PreparedStatement prepare() throws SQLException, IllegalStateException {
-        SQLiteProcessor context = getContext();
-        this.localDb = context.attachLocalDb();
-        this.localDb.register(this);
-        
+        init();
         return super.prepare();
     }
     
     @Override
     public void preExecute(int maxRows) throws SQLException, IllegalStateException {
-        SQLiteProcessor context = getContext();
-        this.localDb = context.attachLocalDb();
-        this.localDb.register(this);
-        
+        init();
         super.preExecute(maxRows);
+    }
+    
+    @Override
+    protected boolean shouldHoldDbWriteLock(boolean writable) {
+        return false;
+    }
+    
+    @Override
+    protected boolean shouldBeginImplicitTx(boolean autoCommit, boolean writable) {
+        return false;
     }
     
     @Override
     public String getExecutableSQL() throws SQLException {
         String localSchema = this.localDb.getSchemaName();
         return getSQL(localSchema);
+    }
+    
+    protected void init() throws SQLException {
+        if (this.localDb == null) {
+            SQLiteProcessor context = getContext();
+            this.localDb = context.attachLocalDb();
+            this.localDb.register(this);
+        }
     }
     
     protected abstract String getSQL(String localSchema) throws SQLException;

@@ -55,12 +55,17 @@ public class SetTransactionStatement extends LocalStatement {
         this.transactionMode = transactionMode;
     }
     
+    @Override
     protected void checkPermission() throws SQLException {
         // Pass
     }
     
+    @Override
     protected void checkReadOnly() throws SQLException {
-        // Pass
+        if (isSessionScope()) {
+            return;
+        }
+        super.checkReadOnly();
     }
     
     @Override

@@ -157,31 +157,24 @@ public class TransactionTest extends TestDbBase {
                             stmt.executeUpdate("begin");
                             stmt.executeUpdate("SET TRANSACTION read only");
                             connectionTest(conn, "select 1", "1");
-                            try {
-                                stmt.executeUpdate("SET TRANSACTION read only");
-                                fail("\"SET TRANSACTION\" only is the first statement in transaction");
-                            } catch (SQLException e) {
-                                if (!"25001".equals(e.getSQLState())) throw e;
-                            }
                             doReadOnlyTxTest(stmt, true);
                             stmt.execute("rollback");
                             
                             stmt.executeUpdate("begin");
                             stmt.executeUpdate("SET TRANSACTION read write");
                             connectionTest(conn, "select 1", "1");
+                            try {
+                                stmt.executeUpdate("SET TRANSACTION read only");
+                                fail("\"SET TRANSACTION\" only is the first statement in transaction");
+                            } catch (SQLException e) {
+                                if (!"25001".equals(e.getSQLState())) throw e;
+                            }
                             doReadOnlyTxTest(stmt, false);
                             stmt.execute("rollback");
                             
                             stmt.executeUpdate("begin read only");
-                            stmt.executeUpdate("SET TRANSACTION read only");
                             connectionTest(conn, "select 1", "1");
                             doReadOnlyTxTest(stmt, true);
-                            stmt.execute("rollback");
-                            
-                            stmt.executeUpdate("begin read only");
-                            stmt.executeUpdate("SET TRANSACTION read write");
-                            connectionTest(conn, "select 1", "1");
-                            doReadOnlyTxTest(stmt, false);
                             stmt.execute("rollback");
                             
                             stmt.executeUpdate("begin read write");
@@ -213,18 +206,6 @@ public class TransactionTest extends TestDbBase {
                             stmt.execute("rollback");
                             
                             stmt.executeUpdate("begin read write");
-                            connectionTest(conn, "select 1", "1");
-                            doReadOnlyTxTest(stmt, false);
-                            stmt.execute("rollback");
-                            
-                            stmt.executeUpdate("begin");
-                            stmt.executeUpdate("set transaction read only");
-                            connectionTest(conn, "select 1", "1");
-                            doReadOnlyTxTest(stmt, true);
-                            stmt.execute("rollback");
-                            
-                            stmt.executeUpdate("begin");
-                            stmt.executeUpdate("set transaction read write");
                             connectionTest(conn, "select 1", "1");
                             doReadOnlyTxTest(stmt, false);
                             stmt.execute("rollback");

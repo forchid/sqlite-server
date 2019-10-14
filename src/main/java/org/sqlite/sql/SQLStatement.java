@@ -215,14 +215,14 @@ public class SQLStatement implements AutoCloseable {
         context.trace(log, "tx: autoCommit {} ->", autoCommit);
         
         final boolean writable = isWritable();
-        if (writable && !context.holdsDbWriteLock()) {
+        if (shouldHoldDbWriteLock(writable)) {
             context.dbWriteLock();
         }
         
         context.trace(log, "execute sql \"{}\"", this);
         if (this.prepared) {
-            // Execute batch prepared statement in an explicit transaction for ACID
-            if (autoCommit && writable && context.getTransaction() == null) {
+            // Execute batch prepared statement in an implicit transaction for ACID
+            if (shouldBeginImplicitTx(autoCommit, writable)) {
                 execute("begin immediate");
                 Transaction tx = new Transaction(context, true);
                 context.setTransaction(tx);
@@ -239,8 +239,17 @@ public class SQLStatement implements AutoCloseable {
         return resultSet;
     }
     
+    protected boolean shouldHoldDbWriteLock(boolean writable) {
+        return (writable && !this.context.holdsDbWriteLock());
+    }
+    
+    protected boolean shouldBeginImplicitTx(boolean autoCommit, boolean writable) {
+        return (this.prepared && autoCommit 
+                && writable && this.context.getTransaction() == null);
+    }
+    
     protected boolean isWritable() {
-        return (!isQuery() && !this.context.isReadOnly());
+        return (!isQuery() && !inReadOnlyTx());
     }
     
     protected void postExecute(boolean resultSet) throws SQLException {

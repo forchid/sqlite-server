@@ -788,6 +788,9 @@ public class PgProcessor extends SQLiteProcessor {
         
         startMessage('C');
         switch (command) {
+        case "BEGIN":
+            writeString("BEGIN");
+            break;
         case "INSERT":
             writeStringPart("INSERT 0 ");
             writeString(updateCount + "");
@@ -801,12 +804,16 @@ public class PgProcessor extends SQLiteProcessor {
             writeString(updateCount + "");
             break;
         case "CALL":
-        case "PRAGMA":
         case "SELECT":
             writeString("SELECT");
             break;
-        case "BEGIN":
-            writeString("BEGIN");
+        case "PRAGMA":
+            if (resultSet) {
+                writeString("SELECT");
+            } else {
+                writeStringPart("UPDATE ");
+                writeString(updateCount + "");
+            }
             break;
         default:
             server.trace(log, "check CommandComplete: {}", command);
