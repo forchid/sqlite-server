@@ -27,6 +27,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
+import org.sqlite.server.sql.local.ShowProcesslistStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
@@ -899,6 +900,13 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             skipIgnorable();
             nextString("databases");
             return parseShowDatabases(true);
+        } else if (nextStringIf("processlist") != -1) {
+            return parseShowProcesslist(false);
+        } else if (nextStringIf("full") != -1) {
+            skipIgnorable();
+            if (nextStringIf("processlist") != -1) {
+                return parseShowProcesslist(true);
+            }
         }
         
         throw syntaxError();
@@ -952,6 +960,16 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         return stmt;
+    }
+    
+    protected SQLStatement parseShowProcesslist(boolean full) {
+        if (nextEnd()) {
+            ShowProcesslistStatement stmt = new ShowProcesslistStatement(this.sql);
+            stmt.setFull(full);
+            return stmt;
+        }
+        
+        throw syntaxError();
     }
     
     protected TransactionMode parseTransactionMode() {

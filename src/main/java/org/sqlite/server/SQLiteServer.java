@@ -29,7 +29,9 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -785,6 +787,19 @@ public abstract class SQLiteServer implements AutoCloseable {
         return this.dbName;
     }
     
+    public List<SQLiteProcessorState> getProcessorStates(SQLiteProcessor processor) {
+        List<SQLiteProcessorState> states = new ArrayList<>();
+        SQLiteWorker[] workers = this.workers;
+        for (int i = 0, n = workers.length; i < n; ++i) {
+            SQLiteWorker worker = workers[i];
+            if (worker == null || !worker.isOpen()) {
+                continue;
+            }
+            states.addAll(worker.getProcessorStates(processor));
+        }
+        return states;
+    }
+    
     public boolean inDataDir(String filename) {
         return inDataDir(filename, this.dataDir);
     }
@@ -1024,5 +1039,5 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  boot    Bootstap SQLite server\n" +
                 "  help    Show this help message";
     }
-    
+
 }

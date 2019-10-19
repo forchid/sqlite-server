@@ -15,8 +15,6 @@
  */
 package org.sqlite.server.sql.local;
 
-import static java.lang.String.format;
-
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
@@ -40,6 +38,10 @@ public abstract class LocalStatement extends SQLStatement {
     
     public LocalStatement(String sql, String command) {
         super(sql, command);
+    }
+    
+    public LocalStatement(String sql, String command, boolean query) {
+        super(sql, command, query);
     }
     
     @Override

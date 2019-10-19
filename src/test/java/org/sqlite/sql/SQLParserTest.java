@@ -20,7 +20,9 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.TestBase;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
+import org.sqlite.server.sql.local.LocalStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
+import org.sqlite.server.sql.local.ShowProcesslistStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
@@ -766,6 +768,15 @@ public class SQLParserTest extends TestBase {
         showGrantsTest("show grants", 1, "%", null, true, false);
         showGrantsTest("show grants ", 1, "%", null, true, false);
         
+        showProcesslistTest("show processlist;", 1, false);
+        showProcesslistTest("show processlist", 1, false);
+        showProcesslistTest("Show processlist;", 1, false);
+        showProcesslistTest("SHOW PROCESSLIST;", 1, false);
+        showProcesslistTest("show full processlist", 1, true);
+        showProcesslistTest("show FULL processlist;", 1, true);
+        showProcesslistTest("SHOW full PROCESSLIST", 1, true);
+        showProcesslistTest("SHOW FULL PROCESSLIST;", 1, true);
+        
         txCommitTest("commit", 1);
         txCommitTest("commit transaction", 1);
         txCommitTest("commit;", 1);
@@ -1248,6 +1259,25 @@ public class SQLParserTest extends TestBase {
             assertTrue(user == null || user.equals(user));
             assertTrue(currentUser == s.isCurrentUser());
             assertTrue(needSa == s.isNeedSa());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showProcesslistTest(String sqls, int stmts, boolean full) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW PROCESSLIST %s", stmt);
+            assertTrue("SHOW PROCESSLIST".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowProcesslistStatement s = (ShowProcesslistStatement)stmt;
+            assertTrue(stmt instanceof LocalStatement);
+            assertTrue(full == s.isFull());
             ++i;
             parser.remove();
         }

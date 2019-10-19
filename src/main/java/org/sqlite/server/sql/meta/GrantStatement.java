@@ -15,8 +15,6 @@
  */
 package org.sqlite.server.sql.meta;
 
-import static java.lang.String.format;
-
 import java.util.HashSet;
 import java.util.Set;
 

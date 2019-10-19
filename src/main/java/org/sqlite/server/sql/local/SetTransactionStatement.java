@@ -57,7 +57,7 @@ public class SetTransactionStatement extends LocalStatement {
     
     @Override
     protected void checkPermission() throws SQLException {
-        // Pass
+        // pass
     }
     
     @Override

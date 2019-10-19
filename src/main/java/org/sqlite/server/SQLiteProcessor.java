@@ -81,12 +81,14 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     protected final SQLiteServer server;
     protected final int id;
     protected final long createTime;
+    protected final SQLiteProcessorState state;
     protected String name;
     protected int slot = -1; // slot in SlotAllocator
     protected SQLiteWorker worker;
     protected SQLiteAuthMethod authMethod;
-    protected String databaseName;
-    protected User user;
+    protected volatile String userName;
+    protected volatile String databaseName;
+    protected volatile User user;
     
     private volatile boolean open = true;
     private volatile boolean stopped;
@@ -112,6 +114,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         
         this.writeQueue = new ArrayDeque<>();
         this.savepointStack = new Stack<>();
+        this.state = new SQLiteProcessorState(this);
     }
     
     public SQLiteLocalDb attachLocalDb() throws SQLException {
@@ -139,6 +142,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         return this;
     }
     
+    public SQLiteProcessorState copyState() {
+        return this.state.copy();
+    }
+    
     public long getCreateTime() {
         return this.createTime;
     }
@@ -161,6 +168,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     public User getUser() {
         return this.user;
+    }
+    
+    public String getUserName() {
+        return this.userName;
     }
     
     protected SocketChannel getChannel() {
@@ -546,6 +557,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     protected void read() {
         try {
+            this.state.setState("read data from network");
             process();
         } catch (Exception e) {
             this.server.traceError(log, "process error", e);
@@ -608,6 +620,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     protected void write() {
         try {
+            this.state.setState("flush data into network");
             flush();
         } catch (Exception e) {
             this.server.traceError(log, "flush error", e);
@@ -656,6 +669,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
                 if (rb != null && rb.position() > 0) {
                     read();
                 }
+                this.state.setState("");
             } else {
                 this.worker.close(this);
             }
@@ -852,8 +866,25 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         getMetaDb().statisticsCatalogs(dataDir);
     }
     
+    public boolean isCurrentUser(User other) {
+        if (other == null) {
+            return false;
+        }
+        
+        final User user = getUser();
+        if (user == null) {
+            InetSocketAddress remote = getRemoteAddress();
+            return (other.getUser().equals(getUserName()) 
+                    && remote.getHostString().equals(other.getHost()));
+        }
+        
+        return (user.getUser().equals(other.getUser()) 
+                && user.getHost().equals(other.getHost()));
+    }
+    
     public void stop() {
         this.stopped = true;
+        this.state.stop();
     }
     
     public boolean isStopped() {
@@ -891,6 +922,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         this.connection = null;
         this.dbWriteUnlock();
         this.worker.dbIdle();
+        this.state.close();
         
         this.server.trace(log, "Close: id {}", this.id);
     }

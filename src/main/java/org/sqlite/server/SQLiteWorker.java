@@ -18,13 +18,16 @@ package org.sqlite.server;
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.server.sql.meta.User;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SlotAllocator;
 
@@ -346,6 +349,7 @@ public class SQLiteWorker implements Runnable {
         if (!busyContext.isSleepable()) {
             this.dbIdle.set(false);
         }
+        process.state.setState("busy");
         
         return true;
     }
@@ -428,6 +432,35 @@ public class SQLiteWorker implements Runnable {
     
     protected void procsUnlock() {
         this.procsLock.set(false);
+    }
+    
+    public List<SQLiteProcessorState> getProcessorStates(final SQLiteProcessor processor) {
+        procsLock();
+        try {
+            List<SQLiteProcessorState> states = new ArrayList<>();
+            final User user = processor.getUser();
+            for (int i = 0, n = this.processors.maxSlot(); i < n; ++i) {
+                final SQLiteProcessor p = this.processors.get(i);
+                if (p == null) {
+                    continue;
+                }
+                
+                if (p == processor) {
+                    states.add(p.copyState());
+                } else {
+                    if (user == null) {
+                        continue;
+                    }
+                    
+                    if (user.isSa() || p.isCurrentUser(user)) {
+                        states.add(p.copyState());
+                    }
+                }
+            }
+            return states;
+        } finally {
+            procsUnlock();
+        }
     }
     
     @Override

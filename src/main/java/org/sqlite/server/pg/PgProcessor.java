@@ -91,7 +91,6 @@ public class PgProcessor extends SQLiteProcessor {
     private DataOutputStream dataOut;
     private boolean needFlush;
     
-    private String userName;
     private String clientEncoding = "UTF-8";
     private String dateStyle = "ISO, MDY";
     
@@ -416,6 +415,7 @@ public class PgProcessor extends SQLiteProcessor {
                     
                     // Prepare SQL
                     if (!sqlStmt.isEmpty()) {
+                        this.state.startQuery(sqlStmt);
                         PreparedStatement prep = sqlStmt.prepare();
                         if (!(sqlStmt instanceof MetaStatement)) {
                             ParameterMetaData meta = prep.getParameterMetaData();
@@ -566,6 +566,7 @@ public class PgProcessor extends SQLiteProcessor {
                     this.xQueryFailed = false;
                     break;
                 }
+                this.state.setState("executing");
                 processXQuery(p, maxRows);
                 break;
             }
@@ -805,6 +806,7 @@ public class PgProcessor extends SQLiteProcessor {
             break;
         case "CALL":
         case "SELECT":
+        case "SHOW":
             writeString("SELECT");
             break;
         case "PRAGMA":
@@ -816,6 +818,10 @@ public class PgProcessor extends SQLiteProcessor {
             }
             break;
         default:
+            if (command.startsWith("SHOW ")) {
+                writeString("SELECT");
+                break;
+            }
             server.trace(log, "check CommandComplete: {}", command);
             writeStringPart("UPDATE ");
             writeString(updateCount + "");
@@ -976,6 +982,8 @@ public class PgProcessor extends SQLiteProcessor {
         }
         write((byte) c);
         sendMessage();
+        
+        this.state.startSleep();
     }
     
     private void sendDataRow(ResultSet rs, int[] formatCodes) throws IOException, SQLException {
@@ -1367,6 +1375,7 @@ public class PgProcessor extends SQLiteProcessor {
                     this.rs = stmt.getResultSet();
                 }
                 // the meta-data is sent in the prior 'Describe'
+                proc.state.setState("fetch result set from database");
                 for (; this.rs.next(); ) {
                     proc.sendDataRow(this.rs, this.p.resultColumnFormat);
                     if (proc.canFlush()) {
@@ -1444,6 +1453,7 @@ public class PgProcessor extends SQLiteProcessor {
                         }
                     } else {
                         // Continue write remaining resultSet
+                        proc.state.setState("fetch result set from database");
                         for (; this.rs.next(); ) {
                             proc.sendDataRow(this.rs, null);
                             if (proc.canFlush()) {
@@ -1482,9 +1492,11 @@ public class PgProcessor extends SQLiteProcessor {
                         proc.writeTask = null;
                         checkBusyState();
                         timeout = false;
+                        proc.state.startQuery(sqlStmt, "executing");
                         boolean result = sqlStmt.execute(0);
                         setBusyContext(null);
                         if (result) {
+                            proc.state.setState("fetch result set from database");
                             ResultSet rs = sqlStmt.getResultSet();
                             ResultSetMetaData meta = rs.getMetaData();
                             proc.sendRowDescription(meta);

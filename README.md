@@ -6,11 +6,11 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + High performance(1000+ read/write transactions per second, "select count(*)... where NON_INDEX_COLUMN condition" returns in 1s on 10000000+ rows table, insert 50,000 ~ 100,000+ rows per second in [wal & normal](https://www.sqlite.org/pragma.html#pragma_journal_mode) mode)
 + Add a feature of user, privilege and database management for SQLite server engine
 + Use NIO infrastructure for supporting many connections by a few threads, SQLite server workers is default CPU cores
-+ Added some SQL statements that include CREATE USER, ALTER USER, DROP USER, GRANT, REVOKE, SHOW GRANTS, CREATE DATABASE, SHOW DATABASES, DROP DATABASE for administrative purposes
-+ Added some SQL functions such as USER(), CURRENT_USER(), VERSION(), SERVER_VERSION(), DATABASE(), CURRENT_DATABASE(), START_TIME(), SYSDATE(), CLOCK_TIMESTAMP(), SLEEP(N)
-+ Added "BEGIN READ ONLY | READ WRITE", "set {transaction | session characteristics as transaction} read only | read write" to support read only or read write transaction in a connection
-+ Support "INSERT INTO ...{VALUES()... | SELECT ...} RETURNING ..." statement of PostgreSQL style
-+ Added "SELECT ... FOR UPDATE" for support pessimistic lock by SQLite reserved lock
++ Added some SQL statements that include "create user", "alter user", "drop user", "grant", "revoke", "show grants", "create database", "show databases", "drop database", "show [full] processlist" for administrative purposes
++ Added some SQL functions such as "user()", "current_user()", "version()", "server_version()", "database()", "current_database()", "start_time()", "sysdate()", "clock_timestamp()", "sleep(N)"
++ Added "begin read only | read write", "set {transaction | session characteristics as transaction} read only | read write" to support read only or read write transaction in a connection
++ Support "insert into ...{values()... | select ...} returning ..." statement of PostgreSQL style
++ Added "select ... for update" for support pessimistic lock by SQLite reserved lock
 
 # Examples
 1. Standalone SQLite server

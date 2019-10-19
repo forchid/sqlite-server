@@ -344,26 +344,21 @@ public class SQLStatement implements AutoCloseable {
 
     protected boolean execute(String sql) throws SQLException {
         Connection conn = this.context.getConnection();
-        Statement s = conn.createStatement();
-        boolean resultSet = s.execute(sql);
-        s.close();
-        return resultSet;
+        try (Statement s = conn.createStatement()) {
+            return s.execute(sql);
+        }
     }
     
     protected int executeUpdate(String sql) throws SQLException {
         Connection conn = this.context.getConnection();
-        Statement s = conn.createStatement();
-        s.execute(sql);
-        int n = s.getUpdateCount();
-        s.close();
-        return n;
+        try (Statement s = conn.createStatement()) {
+            s.execute(sql);
+            return s.getUpdateCount();
+        }
     }
     
-    protected ResultSet executeQuery(String sql) throws SQLException {
-        Connection conn = this.context.getConnection();
-        Statement s = conn.createStatement();
-        s.execute(sql);
-        return s.getResultSet();
+    public static String format(String f, Object ... args) {
+        return String.format(f, args);
     }
     
 }

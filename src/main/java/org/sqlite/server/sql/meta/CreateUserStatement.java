@@ -15,8 +15,6 @@
  */
 package org.sqlite.server.sql.meta;
 
-import static java.lang.String.format;
-
 import org.sqlite.server.SQLiteAuthMethod;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.ImplicitCommitException;
