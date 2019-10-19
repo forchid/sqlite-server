@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.SlotAllocator;
+import org.sqlite.util.locks.SpinLock;
 
 /**SQLite server worker thread.
  * 
@@ -56,7 +57,7 @@ public class SQLiteWorker implements Runnable {
     
     protected final BlockingQueue<SQLiteProcessor> procQueue;
     protected final int maxConns;
-    protected final AtomicBoolean procsLock = new AtomicBoolean();
+    protected final SpinLock procsLock = new SpinLock();
     private final SlotAllocator<SQLiteProcessor> processors;
     private final SlotAllocator<SQLiteProcessor> busyProcs;
     
@@ -131,14 +132,14 @@ public class SQLiteWorker implements Runnable {
             IoUtils.close(p);
         }
         
-        procsLock();
+        this.procsLock.lock();
         try {
             for (int i = 0, n = this.processors.maxSlot(); i < n; ++i) {
                 SQLiteProcessor p = this.processors.deallocate(i);
                 IoUtils.close(p);
             }
         } finally {
-            procsUnlock();
+            this.procsLock.unlock();
         }
     }
     
@@ -150,11 +151,11 @@ public class SQLiteWorker implements Runnable {
         
         int slot = processor.getSlot();
         if (slot >= 0) {
-            procsLock();
+            this.procsLock.lock();
             try {
                 this.processors.deallocate(slot, processor);
             } finally {
-                procsUnlock();
+                this.procsLock.unlock();
             } 
         }
     }
@@ -227,7 +228,7 @@ public class SQLiteWorker implements Runnable {
                         IoUtils.close(p);
                         continue;
                     }
-                    procsLock();
+                    this.procsLock.lock();
                     try {
                         final int slot = this.processors.allocate(p);
                         if (slot == -1) {
@@ -235,7 +236,7 @@ public class SQLiteWorker implements Runnable {
                         }
                         p.setSlot(slot);
                     } finally {
-                        procsUnlock();
+                        this.procsLock.unlock();
                     }
                 }
             } catch (IOException e) {
@@ -410,7 +411,7 @@ public class SQLiteWorker implements Runnable {
     }
 
     SQLiteProcessor getProcessor(int pid) {
-        procsLock();
+        this.procsLock.lock();
         try {
             for (int i = 0, n = this.processors.maxSlot(); i < n; ++i) {
                 SQLiteProcessor p = this.processors.get(i);
@@ -420,22 +421,12 @@ public class SQLiteWorker implements Runnable {
             }
             return null;
         } finally {
-            procsUnlock();
+            this.procsLock.unlock();
         }
-    }
-    
-    protected void procsLock() {
-        for (; !this.procsLock.compareAndSet(false, true);) {
-            // LOOP
-        }
-    }
-    
-    protected void procsUnlock() {
-        this.procsLock.set(false);
     }
     
     public List<SQLiteProcessorState> getProcessorStates(final SQLiteProcessor processor) {
-        procsLock();
+        this.procsLock.lock();
         try {
             List<SQLiteProcessorState> states = new ArrayList<>();
             final User user = processor.getUser();
@@ -459,7 +450,7 @@ public class SQLiteWorker implements Runnable {
             }
             return states;
         } finally {
-            procsUnlock();
+            this.procsLock.unlock();
         }
     }
     

@@ -649,6 +649,7 @@ public class PgProcessor extends SQLiteProcessor {
                 trace(log, "SQLite init: autoCommit {}", conn.getAutoCommit());
             }
             InitQueryTask initTask = new InitQueryTask(this, conn);
+            this.state.startOpen();
             startQueryTask(initTask);
             failed = false;
         } catch (SQLException cause) {
@@ -1292,6 +1293,7 @@ public class PgProcessor extends SQLiteProcessor {
             
             proc.sendAuthenticationOk();
             proc.initDone = true;
+            proc.state.startSleep();
             finish();
         }
         

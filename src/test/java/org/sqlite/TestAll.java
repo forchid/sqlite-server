@@ -27,6 +27,7 @@ import org.sqlite.server.jdbc.TransactionTest;
 import org.sqlite.sql.SQLParserTest;
 import org.sqlite.sql.SQLReaderTest;
 import org.sqlite.util.DateTimeUtilsTest;
+import org.sqlite.util.locks.SpinLockTest;
 
 /**
  * @author little-pan
@@ -73,6 +74,7 @@ public class TestAll extends TestBase {
         add(new ConnectionTest()).
         add(new DateTimeUtilsTest()).
         add(new PreparedStatementTest()).
+        add(new SpinLockTest()).
         add(new StatementTest()).
         add(new SQLReaderTest()).
         add(new SQLParserTest()).

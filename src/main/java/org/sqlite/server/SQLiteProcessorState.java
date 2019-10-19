@@ -19,6 +19,7 @@ import java.net.InetSocketAddress;
 
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.sql.SQLStatement;
+import org.sqlite.util.locks.SpinLock;
 
 /**
  * @author little-pan
@@ -26,6 +27,8 @@ import org.sqlite.sql.SQLStatement;
  *
  */
 public class SQLiteProcessorState implements AutoCloseable {
+    
+    private final SpinLock lock = new SpinLock();
     
     protected final SQLiteProcessor processor;
     protected String command;
@@ -69,8 +72,13 @@ public class SQLiteProcessorState implements AutoCloseable {
         return this.command;
     }
     
-    public synchronized void setCommand(String command) {
-        this.command = command;
+    public void setCommand(String command) {
+        this.lock.lock();
+        try {
+            this.command = command;
+        } finally {
+            this.lock.unlock();
+        }
     }
     
     public int getTime() {
@@ -82,16 +90,26 @@ public class SQLiteProcessorState implements AutoCloseable {
         return startTime;
     }
 
-    public synchronized void setStartTime(long startTime) {
-        this.startTime = startTime;
+    public void setStartTime(long startTime) {
+        this.lock.lock();
+        try {
+            this.startTime = startTime;
+        } finally {
+            this.lock.unlock();
+        }
     }
     
     public String getState() {
         return state;
     }
     
-    public synchronized void setState(String state) {
-        this.state = state;
+    public void setState(String state) {
+        this.lock.lock();
+        try {
+            this.state = state;
+        } finally {
+            this.lock.unlock();
+        }
     }
 
     public String getInfo(boolean full) {
@@ -112,40 +130,71 @@ public class SQLiteProcessorState implements AutoCloseable {
         return getInfo(false);
     }
     
-    public synchronized void startQuery(SQLStatement sqlStatement) {
+    public void startOpen() {
+        this.lock.lock();
+        try {
+            this.command = "Open";
+            this.startTime = System.currentTimeMillis();
+            this.state = "open and init database";
+            this.sql = null;
+        } finally {
+            this.lock.unlock();
+        }
+    }
+    
+    public void startQuery(SQLStatement sqlStatement) {
         startQuery(sqlStatement, "starting");
     }
     
-    public synchronized void startQuery(SQLStatement sqlStatement, String state) {
-        setCommand("Query");
-        this.startTime = System.currentTimeMillis();
-        this.state = state;
-        this.sql = sqlStatement.toString();
+    public void startQuery(SQLStatement sqlStatement, String state) {
+        this.lock.lock();
+        try {
+            this.command = "Query";
+            this.startTime = System.currentTimeMillis();
+            this.state = state;
+            this.sql = sqlStatement.toString();
+        } finally {
+            this.lock.unlock();
+        }
     }
     
-    public synchronized void startSleep() {
-        setCommand("Sleep");
-        this.startTime = System.currentTimeMillis();
-        this.state = "";
-        this.sql = null;
+    public void startSleep() {
+        this.lock.lock();
+        try {
+            this.command = "Sleep";
+            this.startTime = System.currentTimeMillis();
+            this.state = "";
+            this.sql = null;
+        } finally {
+            this.lock.unlock();
+        }
     }
 
     public SQLiteProcessorState copy() {
         SQLiteProcessorState copy = new SQLiteProcessorState(this.processor);
-        synchronized(this) {
+        this.lock.lock();
+        try {
             copy.command = this.command;
             copy.startTime = this.startTime;
             copy.state = this.state;
             copy.sql = this.sql;
+        } finally {
+            this.lock.unlock();
         }
+        
         return copy;
     }
     
-    public synchronized void stop() {
-        setCommand(null);
-        this.startTime = System.currentTimeMillis();
-        this.state = "stopped";
-        this.sql = null;
+    public void stop() {
+        this.lock.lock();
+        try {
+            this.command = null;
+            this.startTime = System.currentTimeMillis();
+            this.state = "stopped";
+            this.sql = null;
+        } finally {
+            this.lock.unlock();
+        }
     }
     
     public boolean isOpen() {
@@ -153,11 +202,16 @@ public class SQLiteProcessorState implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
-        setCommand(null);
-        this.startTime = System.currentTimeMillis();
-        this.state = "closed";
-        this.sql = null;
+    public void close() {
+        this.lock.lock();
+        try {
+            this.command = null;
+            this.startTime = System.currentTimeMillis();
+            this.state = "closed";
+            this.sql = null;
+        } finally {
+            this.lock.unlock();
+        }
     }
 
 }

@@ -86,9 +86,9 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     protected int slot = -1; // slot in SlotAllocator
     protected SQLiteWorker worker;
     protected SQLiteAuthMethod authMethod;
-    protected volatile String userName;
-    protected volatile String databaseName;
-    protected volatile User user;
+    protected String userName;
+    protected String databaseName;
+    protected User user;
     
     private volatile boolean open = true;
     private volatile boolean stopped;
