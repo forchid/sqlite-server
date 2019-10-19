@@ -26,6 +26,7 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
+import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
 import org.sqlite.server.sql.local.ShowProcesslistStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
@@ -228,6 +229,9 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             case 'i':
             case 'I':
                 return parseInsert();
+            case 'k':
+            case 'K':
+                return parseKill();
             case 'p':
             case 'P':
                 return parsePragma();
@@ -796,6 +800,42 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         return stmt;
+    }
+    
+    protected KillStatement parseKill() {
+        nextString("ill");
+        skipIgnorable();
+        
+        KillStatement stmt = new KillStatement(this.sql);
+        boolean failed = true;
+        try {
+            if (nextStringIf("connection") != -1) {
+                skipIgnorable();
+                stmt.setKillQuery(false);
+            } else if (nextStringIf("query") != -1) {
+                skipIgnorable();
+                stmt.setKillQuery(true);
+            }
+            char c = nextSignedNumberChar();
+            String pidStr = nextSignedNumber(c);
+            if (!nextEnd()) {
+                throw syntaxError();
+            }
+            int pid;
+            try {
+                pid = Integer.decode(pidStr);
+            } catch (NumberFormatException e) {
+                throw syntaxError("processor id is malformed");
+            }
+            stmt.setProcessorId(pid);
+            
+            failed = false;
+            return stmt;
+        } finally {
+            if (failed) {
+                stmt.close();
+            }
+        }
     }
     
     protected SQLStatement parseSavepoint() {

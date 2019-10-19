@@ -256,14 +256,14 @@ public class SQLiteWorker implements Runnable {
             if (proc == null) {
                 continue;
             }
-            if (proc.isStopped()) {
+            SQLiteBusyContext busyContext = proc.getBusyContext();
+            if (proc.isStopped() && busyContext == null) {
                 if (busyProcs.deallocate(i, proc)) {
                     continue;
                 }
                 throw new IllegalStateException("Busy processors slot used");
             }
             
-            SQLiteBusyContext busyContext = proc.getBusyContext();
             if (busyContext.isReady() || busyContext.isCanceled()) {
                 if (this.server.canHoldDbWriteLock(proc) || busyContext.isTimeout() 
                                                          || busyContext.isCanceled()) {

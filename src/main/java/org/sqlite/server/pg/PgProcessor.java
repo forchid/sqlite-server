@@ -774,7 +774,12 @@ public class PgProcessor extends SQLiteProcessor {
         write('C');
         writeString("57014");
         write('M');
-        writeString("canceling statement due to user request");
+        if (isStopped()) {
+            this.needFlush = true;
+            writeString("canceling connection due to user request");
+        } else {
+            writeString("canceling statement due to user request");
+        }
         write(0);
         sendMessage();
     }

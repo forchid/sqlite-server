@@ -56,11 +56,6 @@ public class SetTransactionStatement extends LocalStatement {
     }
     
     @Override
-    protected void checkPermission() throws SQLException {
-        // pass
-    }
-    
-    @Override
     protected void checkReadOnly() throws SQLException {
         if (isSessionScope()) {
             return;

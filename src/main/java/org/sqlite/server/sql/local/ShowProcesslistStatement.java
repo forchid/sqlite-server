@@ -38,11 +38,6 @@ public class ShowProcesslistStatement extends LocalStatement {
     public ShowProcesslistStatement(String sql) {
         super(sql, "SHOW PROCESSLIST", true);
     }
-    
-    @Override
-    protected void checkPermission() throws SQLException {
-        // pass
-    }
 
     @Override
     protected String getSQL(String localSchema) throws SQLException {

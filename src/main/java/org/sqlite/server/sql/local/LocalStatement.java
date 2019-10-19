@@ -62,6 +62,11 @@ public abstract class LocalStatement extends SQLStatement {
     }
     
     @Override
+    protected void checkPermission() throws SQLException {
+        // pass
+    }
+    
+    @Override
     protected boolean shouldHoldDbWriteLock(boolean writable) {
         return false;
     }

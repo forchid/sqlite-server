@@ -104,6 +104,22 @@ public class User {
     public boolean isSa() {
         return (this.sa == 1);
     }
+    
+    @Override
+    public int hashCode() {
+        return (this.protocol.hashCode() ^ this.user.hashCode() ^ this.host.hashCode());
+    }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (o instanceof User) {
+            final User u = (User)o;
+            return (u.protocol.equals(this.protocol)
+                    && u.user.equals(this.user) && u.host.equals(this.host));
+        }
+        
+        return false;
+    }
 
     public static int convertSa(boolean sa) {
         return (sa? 1: 0);

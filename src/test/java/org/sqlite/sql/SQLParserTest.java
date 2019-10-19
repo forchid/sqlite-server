@@ -20,6 +20,7 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.TestBase;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
+import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.LocalStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
 import org.sqlite.server.sql.local.ShowProcesslistStatement;
@@ -423,6 +424,13 @@ public class SQLParserTest extends TestBase {
         } catch (SQLParseException e) {
             // OK
         }
+        
+        killTest("kill 1;", 1, false, 1);
+        killTest("kill connection 1", 1, false, 1);
+        killTest("KILL CONNECTION 0x10", 1, false, 0x10);
+        killTest("kill query 1", 1, true, 1);
+        killTest("kill QUERY 1;", 1, true, 1);
+        killTest("kill QUERY 0x1;", 1, true, 0x1);
         
         revokeTest("revoke all on database testdb from test@localhost", 
                 1, "meta", new String[] {"all"}, 
@@ -1152,6 +1160,25 @@ public class SQLParserTest extends TestBase {
                 assertTrue(s.exists(user[0], user[1]));
             }
             
+            ++i;
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void killTest(String sqls, int stmts, boolean query, int pid) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SQL %s", stmt);
+            KillStatement s = (KillStatement)stmt;
+            assertTrue(!s.isComment());
+            assertTrue("KILL".equals(s.getCommand()));
+            assertTrue(!s.isEmpty());
+            assertTrue(!s.isQuery());
+            assertTrue(!s.isTransaction());
+            assertTrue(s instanceof LocalStatement);
+            assertTrue(query == s.isKillQuery());
+            assertTrue(pid == s.getProcessorId());
             ++i;
         }
         overTest(parser, i, stmts);

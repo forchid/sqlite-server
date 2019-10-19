@@ -520,6 +520,13 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
     }
     
+    public void cancelRequest(boolean query) throws SQLException {
+        cancelRequest();
+        if (!query) {
+            stop();
+        }
+    }
+    
     public void start() throws IOException, IllegalStateException {
         final String name = getName();
         if (isStopped()) {
@@ -557,8 +564,12 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     protected void read() {
         try {
-            this.state.setState("read data from network");
-            process();
+            if (isRunning()) {
+                this.state.setState("read data from network");
+                process();
+            } else {
+                this.worker.close(this); 
+            }
         } catch (Exception e) {
             this.server.traceError(log, "process error", e);
             this.worker.close(this);
