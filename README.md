@@ -11,6 +11,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Added "begin read only | read write", "set {transaction | session characteristics as transaction} read only | read write" to support read only or read write transaction in a connection
 + Support "insert into ...{values()... | select ...} returning ..." statement of PostgreSQL style
 + Added "select ... for update" for support pessimistic lock by SQLite reserved lock
++ Added "show tables" for querying schema information
 
 # Examples
 1. Standalone SQLite server

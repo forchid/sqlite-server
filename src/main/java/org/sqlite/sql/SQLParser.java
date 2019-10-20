@@ -26,6 +26,7 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
+import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
 import org.sqlite.server.sql.local.ShowProcesslistStatement;
@@ -947,6 +948,8 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             if (nextStringIf("processlist") != -1) {
                 return parseShowProcesslist(true);
             }
+        } else if (nextStringIf("tables") != -1) {
+            return parseShowTables();
         }
         
         throw syntaxError();
@@ -1006,6 +1009,30 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         if (nextEnd()) {
             ShowProcesslistStatement stmt = new ShowProcesslistStatement(this.sql);
             stmt.setFull(full);
+            return stmt;
+        }
+        
+        throw syntaxError();
+    }
+    
+    protected ShowTablesStatement parseShowTables() {
+        ShowTablesStatement stmt = new ShowTablesStatement(this.sql);
+        if (nextEnd()) {
+            return stmt;
+        }
+        
+        if (nextStringIf("from") != -1 || nextStringIf("in") != -1) {
+            skipIgnorable();
+            stmt.setSchemaName(nextString());
+            if (nextEnd()) {
+                return stmt;
+            }
+        }
+        if (nextStringIf("like") != -1) {
+            skipIgnorable();
+            stmt.setPattern(nextString());
+        }
+        if (nextEnd()) {
             return stmt;
         }
         

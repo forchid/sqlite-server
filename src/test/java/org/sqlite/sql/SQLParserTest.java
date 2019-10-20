@@ -20,6 +20,7 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.TestBase;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
+import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.LocalStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
@@ -785,6 +786,21 @@ public class SQLParserTest extends TestBase {
         showProcesslistTest("SHOW full PROCESSLIST", 1, true);
         showProcesslistTest("SHOW FULL PROCESSLIST;", 1, true);
         
+        showTablesTest("show tables; SHOW tables; show TABLES; SHOW TABLES", 4, null, null);
+        showTablesTest("show tables; SHOW tables; show TABLES; SHOW TABLES", 4, null, null);
+        showTablesTest("show tables; /**a**/SHOW tables; show TABLES/**a**/;/**a**/SHOW TABLES", 4, null, null);
+        showTablesTest("show tables from test", 1, "test", null);
+        showTablesTest("show tables from 'test'", 1, "test", null);
+        showTablesTest("show tables from test ;", 1, "test", null);
+        showTablesTest("show tables like '%a';", 1, null, "%a");
+        showTablesTest("show tables like 'ab%';", 1, null, "ab%");
+        showTablesTest("show tables like '_a';", 1, null, "_a");
+        showTablesTest("show tables like 'ab_';", 1, null, "ab_");
+        showTablesTest("show tables from test like '%a';", 1, "test", "%a");
+        showTablesTest("show tables from test like 'ab%';", 1, "test", "ab%");
+        showTablesTest("show tables from test like '_a';", 1, "test", "_a");
+        showTablesTest("show tables from test like 'ab_';", 1, "test", "ab_");
+        
         txCommitTest("commit", 1);
         txCommitTest("commit transaction", 1);
         txCommitTest("commit;", 1);
@@ -1305,6 +1321,27 @@ public class SQLParserTest extends TestBase {
             ShowProcesslistStatement s = (ShowProcesslistStatement)stmt;
             assertTrue(stmt instanceof LocalStatement);
             assertTrue(full == s.isFull());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showTablesTest(String sqls, int stmts, String schemaName, String pattern) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW TABLES %s", stmt);
+            assertTrue("SHOW TABLES".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowTablesStatement s = (ShowTablesStatement)stmt;
+            assertTrue(schemaName == s.getSchemaName() 
+                    || schemaName.equals(s.getSchemaName()));
+            assertTrue(pattern == s.getPattern() 
+                    || pattern.equals(s.getPattern()));
             ++i;
             parser.remove();
         }
