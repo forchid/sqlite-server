@@ -162,14 +162,16 @@ public abstract class SQLiteServer implements AutoCloseable {
         } catch (Exception e) {
             if (server.isTrace()) {
                 server.traceError(log, NAME + " fatal", e);
+            } else if (e instanceof IllegalArgumentException) {
+                String command = server.command;
+                if (command == null) {
+                    server.help(1);
+                } else {
+                    server.help(1, command);
+                }
             } else {
-                System.err.println("[ERROR] " + e.getMessage());
-            }
-            String command = server.command;
-            if (command == null) {
-                server.help(1);
-            } else {
-                server.help(1, command);
+                System.err.println("[ERROR] " + e.getMessage() 
+                    + (e.getCause() != null? "(" + e.getCause().getMessage() + ")": ""));
             }
         } finally {
             IoUtils.close(server);
