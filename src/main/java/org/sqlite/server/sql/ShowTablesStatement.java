@@ -56,18 +56,18 @@ public class ShowTablesStatement extends SQLStatement {
     @Override
     public String getExecutableSQL() throws SQLException {
         if (this.schemaName == null && this.pattern == null) {
-            return "select name from sqlite_master where type='table' order by name";
+            return "select name from sqlite_master where type in('table', 'view') order by name";
         }
         
         String sql, f;
         if (this.schemaName == null && this.pattern != null) {
-            f = "select name from sqlite_master where type='table' and name like '%s' order by name";
+            f = "select name from sqlite_master where type in('table', 'view') and name like '%s' order by name";
             sql = format(f, this.pattern);
         } else if (this.schemaName != null && this.pattern == null) {
-            f = "select name from '%s'.sqlite_master where type='table' order by name";
+            f = "select name from '%s'.sqlite_master where type in('table', 'view') order by name";
             sql = format(f, this.schemaName);
         } else {
-            f = "select name from '%s'.sqlite_master where type='table' and name like '%s' order by name";
+            f = "select name from '%s'.sqlite_master where type in('table', 'view') and name like '%s' order by name";
             sql = format(f, this.schemaName, this.pattern);
         }
         
