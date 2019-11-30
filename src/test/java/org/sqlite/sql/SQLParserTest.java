@@ -20,6 +20,7 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.TestBase;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
+import org.sqlite.server.sql.ShowColumnsStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.LocalStatement;
@@ -760,6 +761,25 @@ public class SQLParserTest extends TestBase {
                 1, true, null, TransactionMode.READ_COMMITTED);
         
         // show
+        showColumnsTest("show columns from test", 1, false, null, "test");
+        showColumnsTest("show columns from test;", 1, false, null, "test");
+        showColumnsTest("show columns from a.test;", 1, false, "a", "test");
+        showColumnsTest("show columns FROM a.test from b;", 1, false, "b", "test");
+        showColumnsTest("show columns in test", 1, false, null, "test");
+        showColumnsTest("show columns in test;", 1, false, null, "test");
+        showColumnsTest("show columns in a.test;", 1, false, "a", "test");
+        showColumnsTest("show COLUMNS in a.test from b;", 1, false, "b", "test");
+        showColumnsTest("SHOW columns IN a.test in b;", 1, false, "b", "test");
+        showColumnsTest("show fields from test", 1, false, null, "test");
+        showColumnsTest("show fields from test;", 1, false, null, "test");
+        showColumnsTest("show fields from a.test ;", 1, false, "a", "test");
+        showColumnsTest("show fields from a.test from b ;", 1, false, "b", "test");
+        showColumnsTest("show fields in test", 1, false, null, "test");
+        showColumnsTest("show fields in test;", 1, false, null, "test");
+        showColumnsTest("show fields in a.test;", 1, false, "a", "test");
+        showColumnsTest("show FIELDS in 'a'.test FROM b;", 1, false, "b", "test");
+        showColumnsTest("SHOW fields in 'a'.test IN 'b';", 1, false, "b", "test");
+        
         showDatabasesTest("show databases", 1, false);
         showDatabasesTest(" Show DATABASES", 1, false);
         showDatabasesTest(" Show all DATABASES", 1, true);
@@ -1260,6 +1280,27 @@ public class SQLParserTest extends TestBase {
             assertTrue(s.isForUpdate());
             assertTrue(selectSQL.equals(s.getSQL()));
             
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showColumnsTest(String sqls, int stmts, 
+            boolean extended, String schemaName, String tableName) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW COLUMNS %s", stmt);
+            assertTrue("SHOW COLUMNS".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowColumnsStatement s = (ShowColumnsStatement)stmt;
+            assertTrue(s.isExtended() == extended);
+            assertTrue(schemaName == null || schemaName.equals(s.getSchemaName()));
+            assertTrue(tableName  == null || tableName.equals(s.getTableName()));
             ++i;
             parser.remove();
         }

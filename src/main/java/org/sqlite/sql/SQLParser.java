@@ -26,6 +26,7 @@ import java.util.NoSuchElementException;
 
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
+import org.sqlite.server.sql.ShowColumnsStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
@@ -950,9 +951,49 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             }
         } else if (nextStringIf("tables") != -1) {
             return parseShowTables();
+        } else if (nextStringIf("columns") != -1 || nextStringIf("fields") != -1) {
+            skipIgnorable();
+            return parseShowColumns(false);
+        } else if (nextStringIf("extended") != -1) {
+            skipIgnorable();
+            if (nextStringIf("columns") != -1    || nextStringIf("fields") != -1) {
+                skipIgnorable();
+                return parseShowColumns(true);
+            }
         }
         
         throw syntaxError();
+    }
+    
+    protected ShowColumnsStatement parseShowColumns(boolean extended) {
+        if (nextStringIf("from") ==-1 && nextStringIf("in") == -1) {
+            throw syntaxError();
+        }
+        
+        skipIgnorable();
+        String schemaName = null, tableName;
+        tableName = nextString();
+        skipIgnorableIf();
+        if (nextCharIf('.') != -1) {
+            schemaName = tableName;
+            skipIgnorableIf();
+            tableName = nextString();
+        }
+        if (skipIgnorableIf() != -1) {
+            if (nextStringIf("from") !=-1 || nextStringIf("in") != -1) {
+                skipIgnorable();
+                schemaName = nextString();
+            }
+        }
+        if (!nextEnd()) {
+            throw syntaxError();
+        }
+        
+        ShowColumnsStatement stmt = new ShowColumnsStatement(this.sql);
+        stmt.setExtended(extended);
+        stmt.setSchemaName(schemaName);
+        stmt.setTableName(tableName);
+        return stmt;
     }
     
     protected SQLStatement parseShowDatabases(boolean all) {
