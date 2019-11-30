@@ -21,6 +21,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.TestBase;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.ShowColumnsStatement;
+import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.LocalStatement;
@@ -797,6 +798,46 @@ public class SQLParserTest extends TestBase {
         showGrantsTest("show grants", 1, "%", null, true, false);
         showGrantsTest("show grants ", 1, "%", null, true, false);
         
+        // show indexes
+        showIndexesTest("show indexes", 1, null, null, false, false, null);
+        showIndexesTest("show index", 1, null, null, false, false, null);
+        showIndexesTest("show index ", 1, null, null, false, false, null);
+        showIndexesTest("show index where '%idx%' ;", 1, null, null, false, false, "%idx%");
+        showIndexesTest("SHOW indexes;", 1, null, null, false, false, null);
+        showIndexesTest("SHOW INDEX ;", 1, null, null, false, false, null);
+        showIndexesTest("show INDEX WHERE '%idx%' ;", 1, null, null, false, false, "%idx%");
+        showIndexesTest("show indexes from test", 1, null, "test", false, false, null);
+        showIndexesTest("show indexes from a.test", 1, "a", "test", false, false, null);
+        showIndexesTest("show indexes from a.test;", 1, "a", "test", false, false, null);
+        showIndexesTest("show indexes from a.test from b ;", 1, "b", "test", false, false, null);
+        showIndexesTest("show indexes FROM test;", 1, null, "test", false, false, null);
+        showIndexesTest("SHOW INDEX IN a.test;", 1, "a", "test", false, false, null);
+        showIndexesTest("show INDEXES in a.test ;", 1, "a", "test", false, false, null);
+        showIndexesTest("show indexes FROM a.test IN b ;", 1, "b", "test", false, false, null);
+        // show indexes columns
+        showIndexesTest("Show index columns from idx_test", 1, null, "idx_test", true, false, null);
+        showIndexesTest("show indexes columns from a.idx_test", 1, "a", "idx_test", true, false, null);
+        showIndexesTest("show indexes columns from a.idx_test;", 1, "a", "idx_test", true, false, null);
+        showIndexesTest("show indexes columns from a.idx_test from b ;", 1, "b", "idx_test", true, false, null);
+        showIndexesTest("show indexes COLUMNS FROM idx_test;", 1, null, "idx_test", true, false, null);
+        showIndexesTest("SHOW INDEX COLUMNS IN a.idx_test;", 1, "a", "idx_test", true, false, null);
+        showIndexesTest("show INDEXES COLUMNS in a.idx_test ;", 1, "a", "idx_test", true, false, null);
+        showIndexesTest("show INDEXES COLUMNS in a.idx_test from b;", 1, "b", "idx_test", true, false, null);
+        showIndexesTest("show INDEX COLUMNS in a.idx_test from b;", 1, "b", "idx_test", true, false, null);
+        showIndexesTest("show indexes COLUMNS FROM a.idx_test IN b ;", 1, "b", "idx_test", true, false, null);
+        showIndexesTest("show indexes columns in idx_accounts_balance from main;", 
+                1, "main", "idx_accounts_balance", true, false, null);
+        // show indexes extended columns
+        showIndexesTest("Show index extended columns from idx_test", 1, null, "idx_test", true, true, null);
+        showIndexesTest("show indexes extended columns from a.idx_test", 1, "a", "idx_test", true, true, null);
+        showIndexesTest("show indexes extended columns from a.idx_test;", 1, "a", "idx_test", true, true, null);
+        showIndexesTest("show indexes extended columns from a.idx_test from b ;", 1, "b", "idx_test", true, true, null);
+        showIndexesTest("show indexes extended COLUMNS FROM idx_test;", 1, null, "idx_test", true, true, null);
+        showIndexesTest("SHOW INDEX extended COLUMNS IN a.idx_test;", 1, "a", "idx_test", true, true, null);
+        showIndexesTest("show INDEXES extended COLUMNS in a.idx_test ;", 1, "a", "idx_test", true, true, null);
+        showIndexesTest("show INDEXES extended COLUMNS in a.idx_test from b;", 1, "b", "idx_test", true, true, null);
+        showIndexesTest("show indexes extended COLUMNS FROM a.idx_test IN b ;", 1, "b", "idx_test", true, true, null);
+        
         showProcesslistTest("show processlist;", 1, false);
         showProcesslistTest("show processlist", 1, false);
         showProcesslistTest("Show processlist;", 1, false);
@@ -1343,6 +1384,33 @@ public class SQLParserTest extends TestBase {
             assertTrue(user == null || user.equals(user));
             assertTrue(currentUser == s.isCurrentUser());
             assertTrue(needSa == s.isNeedSa());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showIndexesTest(String sqls, int stmts, String schemaName, String name, 
+            boolean indexColumns, boolean extended, String pattern) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW INDEXES %s", stmt);
+            assertTrue("SHOW INDEXES".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowIndexesStatement s = (ShowIndexesStatement)stmt;
+            assertTrue(schemaName == s.getSchemaName() || schemaName.equals(s.getSchemaName()));
+            if (indexColumns) {
+                assertTrue(name == s.getIndexName() || name.equals(s.getIndexName()));
+            } else {
+                assertTrue(name == s.getTableName() || name.equals(s.getTableName()));
+            }
+            assertTrue(indexColumns == s.isIndexColumns());
+            assertTrue(extended == s.isExtended());
+            assertTrue(pattern == s.getPattern() || pattern.equals(s.getPattern()));
             ++i;
             parser.remove();
         }

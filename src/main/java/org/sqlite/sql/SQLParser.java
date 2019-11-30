@@ -27,6 +27,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
 import org.sqlite.server.sql.ShowColumnsStatement;
+import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
@@ -960,6 +961,9 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                 skipIgnorable();
                 return parseShowColumns(true);
             }
+        } else if (nextStringIf("indexes") != -1 || nextStringIf("index") != -1) {
+            skipIgnorableIf();
+            return parseShowIndexes();
         }
         
         throw syntaxError();
@@ -1041,6 +1045,72 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                 }
                 stmt.setUser(user);
             }
+        }
+        
+        return stmt;
+    }
+    
+    protected ShowIndexesStatement parseShowIndexes() {
+        if (nextEnd()) {
+            return new ShowIndexesStatement(this.sql);
+        }
+        if (nextStringIf("where") != -1) {
+            skipIgnorable();
+            String pattern = nextString();
+            if (nextEnd()) {
+                ShowIndexesStatement stmt = new ShowIndexesStatement(this.sql);
+                stmt.setPattern(pattern);
+                return stmt;
+            }
+            
+            throw syntaxError();
+        }
+        
+        boolean extended = false, indexColumns = false;
+        if (nextStringIf("extended") != -1) {
+            extended = true;
+            skipIgnorable();
+        }
+        if (nextStringIf("columns") != -1) {
+            indexColumns = true;
+            skipIgnorable();
+        }
+        if (extended && !indexColumns) {
+            throw syntaxError();
+        }
+        
+        String name, schemaName = null;
+        if (nextStringIf("from") == -1 && nextStringIf("in") == -1) {
+            throw syntaxError();
+        }
+        skipIgnorable();
+        name = nextString();
+        skipIgnorableIf();
+        if (nextCharIf('.') != -1) {
+            skipIgnorableIf();
+            schemaName = name;
+            name = nextString();
+            skipIgnorableIf();
+        }
+        if (!nextEnd()) {
+            if (nextStringIf("from") == -1 && nextStringIf("in") == -1) {
+                throw syntaxError();
+            }
+            skipIgnorable();
+            schemaName = nextString();
+            if (!nextEnd()) {
+                throw syntaxError();
+            }
+        }
+        
+        ShowIndexesStatement stmt = new ShowIndexesStatement(this.sql);
+        stmt.setSchemaName(schemaName);
+        stmt.setExtended(extended);
+        stmt.setIndexColumns(indexColumns);
+        if (indexColumns) {
+            stmt.setIndexName(name);
+        } else {
+            stmt.setTableName(name);
         }
         
         return stmt;
@@ -1796,6 +1866,13 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     
     protected int skipToKeywordIf(String keyword) {
         return skipToIdentifierIf(keyword, true);
+    }
+    
+    protected void skipToKeyword(String keyword) {
+        int i = skipToIdentifierIf(keyword, true);
+        if (i == -1) {
+            throw syntaxError();
+        }
     }
     
     protected int skipToIdentifierIf(String ident) {

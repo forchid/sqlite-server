@@ -234,7 +234,11 @@ public class SQLStatement implements AutoCloseable {
             String sql = getExecutableSQL();
             resultSet = this.jdbcStatement.execute(sql);
         }
-        context.trace(log, "execute in tx {}", context.getTransaction());
+        
+        final Transaction tx = context.getTransaction();
+        if (tx != null) {
+            context.trace(log, "execute in tx {}", tx);
+        }
         
         return resultSet;
     }

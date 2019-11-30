@@ -247,8 +247,9 @@ public class Db {
         
         switch(command) {
         case "SELECT":
-        case "SHOW TABLES":
         case "SHOW COLUMNS":
+        case "SHOW INDEXES":
+        case "SHOW TABLES":
             return (1 == getSelectPriv());
         case "INSERT":
         case "REPLACE":
