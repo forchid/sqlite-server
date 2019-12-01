@@ -989,13 +989,14 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         skipIgnorable();
         String schemaName = null, tableName;
         tableName = nextString();
-        skipIgnorableIf();
+        int i = skipIgnorableIf();
         if (nextCharIf('.') != -1) {
             schemaName = tableName;
             skipIgnorableIf();
             tableName = nextString();
+            i = skipIgnorableIf();
         }
-        if (skipIgnorableIf() != -1) {
+        if (i != -1) {
             if (nextStringIf("from") !=-1 || nextStringIf("in") != -1) {
                 skipIgnorable();
                 schemaName = nextString();

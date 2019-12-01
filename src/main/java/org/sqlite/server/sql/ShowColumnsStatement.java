@@ -23,7 +23,7 @@ import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.util.ConvertUtils;
 
-/** "SHOW [EXTENDED] {COLUMNS | FIELDS} {FROM | IN} table_name [{FROM | IN} schema_name]" statement.
+/** "SHOW [EXTENDED] {COLUMNS | FIELDS} {FROM | IN} [schema_name.]table_name [{FROM | IN} schema_name]" statement.
  * 
  * @author little-pan
  * @since 2019-11-30
