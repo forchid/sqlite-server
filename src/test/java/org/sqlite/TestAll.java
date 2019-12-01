@@ -24,6 +24,7 @@ import org.sqlite.server.jdbc.ConnectionTest;
 import org.sqlite.server.jdbc.PreparedStatementTest;
 import org.sqlite.server.jdbc.StatementTest;
 import org.sqlite.server.jdbc.TransactionTest;
+import org.sqlite.server.orm.HibernateTest;
 import org.sqlite.sql.SQLParserTest;
 import org.sqlite.sql.SQLReaderTest;
 import org.sqlite.util.DateTimeUtilsTest;
@@ -73,6 +74,7 @@ public class TestAll extends TestBase {
     protected TestAll addAll() {
         add(new ConnectionTest()).
         add(new DateTimeUtilsTest()).
+        add(new HibernateTest()).
         add(new PreparedStatementTest()).
         add(new SpinLockTest()).
         add(new StatementTest()).
