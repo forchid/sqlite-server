@@ -248,6 +248,7 @@ public class Db {
         switch(command) {
         case "SELECT":
         case "SHOW COLUMNS":
+        case "SHOW CREATE TABLE":
         case "SHOW INDEXES":
         case "SHOW TABLES":
             return (1 == getSelectPriv());

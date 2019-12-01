@@ -27,6 +27,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
 import org.sqlite.server.sql.ShowColumnsStatement;
+import org.sqlite.server.sql.ShowCreateTableStatement;
 import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
@@ -935,7 +936,14 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
     protected SQLStatement parseShow() {
         nextString("ow");
         skipIgnorable();
-        if (nextStringIf("grants") != -1) {
+        
+        if (nextStringIf("create") != -1) {
+            skipIgnorable();
+            if (nextStringIf("table") != -1) {
+                skipIgnorable();
+                return parseShowCreateTable();
+            }
+        } else if (nextStringIf("grants") != -1) {
             return parseShowGrants();
         } else if (nextStringIf("databases") != -1) {
             return parseShowDatabases(false);
@@ -995,6 +1003,35 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         
         ShowColumnsStatement stmt = new ShowColumnsStatement(this.sql);
         stmt.setExtended(extended);
+        stmt.setSchemaName(schemaName);
+        stmt.setTableName(tableName);
+        return stmt;
+    }
+    
+    protected ShowCreateTableStatement parseShowCreateTable() {
+        String tableName = nextString(), schemaName = null;
+        int i = skipIgnorableIf();
+        
+        if (nextCharIf('.') != -1) {
+            skipIgnorableIf();
+            schemaName = tableName;
+            tableName = nextString();
+            i = skipIgnorableIf();
+        }
+        
+        if (i != -1) {
+            if (!nextEnd()) {
+                if (nextStringIf("from") != -1 || nextStringIf("in") != -1) {
+                    skipIgnorable();
+                    schemaName = nextString();
+                }
+            }
+        }
+        if (!nextEnd()) {
+            throw syntaxError();
+        }
+        
+        ShowCreateTableStatement stmt = new ShowCreateTableStatement(this.sql);
         stmt.setSchemaName(schemaName);
         stmt.setTableName(tableName);
         return stmt;

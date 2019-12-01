@@ -21,6 +21,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.TestBase;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.ShowColumnsStatement;
+import org.sqlite.server.sql.ShowCreateTableStatement;
 import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
 import org.sqlite.server.sql.local.KillStatement;
@@ -781,6 +782,20 @@ public class SQLParserTest extends TestBase {
         showColumnsTest("show FIELDS in 'a'.test FROM b;", 1, false, "b", "test");
         showColumnsTest("SHOW fields in 'a'.test IN 'b';", 1, false, "b", "test");
         
+        showCreateTableTest("show create table test;", 1, null, "test");
+        showCreateTableTest("show create table test ;", 1, null, "test");
+        showCreateTableTest("show create table test", 1, null, "test");
+        showCreateTableTest("show create table test ", 1, null, "test");
+        showCreateTableTest("show create table test from s;", 1, "s", "test");
+        showCreateTableTest("show create table test in s;", 1, "s", "test");
+        showCreateTableTest("show create table test in s", 1, "s", "test");
+        showCreateTableTest("show create table test in s ", 1, "s", "test");
+        showCreateTableTest("show create table test from s;", 1, "s", "test");
+        showCreateTableTest("show create table a.test in s;", 1, "s", "test");
+        showCreateTableTest("show create table a .test in s", 1, "s", "test");
+        showCreateTableTest("show create table a. test in s ", 1, "s", "test");
+        showCreateTableTest("show create table a/**/. test in s ", 1, "s", "test");
+        
         showDatabasesTest("show databases", 1, false);
         showDatabasesTest(" Show DATABASES", 1, false);
         showDatabasesTest(" Show all DATABASES", 1, true);
@@ -1342,6 +1357,25 @@ public class SQLParserTest extends TestBase {
             assertTrue(s.isExtended() == extended);
             assertTrue(schemaName == null || schemaName.equals(s.getSchemaName()));
             assertTrue(tableName  == null || tableName.equals(s.getTableName()));
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showCreateTableTest(String sqls, int stmts, String schemaName, String tableName) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW CREATE TABLE %s", stmt);
+            assertTrue("SHOW CREATE TABLE".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowCreateTableStatement s = (ShowCreateTableStatement)stmt;
+            assertTrue(schemaName == s.getSchemaName() || schemaName.equals(s.getSchemaName()));
+            assertTrue(tableName  == s.getTableName() || tableName.equals(s.getTableName()));
             ++i;
             parser.remove();
         }
