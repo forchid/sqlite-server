@@ -39,6 +39,7 @@ import org.sqlite.server.sql.meta.MetaStatement;
 import org.sqlite.server.sql.meta.RevokeStatement;
 import org.sqlite.server.sql.meta.ShowDatabasesStatement;
 import org.sqlite.server.sql.meta.ShowGrantsStatement;
+import org.sqlite.server.sql.meta.ShowUsersStatement;
 import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.DetachStatement;
 import org.sqlite.sql.PragmaStatement;
@@ -892,6 +893,13 @@ public class SQLParserTest extends TestBase {
         showTablesTest("show tables from test like '_a';", 1, "test", "_a");
         showTablesTest("show tables from test like 'ab_';", 1, "test", "ab_");
         
+        showUsersTest("show users;", 1, null);
+        showUsersTest("show users ;", 1, null);
+        showUsersTest("SHOW USERS;", 1, null);
+        showUsersTest("show users where 't%';", 1, "t%");
+        showUsersTest("show users WHERE 't%' ;", 1, "t%");
+        showUsersTest("show users WHERE 't%' ", 1, "t%");
+        
         txCommitTest("commit", 1);
         txCommitTest("commit transaction", 1);
         txCommitTest("commit;", 1);
@@ -1518,6 +1526,25 @@ public class SQLParserTest extends TestBase {
             assertTrue(schemaName == s.getSchemaName() 
                     || schemaName.equals(s.getSchemaName()));
             assertTrue(pattern == s.getPattern() 
+                    || pattern.equals(s.getPattern()));
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showUsersTest(String sqls, int stmts, String pattern) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW USERS %s", stmt);
+            assertTrue("SHOW USERS".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowUsersStatement s = (ShowUsersStatement)stmt;
+            assertTrue(pattern == s.getPattern()
                     || pattern.equals(s.getPattern()));
             ++i;
             parser.remove();

@@ -44,6 +44,7 @@ import org.sqlite.server.sql.meta.MetaStatement;
 import org.sqlite.server.sql.meta.RevokeStatement;
 import org.sqlite.server.sql.meta.ShowDatabasesStatement;
 import org.sqlite.server.sql.meta.ShowGrantsStatement;
+import org.sqlite.server.sql.meta.ShowUsersStatement;
 import org.sqlite.util.IoUtils;
 import org.sqlite.util.StringUtils;
 
@@ -976,6 +977,8 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         } else if (nextStringIf("indexes") != -1 || nextStringIf("index") != -1) {
             skipIgnorableIf();
             return parseShowIndexes();
+        } else if (nextStringIf("users") != -1) {
+            return parseShowUsers();
         }
         
         throw syntaxError();
@@ -1219,6 +1222,24 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         }
         
         throw syntaxError();
+    }
+    
+    protected ShowUsersStatement parseShowUsers() {
+        String pattern = null;
+        
+        if (skipIgnorableIf() != -1 && !nextEnd()) {
+            if (nextStringIf("where") != -1) {
+                skipIgnorable();
+                pattern = nextString(true);
+            }
+        }
+        if (!nextEnd()) {
+            throw syntaxError();
+        }
+        
+        ShowUsersStatement stmt = new ShowUsersStatement(this.sql);
+        stmt.setPattern(pattern);
+        return stmt;
     }
     
     protected TransactionMode parseTransactionMode() {
