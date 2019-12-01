@@ -23,19 +23,19 @@ import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.util.ConvertUtils;
 
-/** "SHOW CREATE TABLE [schema_name.]tbl_name [{FROM | IN} schema_name]" statement.
+/** "SHOW CREATE INDEX [schema_name.]index_name [{FROM | IN} schema_name]" statement.
  * 
  * @author little-pan
  * @since 2019-12-01
  *
  */
-public class ShowCreateTableStatement extends SQLStatement {
+public class ShowCreateIndexStatement extends SQLStatement {
     
     protected String schemaName;
-    protected String tableName;
+    protected String indexName;
     
-    public ShowCreateTableStatement(String sql) {
-        super(sql, "SHOW CREATE TABLE", true);
+    public ShowCreateIndexStatement(String sql) {
+        super(sql, "SHOW CREATE INDEX", true);
     }
     
     @Override
@@ -43,13 +43,13 @@ public class ShowCreateTableStatement extends SQLStatement {
         final String sql, f;
         
         if (this.schemaName == null) {
-            f = "select name 'Table', sql 'Create Table' from sqlite_master"
-                    + " where type in('table', 'view') and name = '%s'";
-            sql = format(f, this.tableName);
+            f = "select name 'Index', sql 'Create Index' from sqlite_master"
+                    + " where type = 'index' and name = '%s'";
+            sql = format(f, this.indexName);
         } else {
-            f = "select name 'Table', sql 'Create Table' from '%s'.sqlite_master"
-                    + " where type in('table', 'view') and name = '%s'";
-            sql = format(f, this.schemaName, this.tableName);
+            f = "select name 'Index', sql 'Create Index' from '%s'.sqlite_master"
+                    + " where type = 'index' and name = '%s'";
+            sql = format(f, this.schemaName, this.indexName);
         }
         
         try (SQLParser parser = new SQLParser(sql, true)) {
@@ -72,12 +72,12 @@ public class ShowCreateTableStatement extends SQLStatement {
         this.schemaName = schemaName;
     }
     
-    public String getTableName() {
-        return tableName;
+    public String getIndexName() {
+        return indexName;
     }
     
-    public void setTableName(String tableName) {
-        this.tableName = tableName;
+    public void setIndexName(String indexName) {
+        this.indexName = indexName;
     }
     
 }

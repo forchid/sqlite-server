@@ -27,6 +27,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.SelectSleepStatement;
 import org.sqlite.server.sql.ShowColumnsStatement;
+import org.sqlite.server.sql.ShowCreateIndexStatement;
 import org.sqlite.server.sql.ShowCreateTableStatement;
 import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
@@ -939,7 +940,10 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         
         if (nextStringIf("create") != -1) {
             skipIgnorable();
-            if (nextStringIf("table") != -1) {
+            if (nextStringIf("index") != -1) {
+                skipIgnorable();
+                return parseShowCreateIndex();
+            } else if (nextStringIf("table") != -1) {
                 skipIgnorable();
                 return parseShowCreateTable();
             }
@@ -1005,6 +1009,35 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         stmt.setExtended(extended);
         stmt.setSchemaName(schemaName);
         stmt.setTableName(tableName);
+        return stmt;
+    }
+    
+    protected ShowCreateIndexStatement parseShowCreateIndex() {
+        String indexName = nextString(), schemaName = null;
+        int i = skipIgnorableIf();
+        
+        if (nextCharIf('.') != -1) {
+            skipIgnorableIf();
+            schemaName = indexName;
+            indexName = nextString();
+            i = skipIgnorableIf();
+        }
+        
+        if (i != -1) {
+            if (!nextEnd()) {
+                if (nextStringIf("from") != -1 || nextStringIf("in") != -1) {
+                    skipIgnorable();
+                    schemaName = nextString();
+                }
+            }
+        }
+        if (!nextEnd()) {
+            throw syntaxError();
+        }
+        
+        ShowCreateIndexStatement stmt = new ShowCreateIndexStatement(this.sql);
+        stmt.setSchemaName(schemaName);
+        stmt.setIndexName(indexName);
         return stmt;
     }
     

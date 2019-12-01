@@ -21,6 +21,7 @@ import java.util.NoSuchElementException;
 import org.sqlite.TestBase;
 import org.sqlite.server.pg.sql.InsertReturningStatement;
 import org.sqlite.server.sql.ShowColumnsStatement;
+import org.sqlite.server.sql.ShowCreateIndexStatement;
 import org.sqlite.server.sql.ShowCreateTableStatement;
 import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
@@ -782,6 +783,20 @@ public class SQLParserTest extends TestBase {
         showColumnsTest("show FIELDS in 'a'.test FROM b;", 1, false, "b", "test");
         showColumnsTest("SHOW fields in 'a'.test IN 'b';", 1, false, "b", "test");
         
+        showCreateIndexTest("show create index idx_test;", 1, null, "idx_test");
+        showCreateIndexTest("show create index idx_test ;", 1, null, "idx_test");
+        showCreateIndexTest("show create index idx_test", 1, null, "idx_test");
+        showCreateIndexTest("show create index idx_test ", 1, null, "idx_test");
+        showCreateIndexTest("show create INDEX idx_test from s;", 1, "s", "idx_test");
+        showCreateIndexTest("SHOW create index idx_test in s;", 1, "s", "idx_test");
+        showCreateIndexTest("show CREATE INDEX idx_test IN s", 1, "s", "idx_test");
+        showCreateIndexTest("show create index idx_test in s ", 1, "s", "idx_test");
+        showCreateIndexTest("show create index idx_test from s;", 1, "s", "idx_test");
+        showCreateIndexTest("show create index a.idx_test in s;", 1, "s", "idx_test");
+        showCreateIndexTest("show create index a .idx_test in s", 1, "s", "idx_test");
+        showCreateIndexTest("show create index a. idx_test in s ", 1, "s", "idx_test");
+        showCreateIndexTest("show create index a/**/. idx_test in s ", 1, "s", "idx_test");
+        
         showCreateTableTest("show create table test;", 1, null, "test");
         showCreateTableTest("show create table test ;", 1, null, "test");
         showCreateTableTest("show create table test", 1, null, "test");
@@ -1357,6 +1372,25 @@ public class SQLParserTest extends TestBase {
             assertTrue(s.isExtended() == extended);
             assertTrue(schemaName == null || schemaName.equals(s.getSchemaName()));
             assertTrue(tableName  == null || tableName.equals(s.getTableName()));
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showCreateIndexTest(String sqls, int stmts, String schemaName, String indexName) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW CREATE INDEX %s", stmt);
+            assertTrue("SHOW CREATE INDEX".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            ShowCreateIndexStatement s = (ShowCreateIndexStatement)stmt;
+            assertTrue(schemaName == s.getSchemaName() || schemaName.equals(s.getSchemaName()));
+            assertTrue(indexName  == s.getIndexName() || indexName.equals(s.getIndexName()));
             ++i;
             parser.remove();
         }
