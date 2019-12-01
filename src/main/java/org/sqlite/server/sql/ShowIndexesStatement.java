@@ -72,9 +72,9 @@ public class ShowIndexesStatement extends SQLStatement {
                 sql = format(f, this.tableName);
             } else {
                 if (this.pattern == null) {
-                    sql = "select *from sqlite_master where type = 'index' order by name asc";
+                    sql = "select name from sqlite_master where type = 'index' order by name asc";
                 } else {
-                    f   = "select *from sqlite_master where type = 'index' and name like '%s' order by name asc";
+                    f   = "select name from sqlite_master where type = 'index' and name like '%s' order by name asc";
                     sql = format(f, this.pattern);
                 }
             }
