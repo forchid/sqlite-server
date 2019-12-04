@@ -24,7 +24,7 @@ import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLStatement;
 
-import static org.sqlite.util.ConvertUtils.*;
+import static org.sqlite.server.util.ConvertUtils.*;
 
 /**The SQLite meta database operation statement.
  * 

@@ -28,9 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.server.sql.meta.User;
-import org.sqlite.util.IoUtils;
-import org.sqlite.util.SlotAllocator;
-import org.sqlite.util.locks.SpinLock;
+import org.sqlite.server.util.IoUtils;
+import org.sqlite.server.util.SlotAllocator;
+import org.sqlite.server.util.locks.SpinLock;
 
 /**SQLite server worker thread.
  * 

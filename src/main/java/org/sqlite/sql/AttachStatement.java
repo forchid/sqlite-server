@@ -18,7 +18,7 @@ package org.sqlite.sql;
 import java.io.File;
 import java.sql.SQLException;
 
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**The ATTACh statement: 
  * ATTACH [DATABASE] expr AS schema-name

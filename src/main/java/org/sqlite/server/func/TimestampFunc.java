@@ -25,7 +25,7 @@ import java.util.Date;
 import org.sqlite.Function;
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.SQLiteServer;
-import org.sqlite.util.DateTimeUtils;
+import org.sqlite.server.util.DateTimeUtils;
 
 /** Function clock_timestamp() and sysdate([fsp]).
  * 

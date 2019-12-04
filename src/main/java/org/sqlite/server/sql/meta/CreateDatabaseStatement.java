@@ -26,7 +26,7 @@ import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 
-import static org.sqlite.util.ConvertUtils.*;
+import static org.sqlite.server.util.ConvertUtils.*;
 
 /** CREATE {DATABASE | SCHEMA} [IF NOT EXISTS] dbname [{LOCATION | DIRECTORY} 'data-dir']
  * 

@@ -18,7 +18,7 @@ package org.sqlite.server.pg;
 import java.util.Arrays;
 
 import org.sqlite.server.SQLiteAuthMethod;
-import org.sqlite.util.ConvertUtils;
+import org.sqlite.server.util.ConvertUtils;
 
 /**Clear-text password authentication method.
  * 

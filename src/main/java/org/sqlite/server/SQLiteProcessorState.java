@@ -18,8 +18,8 @@ package org.sqlite.server;
 import java.net.InetSocketAddress;
 
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.server.util.locks.SpinLock;
 import org.sqlite.sql.SQLStatement;
-import org.sqlite.util.locks.SpinLock;
 
 /**
  * @author little-pan

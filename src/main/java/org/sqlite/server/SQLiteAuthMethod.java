@@ -15,8 +15,8 @@
  */
 package org.sqlite.server;
 
-import org.sqlite.util.ConvertUtils;
-import org.sqlite.util.MD5Utils;
+import org.sqlite.server.util.ConvertUtils;
+import org.sqlite.server.util.MD5Utils;
 
 /**SQLite server authentication method.
  * 

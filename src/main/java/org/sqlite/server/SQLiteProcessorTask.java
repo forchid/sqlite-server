@@ -21,7 +21,8 @@ import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteErrorCode;
-import static org.sqlite.util.ConvertUtils.*;
+
+import static org.sqlite.server.util.ConvertUtils.*;
 
 /** SQLite processor task that processes asynchronous logic such as busy, big result set write
  * in SQLite processor, and handle fatal error for protecting SQLiteWorker.

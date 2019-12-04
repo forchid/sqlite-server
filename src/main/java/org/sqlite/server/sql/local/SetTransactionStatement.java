@@ -19,10 +19,10 @@ import java.sql.SQLException;
 
 import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.SQLiteProcessor;
+import org.sqlite.server.util.ConvertUtils;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.Transaction;
 import org.sqlite.sql.TransactionMode;
-import org.sqlite.util.ConvertUtils;
 
 /** SET {TRANSACTION | SESSION CHARACTERISTICS AS TRANSACTION} transaction_mode [, ...].
  * 

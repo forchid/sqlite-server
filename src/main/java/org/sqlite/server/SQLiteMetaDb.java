@@ -44,9 +44,9 @@ import org.sqlite.JDBC;
 import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.Db;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.server.util.IoUtils;
+import org.sqlite.server.util.SecurityUtils;
 import org.sqlite.SQLiteConnection;
-import org.sqlite.util.IoUtils;
-import org.sqlite.util.SecurityUtils;
 
 /**SQLite server meta database for user and database management.
  * 

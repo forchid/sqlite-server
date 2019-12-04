@@ -16,13 +16,14 @@
 package org.sqlite.server;
 
 import static java.lang.String.*;
+
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
 
 import org.sqlite.SQLiteConnection;
 import org.sqlite.server.sql.local.LocalStatement;
-import org.sqlite.util.SecurityUtils;
+import org.sqlite.server.util.SecurityUtils;
 
 /** SQLite local(session level) memory database that non-blocking executes 
  * session level SQL statements such as "SET TRANSACTION", "SHOW processlist".

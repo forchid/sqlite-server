@@ -45,8 +45,8 @@ import org.sqlite.server.sql.meta.RevokeStatement;
 import org.sqlite.server.sql.meta.ShowDatabasesStatement;
 import org.sqlite.server.sql.meta.ShowGrantsStatement;
 import org.sqlite.server.sql.meta.ShowUsersStatement;
-import org.sqlite.util.IoUtils;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.IoUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**A simple SQL parser.
  * 

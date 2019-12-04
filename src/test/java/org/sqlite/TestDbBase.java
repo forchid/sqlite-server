@@ -27,7 +27,7 @@ import java.util.NoSuchElementException;
 
 import org.apache.tomcat.jdbc.pool.DataSource;
 import org.sqlite.server.SQLiteServer;
-import org.sqlite.util.IoUtils;
+import org.sqlite.server.util.IoUtils;
 
 /**
  * @author little-pan

@@ -15,7 +15,7 @@
  */
 package org.sqlite.server.sql.meta;
 
-import static org.sqlite.util.ConvertUtils.convertError;
+import static org.sqlite.server.util.ConvertUtils.convertError;
 
 import java.sql.SQLException;
 

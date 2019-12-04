@@ -24,15 +24,15 @@ import java.sql.Types;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.util.IoUtils;
 import org.sqlite.sql.InsertSelectStatement;
 import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.Transaction;
-import org.sqlite.util.IoUtils;
 
-import static org.sqlite.util.ConvertUtils.*;
+import static org.sqlite.server.util.ConvertUtils.*;
 
 /** Support the "INSERT INTO... {VALUES()... | SELECT ...} RETURNING ..." statement of PostgreSQL style.
  * The execution process is: <p>

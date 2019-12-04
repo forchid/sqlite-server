@@ -40,6 +40,7 @@ import org.sqlite.server.sql.meta.RevokeStatement;
 import org.sqlite.server.sql.meta.ShowDatabasesStatement;
 import org.sqlite.server.sql.meta.ShowGrantsStatement;
 import org.sqlite.server.sql.meta.ShowUsersStatement;
+import org.sqlite.server.util.IoUtils;
 import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.DetachStatement;
 import org.sqlite.sql.PragmaStatement;
@@ -47,7 +48,6 @@ import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.TransactionStatement;
-import org.sqlite.util.IoUtils;
 
 /**
  * @author little-pan

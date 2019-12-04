@@ -18,10 +18,10 @@ package org.sqlite.server.sql;
 import java.sql.SQLException;
 
 import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.util.ConvertUtils;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
-import org.sqlite.util.ConvertUtils;
 
 /** "SHOW TABLES [{FROM | IN} schema_name] [LIKE 'pattern']" statement.
  * @author little-pan

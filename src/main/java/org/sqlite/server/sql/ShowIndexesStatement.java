@@ -18,10 +18,10 @@ package org.sqlite.server.sql;
 import java.sql.SQLException;
 
 import org.sqlite.SQLiteErrorCode;
+import org.sqlite.server.util.ConvertUtils;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
-import org.sqlite.util.ConvertUtils;
 
 /** "SHOW {INDEX | INDEXES} [{FROM | IN} [schema_name.]table_name [{FROM | IN} schema_name]] | [WHERE 'pattern'] ", or
  * "SHOW {INDEX | INDEXES} [EXTENDED] COLUMNS {FROM | IN} [schema_name.]index_name [{FROM | IN} schema_name]" 

@@ -23,7 +23,7 @@ import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**The GRANT statement:
  * GRANT {ALL [PRIVILEGES] [, SELECT | INSERT | UPDATE | DELETE 

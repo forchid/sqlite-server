@@ -21,7 +21,7 @@ import org.sqlite.SQLiteErrorCode;
 import org.sqlite.server.SQLiteProcessor;
 import org.sqlite.server.SQLiteServer;
 import org.sqlite.server.sql.meta.User;
-import org.sqlite.util.ConvertUtils;
+import org.sqlite.server.util.ConvertUtils;
 
 /** "KILL [connection | query] processor_id" statement.
  * 

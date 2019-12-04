@@ -17,7 +17,7 @@ package org.sqlite.server.sql.meta;
 
 import static java.lang.String.*;
 
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /** The user privileges on DB.
  * 

@@ -25,7 +25,7 @@ import java.sql.Statement;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.sqlite.util.IoUtils;
+import org.sqlite.server.util.IoUtils;
 
 /**SQL statement.
  * 

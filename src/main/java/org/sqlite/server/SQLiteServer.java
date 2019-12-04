@@ -15,7 +15,7 @@
  */
 package org.sqlite.server;
 
-import static org.sqlite.util.StringUtils.toLowerEnglish;
+import static org.sqlite.server.util.StringUtils.toLowerEnglish;
 
 import java.io.File;
 import java.io.IOException;
@@ -52,9 +52,9 @@ import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.pg.PgServer;
 import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.server.util.IoUtils;
 import org.sqlite.sql.SQLContext;
-import org.sqlite.util.IoUtils;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 import static java.lang.String.*;
 import static org.sqlite.SQLiteConfig.Pragma;

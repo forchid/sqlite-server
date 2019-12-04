@@ -52,17 +52,17 @@ import org.sqlite.server.SQLiteQueryTask;
 import org.sqlite.server.SQLiteWorker;
 import org.sqlite.server.sql.meta.MetaStatement;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.server.util.DateTimeUtils;
+import org.sqlite.server.util.IoUtils;
+import org.sqlite.server.util.SecurityUtils;
 import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 
-import static org.sqlite.util.ConvertUtils.*;
+import static org.sqlite.server.util.ConvertUtils.*;
 
-import org.sqlite.util.DateTimeUtils;
-import org.sqlite.util.IoUtils;
-import org.sqlite.util.SecurityUtils;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**The PG protocol handler.
  * 

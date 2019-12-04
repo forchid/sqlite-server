@@ -20,7 +20,7 @@ import java.util.TimeZone;
 
 import org.sqlite.TestBase;
 
-import static org.sqlite.util.DateTimeUtils.*;
+import static org.sqlite.server.util.DateTimeUtils.*;
 
 /**
  * @author little-pan

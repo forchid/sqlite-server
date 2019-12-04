@@ -18,7 +18,7 @@ package org.sqlite.sql;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
-import org.sqlite.util.IoUtils;
+import org.sqlite.server.util.IoUtils;
 
 /** "INSERT INTO ... SELECT ..." statement
  * @author little-pan

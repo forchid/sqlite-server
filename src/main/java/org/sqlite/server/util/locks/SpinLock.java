@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.sqlite.util.locks;
+package org.sqlite.server.util.locks;
 
 import java.util.concurrent.atomic.AtomicReference;
 

@@ -15,7 +15,7 @@
  */
 package org.sqlite.server.sql.meta;
 
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /** The database catalog that includes databases and data directories.
  * 

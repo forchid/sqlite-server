@@ -24,7 +24,7 @@ import org.sqlite.sql.ImplicitCommitException;
 import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /**REVOKE {ALL [PRIVILEGES] [, SELECT | INSERT | UPDATE | DELETE
  * | CREATE | ALTER | DROP | PRAGMA | VACUUM | ATTACH}

@@ -23,7 +23,7 @@ import java.io.StringReader;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
-import org.sqlite.util.IoUtils;
+import org.sqlite.server.util.IoUtils;
 
 /**SQL statement reader.
  * 

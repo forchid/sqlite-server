@@ -21,8 +21,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
 import org.sqlite.server.SQLiteAuthMethod;
-import org.sqlite.util.ConvertUtils;
-import org.sqlite.util.SecurityUtils;
+import org.sqlite.server.util.ConvertUtils;
+import org.sqlite.server.util.SecurityUtils;
 
 /**Encodes user/password/salt information in the following way: 
  * MD5(MD5(password + user) + salt).

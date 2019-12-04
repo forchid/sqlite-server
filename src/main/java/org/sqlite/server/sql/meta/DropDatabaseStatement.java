@@ -24,9 +24,9 @@ import org.sqlite.sql.SQLParseException;
 import org.sqlite.sql.SQLParser;
 import org.sqlite.sql.SQLStatement;
 
-import static org.sqlite.util.ConvertUtils.*;
+import static org.sqlite.server.util.ConvertUtils.*;
 
-import org.sqlite.util.StringUtils;
+import org.sqlite.server.util.StringUtils;
 
 /** DROP {DATABASE | SCHEMA} [IF EXISTS] dbname, requires superuser privilege.
  * @author little-pan

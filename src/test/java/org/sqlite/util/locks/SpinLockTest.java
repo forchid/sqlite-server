@@ -18,6 +18,7 @@ package org.sqlite.util.locks;
 import java.sql.SQLException;
 
 import org.sqlite.TestBase;
+import org.sqlite.server.util.locks.SpinLock;
 
 /**
  * @author little-pan

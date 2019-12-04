@@ -41,14 +41,14 @@ import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.DropDatabaseStatement;
 import org.sqlite.server.sql.meta.User;
+import org.sqlite.server.util.IoUtils;
 import org.sqlite.sql.AttachStatement;
 import org.sqlite.sql.SQLContext;
 import org.sqlite.sql.SQLStatement;
 import org.sqlite.sql.Transaction;
 import org.sqlite.sql.TransactionStatement;
-import org.sqlite.util.IoUtils;
-import static org.sqlite.util.ConvertUtils.*;
 
+import static org.sqlite.server.util.ConvertUtils.*;
 import static java.lang.Integer.*;
 
 /**
