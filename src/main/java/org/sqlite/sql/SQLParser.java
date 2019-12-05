@@ -31,6 +31,7 @@ import org.sqlite.server.sql.ShowCreateIndexStatement;
 import org.sqlite.server.sql.ShowCreateTableStatement;
 import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
+import org.sqlite.server.sql.TruncateTableStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
 import org.sqlite.server.sql.local.ShowProcesslistStatement;
@@ -290,6 +291,9 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
                 default:
                     throw syntaxError();
                 }
+            case 't':
+            case 'T':
+                return parseTruncateTable();
             case 'u':
             case 'U':
                 return parseUpdate();
@@ -1312,6 +1316,31 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
         } // for
         
         return mode;
+    }
+    
+    protected TruncateTableStatement parseTruncateTable() {
+        nextString("runcate");
+        skipIgnorable();
+        if (nextStringIf("table") != -1) {
+            skipIgnorable();
+        }
+        
+        String schemaName = null, tableName;
+        tableName = nextString();
+        skipIgnorableIf();
+        if (nextCharIf('.') != -1) {
+            skipIgnorableIf();
+            schemaName = tableName;
+            tableName = nextString();
+        }
+        if (nextEnd()) {
+            TruncateTableStatement stmt = new TruncateTableStatement(this.sql);
+            stmt.setSchemaName(schemaName);
+            stmt.setTableName(tableName);
+            return stmt;
+        }
+        
+        throw syntaxError();
     }
 
     protected SQLStatement parseRelease() {

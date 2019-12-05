@@ -12,6 +12,7 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Support "insert into ...{values()... | select ...} returning ..." statement of PostgreSQL style
 + Added "select ... for update" for support pessimistic lock by SQLite reserved lock
 + Added "show tables", "show columns", "show indexes", "show create table", "show create index" statements for querying schema information
++ Added "truncate [table] tbl_name" statement
 
 # Examples
 1. Standalone SQLite server

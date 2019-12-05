@@ -25,6 +25,7 @@ import org.sqlite.server.sql.ShowCreateIndexStatement;
 import org.sqlite.server.sql.ShowCreateTableStatement;
 import org.sqlite.server.sql.ShowIndexesStatement;
 import org.sqlite.server.sql.ShowTablesStatement;
+import org.sqlite.server.sql.TruncateTableStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.LocalStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
@@ -612,6 +613,38 @@ public class SQLParserTest extends TestBase {
         insertReturningTest("insert into t(a)/***/ select 'RETURNING' --\nRETURNING *", 1, true, null, "t", "*");
         insertReturningTest(" /*returning*/insert into t(a)-- returning\n/***/ select 1 --returning\n returning/****/--\n* /***/ ",
                 1, true, null, "t", "* /***/ ");
+        
+        truncateTableTest("truncate test;", 1, null, "test");
+        truncateTableTest("truncate test ;", 1, null, "test");
+        truncateTableTest("truncate a.test;", 1, "a", "test");
+        truncateTableTest("truncate a.test ;", 1, "a", "test");
+        truncateTableTest("truncate 'a'.test;", 1, "a", "test");
+        truncateTableTest("truncate 'a'.test ;", 1, "a", "test");
+        truncateTableTest("truncate 'a' .test;", 1, "a", "test");
+        truncateTableTest("Truncate 'a'. test ;", 1, "a", "test");
+        truncateTableTest("TRUNCATE 'a' . test ;", 1, "a", "test");
+        truncateTableTest("TRUNCATE 'a' . test ;truncate table a.test", 2, "a", "test");
+        truncateTableTest("TRUNCATE 'a' . test ; truncate table a.test", 2, "a", "test");
+        truncateTableTest("truncate test", 1, null, "test");
+        truncateTableTest("truncate test ", 1, null, "test");
+        truncateTableTest("truncate a.test", 1, "a", "test");
+        truncateTableTest("truncate a.test ", 1, "a", "test");
+        truncateTableTest("truncate 'a'.test", 1, "a", "test");
+        truncateTableTest("truncate 'a'.test ", 1, "a", "test");
+        truncateTableTest("truncate 'a' .test", 1, "a", "test");
+        truncateTableTest("Truncate 'a'. test ", 1, "a", "test");
+        truncateTableTest("TRUNCATE 'a' . test ", 1, "a", "test");
+        truncateTableTest("TRUNCATE 'a' . test ;truncate table a.test;", 2, "a", "test");
+        truncateTableTest("TRUNCATE 'a' . test ; truncate table a.test;", 2, "a", "test");
+        truncateTableTest("truncate table test;", 1, null, "test");
+        truncateTableTest("truncate table test ;", 1, null, "test");
+        truncateTableTest("truncate table a.test;", 1, "a", "test");
+        truncateTableTest("truncate table a.test ;", 1, "a", "test");
+        truncateTableTest("truncate table 'a'.test;", 1, "a", "test");
+        truncateTableTest("truncate table 'a'.test ;", 1, "a", "test");
+        truncateTableTest("truncate table 'a' .test;", 1, "a", "test");
+        truncateTableTest("truncate table 'a'. test ;", 1, "a", "test");
+        truncateTableTest("truncate table 'a' . test ;", 1, "a", "test");
         
         boolean deferred = true, immediate = false, exclusive = false;
         txBeginTest("begin", 1, deferred, immediate, exclusive);
@@ -1648,6 +1681,28 @@ public class SQLParserTest extends TestBase {
             assertTrue(!stmt.isEmpty());
             assertTrue(!stmt.isTransaction());
             assertTrue(!stmt.isComment());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void truncateTableTest(String sqls, int stmts, String schemaName, String tableName) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test TRUNCATE %s", stmt);
+            assertTrue("DELETE".equals(stmt.getCommand()));
+            assertTrue(!stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            
+            TruncateTableStatement s = (TruncateTableStatement)stmt;
+            assertTrue(schemaName == s.getSchemaName() 
+                    || schemaName.equals(s.getSchemaName()));
+            assertTrue(tableName == s.getTableName() 
+                    || tableName.equals(s.getTableName()));
             ++i;
             parser.remove();
         }
