@@ -655,6 +655,10 @@ public class SQLiteMetaDb implements AutoCloseable {
         if (reslv != null && !reslv.isExpired()) {
             return false;
         }
+        // fix - UnknownHostException: '%' shouldn't be resolved
+        if ("%".equals(h)) {
+            return false;
+        }
         
         try {
             for (InetAddress addr: InetAddress.getAllByName(h)) {
@@ -671,7 +675,7 @@ public class SQLiteMetaDb implements AutoCloseable {
             this.reslvCache.put(h, new Resolution(true));
             return true;
         } catch (UnknownHostException e) {
-            log.warn("Can't resolve the host " + h, e);
+            log.warn("Can't resolve the host '" + h + "'", e);
             this.reslvCache.put(h, new Resolution(false));
             return false;
         }
