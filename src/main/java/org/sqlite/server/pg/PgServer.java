@@ -119,7 +119,7 @@ public class PgServer extends SQLiteServer {
     
     @Override
     public String getVersion() {
-        return PG_VERSION;
+        return PG_VERSION + "-SQLited " + SQLiteServer.VERSION;
     }
     
     @Override

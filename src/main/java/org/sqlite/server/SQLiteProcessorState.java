@@ -57,7 +57,7 @@ public class SQLiteProcessorState implements AutoCloseable {
     public String getHost() {
         InetSocketAddress remote = this.processor.getRemoteAddress();
         final User user = this.processor.getUser();
-        if (user == null) {
+        if (user == null || "%".equals(user.getHost())) {
             return (String.format("%s:%s", remote.getHostString(), remote.getPort()));
         }
         
