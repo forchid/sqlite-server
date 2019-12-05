@@ -22,6 +22,6 @@
 PRGDIR=`dirname "$PRG"`
 CLASSPATH=.:"$PRGDIR"/lib/sqlite-jdbc-3.28.0.jar:"$PRGDIR"/lib/logback-classic-1.1.7.jar:\
 "$PRGDIR"/lib/logback-core-1.1.7.jar:"$PRGDIR"/lib/slf4j-api-1.7.21.jar:\
-"$PRGDIR"/lib/sqlite-server-0.3.28.jar
+"$PRGDIR"/lib/sqlite-server-0.3.29.jar
 
 java -Xmx128m -classpath "$CLASSPATH" "$@" &
