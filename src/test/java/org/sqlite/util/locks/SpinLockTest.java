@@ -70,7 +70,7 @@ public class SpinLockTest extends TestBase {
     }
     
     protected void reentrantTest(String prefix, final int levels, int concs) {
-        info("reentrantTest(): %s - levels %s, concs %s", prefix, levels, concs);
+        info("reentrantTest(): %s levels %s, concs %s", prefix, levels, concs);
         
         Thread [] workers = new Thread[concs];
         for (int i = 0; i < concs; ++i) {

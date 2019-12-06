@@ -20,7 +20,8 @@ if [ -z "$SQLITED_HOME" ] ; then
   echo "Error: SQLITED_HOME is not defined."
 fi
 
-if [ "$1" = "clean" ] ; then 
+if [ "$1" = "clean" ] ; then
+  echo "clean"
   rm -rf "$SQLITED_HOME/temp" "$SQLITED_HOME/lib" "$SQLITED_HOME/logs" "$SQLITED_HOME/target"
 fi
 
