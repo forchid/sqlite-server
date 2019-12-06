@@ -99,9 +99,9 @@ public class SpinLockTest extends TestBase {
         this.lock.lock();
         try {
             if (levels < 0) {
-                // infinite
-                //...But oraclejdk8 and openjdk7/8 no StackOverflowError 
-                //on ubuntu 14 Travis-CI test environment so comment it
+                info("infinite... "+
+                "But oraclejdk8 and openjdk7/8 no StackOverflowError "+
+                "on ubuntu 14 Travis-CI test environment so skip this test");
                 //reentry(levels);
                 //reentry(--levels);
             } else {

@@ -48,6 +48,5 @@ export CLASSPATH=$SQLITED_HOME/conf:$SQLITED_HOME/target/classes:$SQLITED_HOME/t
 -d "$SQLITED_HOME/target/test-classes" "$SQLITED_HOME/src/test/java/org/sqlite"/*.java
 "$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/test/java" \
 -d "$SQLITED_HOME/target/test-classes" "$SQLITED_HOME/src/test/java/org/sqlite/server/jdbc/pg"/*.java
-cp -f "$SQLITED_HOME/src/main/resources"/* "$SQLITED_HOME/target/classes/"
 
 "$JAVA_HOME/bin/java" -Xmx256m org.sqlite.TestAll
