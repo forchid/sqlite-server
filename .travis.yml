@@ -13,6 +13,7 @@ matrix:
       group: edge
       sudo: required
       before_script:
+	- chmod +x ./build.sh
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
     - jdk: openjdk7
@@ -20,5 +21,6 @@ matrix:
       group: edge
       sudo: required
       before_script:
+	- chmod +x ./build.sh
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
