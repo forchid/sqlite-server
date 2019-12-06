@@ -42,9 +42,9 @@ export CLASSPATH=$SQLITED_HOME/conf:$SQLITED_HOME/target/classes:$SQLITED_HOME/t
 :$SQLITED_HOME/lib/dom4j-1.6.1.jar:$SQLITED_HOME/lib/tomcat-juli-8.5.29.jar:$SQLITED_HOME/lib/hibernate-commons-annotations-3.2.0.Final.jar\
 :$SQLITED_HOME/lib/tomcat-jdbc-8.5.29.jar
 
-"$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/main/java" -d "$SQLITED_HOME/target/classes src/main/java/org/sqlite/server/*.java"
-"$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/test/java" -d "$SQLITED_HOME/target/test-classes src/test/java/org/sqlite/*.java"
-"$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/test/java" -d "$SQLITED_HOME/target/test-classes src/test/java/org/sqlite/server/jdbc/pg/*.java"
+"$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/main/java" -d "$SQLITED_HOME/target/classes" "$SQLITED_HOME/src/main/java/org/sqlite/server/*.java"
+"$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/test/java" -d "$SQLITED_HOME/target/test-classes" "$SQLITED_HOME/src/test/java/org/sqlite/*.java"
+"$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/test/java" -d "$SQLITED_HOME/target/test-classes" "$SQLITED_HOME/src/test/java/org/sqlite/server/jdbc/pg/*.java"
 cp -f "$SQLITED_HOME/src/main/resources/*" "$SQLITED_HOME/target/classes/"
 
 "$JAVA_HOME/bin/java" -Xmx256m org.sqlite.TestAll
