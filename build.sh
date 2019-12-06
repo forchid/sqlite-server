@@ -24,7 +24,7 @@ if [ ! -d "target/test-classes" ] ; then mkdir -p target/test-classes ; fi
 
 mvn dependency:copy-dependencies -DoutputDirectory=./lib
 
-export CLASSPATH=.:./target/classes:./target/test-classes\
+export CLASSPATH=./target/classes:./target/test-classes\
 :./lib/logback-classic-1.1.7.jar:./lib/logback-core-1.1.7.jar:./lib/slf4j-api-1.7.21.jar\
 :./lib/sqlite-jdbc-3.28.0.jar:./lib/antlr-2.7.6.jar:./lib/commons-collections-3.1.jar\
 :./lib/postgresql-42.2.5.jre7.jar:./lib/javassist-3.12.0.GA.jar:./lib/jta-1.1.jar\
@@ -35,5 +35,6 @@ export CLASSPATH=.:./target/classes:./target/test-classes\
 "$JAVA_HOME/bin/javac" -sourcepath src/main/java -d target/classes src/main/java/org/sqlite/server/*.java
 "$JAVA_HOME/bin/javac" -sourcepath src/test/java -d target/test-classes src/test/java/org/sqlite/*.java
 "$JAVA_HOME/bin/javac" -sourcepath src/test/java -d target/test-classes src/test/java/org/sqlite/server/jdbc/pg/*.java
+cp -f ./src/main/resources/* ./target/classes/
 
 "$JAVA_HOME/bin/java" -Xmx256m org.sqlite.TestAll
