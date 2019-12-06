@@ -14,7 +14,7 @@ fi
 
 if [ "$1" = "clean" ] ; then rm -rf data lib logs target ; fi
 
-if [ "$1" != "test" && "$2" != "test" ] ; then exit(0) ; fi
+if [ "$1" != "test" && "$2" != "test" ] ; then exit 0 ; fi
 
 if [ ! -d "data" ] ; then mkdir data ; fi
 if [ ! -d "lib" ] ; then mkdir lib ; fi
