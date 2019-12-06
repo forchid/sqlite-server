@@ -100,7 +100,9 @@ public class SpinLockTest extends TestBase {
         try {
             if (levels < 0) {
                 // infinite
-                reentry(levels);
+                //...But openjdk7/8 no StackOverflowError so comment it
+                //reentry(levels);
+                reentry(--levels);
             } else {
                 if(--levels > 0) {
                     reentry(levels);
