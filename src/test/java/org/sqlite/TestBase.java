@@ -32,7 +32,7 @@ import junit.framework.TestCase;
 public abstract class TestBase extends TestCase implements Iterable<TestEnv> {
     
     static final String LINESEP = System.getProperty("line.separator");
-    protected static boolean disableINFO = false, disableERROR = true;
+    protected static boolean disableINFO = false, disableERROR = false;
     
     protected int iteration = 0, iterations = 1;
     

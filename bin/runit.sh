@@ -20,8 +20,9 @@
 # -----------------------------------------------------------------------------
 
 PRGDIR=`dirname "$PRG"`
-CLASSPATH=.:"$PRGDIR"/lib/sqlite-jdbc-3.28.0.jar:"$PRGDIR"/lib/logback-classic-1.1.7.jar:\
-"$PRGDIR"/lib/logback-core-1.1.7.jar:"$PRGDIR"/lib/slf4j-api-1.7.21.jar:\
-"$PRGDIR"/lib/sqlite-server-0.3.29.jar
+export SQLITED_HOME=`dirname "$PRGDIR"`
+CLASSPATH=.:"$SQLITED_HOME"/lib/sqlite-jdbc-3.28.0.jar:"$SQLITED_HOME"/lib/logback-classic-1.1.7.jar:\
+"$SQLITED_HOME"/lib/logback-core-1.1.7.jar:"$SQLITED_HOME"/lib/slf4j-api-1.7.21.jar:\
+"$SQLITED_HOME"/lib/sqlite-server-0.3.29.jar:$SQLITED_HOME/conf
 
 java -Xmx128m -classpath "$CLASSPATH" "$@" &

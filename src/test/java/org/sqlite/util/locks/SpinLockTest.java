@@ -56,6 +56,7 @@ public class SpinLockTest extends TestBase {
     }
     
     protected void simpleLockTest(boolean thrown) {
+        info("simpleLockTest(): thrown? %s", thrown);
         this.lock.lock();
         try {
             if (thrown) {
@@ -69,6 +70,8 @@ public class SpinLockTest extends TestBase {
     }
     
     protected void reentrantTest(String prefix, final int levels, int concs) {
+        info("reentrantTest(): %s - levels %s, concs %s", prefix, levels, concs);
+        
         Thread [] workers = new Thread[concs];
         for (int i = 0; i < concs; ++i) {
             Thread worker = new Thread(new Runnable() {

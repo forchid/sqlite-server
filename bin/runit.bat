@@ -20,12 +20,16 @@ rem Initdb/boot script for the SQLite Server
 rem ---------------------------------------------------------------------------
 setlocal
 
+set CURDIR=%CD%
 set BINDIR=%~dp0
-set CLASSPATH=%BINDIR%\target\classes;^
-%BINDIR%\target\test-classes;^
-%BINDIR%\lib\*;
+cd /d "%BINDIR%"
+cd ..
+set SQLITED_HOME=%CD%
+cd /d "%CURDIR%"
+set CLASSPATH=.;%SQLITED_HOME%\target\classes;%SQLITED_HOME%\target\test-classes;^
+%SQLITED_HOME%\lib\*;%SQLITED_HOME%\conf
 
-rem mvn dependency:copy-dependencies -DoutputDirectory="%BINDIR%\lib"
+rem mvn dependency:copy-dependencies -DoutputDirectory="%SQLITED_HOME%\lib"
 
 java %*
 

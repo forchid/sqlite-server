@@ -1,6 +1,6 @@
 language: java
 
-script: ./build.sh clean test
+script: ./bin/build.sh clean test
 
 cache:
   directories:
@@ -13,7 +13,7 @@ matrix:
       group: edge
       sudo: required
       before_script:
-        - "chmod +x build.sh"
+        - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
     - jdk: openjdk7
@@ -21,6 +21,6 @@ matrix:
       group: edge
       sudo: required
       before_script:
-        - "chmod +x build.sh"
+        - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
