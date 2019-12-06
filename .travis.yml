@@ -1,0 +1,24 @@
+language: java
+
+script: ./build.sh clean test
+
+cache:
+  directories:
+    - $HOME/.m2/repository
+
+matrix:
+  include:
+    - jdk: openjdk8
+      dist: trusty
+      group: edge
+      sudo: required
+      before_script:
+        - "echo $JAVA_OPTS"
+        - "export JAVA_OPTS=-Xmx128m"
+    - jdk: openjdk7
+      dist: trusty
+      group: edge
+      sudo: required
+      before_script:
+        - "echo $JAVA_OPTS"
+        - "export JAVA_OPTS=-Xmx128m"
