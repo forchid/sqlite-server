@@ -16,8 +16,13 @@
 package org.sqlite.server.util.locks;
 
 import java.util.concurrent.atomic.AtomicReference;
+import static java.lang.Integer.*;
 
-/** A simple reentrant spin lock.
+/** <p>A simple reentrant spin lock.</p>
+ * 
+ * <p> Add the system property {@code org.sqlite.server.spinLock.maxDeep} to limit reentrant max deep
+ * for avoiding this reentrant spin lock violated by {@link StackOverflowError} since version 0.3.29.
+ * </p>
  * 
  * @author little-pan
  * @since 2019-10-19
@@ -25,8 +30,10 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class SpinLock {
     
+    private static final int MAX_DEEP = getInteger("org.sqlite.server.spinLock.maxDeep", 1000);
+    
     private final AtomicReference<Thread> locked;
-    private int levels;
+    private int deep;
     
     public SpinLock() {
         this.locked = new AtomicReference<>();
@@ -34,7 +41,8 @@ public class SpinLock {
     
     /** Acquires the lock.
      * 
-     * @throws IllegalStateException if reentrant levels reaches {@code Integer.MAX_VALUE}
+     * @throws IllegalStateException if reentrant deep exceeds the system property value of 
+     * {@code org.sqlite.server.spinLock.maxDeep}
      */
     public void lock() throws IllegalStateException {
         final Thread current = Thread.currentThread();
@@ -43,19 +51,23 @@ public class SpinLock {
                 this.locked.get() != current;) {
             // spin
         }
-        if (++this.levels == Integer.MAX_VALUE) {
+        if (++this.deep > MAX_DEEP) {
             unlock();
-            throw new IllegalStateException("Reentrant levels too deep: " + Integer.MAX_VALUE);
+            throw new IllegalStateException("Reentrant lock too deep(max " + MAX_DEEP + ")");
         }
     }
     
     /**
      * Releases the lock.
+     * @throws IllegalMonitorStateException if the current thread doesn't own this lock since 0.3.29
      */
-    public void unlock() {
-        final Thread current = Thread.currentThread();
-        if (this.locked.get() == current && --this.levels == 0) {
-            this.locked.set(null);
+    public void unlock() throws IllegalMonitorStateException {
+        if (Thread.currentThread() == this.locked.get()) {
+            if (--this.deep == 0) {
+                this.locked.set(null);
+            }
+        } else {
+            throw new IllegalMonitorStateException();
         }
     }
     

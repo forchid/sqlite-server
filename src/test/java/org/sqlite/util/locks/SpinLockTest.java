@@ -16,6 +16,10 @@
 package org.sqlite.util.locks;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.sqlite.TestBase;
 import org.sqlite.server.util.locks.SpinLock;
@@ -28,6 +32,7 @@ import org.sqlite.server.util.locks.SpinLock;
 public class SpinLockTest extends TestBase {
     
     protected final SpinLock lock = new SpinLock();
+    final List<byte[]> buffers = Collections.synchronizedList(new ArrayList<byte[]>());
 
     public static void main(String[] args) throws SQLException {
         new SpinLockTest().test();
@@ -38,21 +43,37 @@ public class SpinLockTest extends TestBase {
         simpleLockTest(false);
         simpleLockTest(true);
         
-        reentrantTest("rt1", 2, 1);
-        reentrantTest("rt2", 2, 2);
-        reentrantTest("rt3", 2, 10);
-        reentrantTest("rt4", 100, 10);
-        reentrantTest("rt5", 1000, 10);
-        reentrantTest("rt6", 10000, 10);
-        reentrantTest("rt7", 100000, 1);
-        reentrantTest("rt8", -1, 1);
-        reentrantTest("rt9", -1, 5);
-        reentrantTest("rt10", 2, 1);
-        reentrantTest("rt11", 2, 2);
-        reentrantTest("rt12", 2, 10);
+        reentrantTest("rt0", 0, 1);
+        reentrantTest("rt1", 1, 1);
+        reentrantTest("rt2", 2, 1);
+        reentrantTest("rt3", 2, 2);
+        reentrantTest("rt4", 2, 10);
+        reentrantTest("rt5", 100, 10);
+        reentrantTest("rt6", 1000, 10);
+        reentrantTest("rt7", 10000, 10);
+        reentrantTest("rt8", 100000, 1);
+        reentrantTest("rt9", -1, 1);
+        reentrantTest("rt10", -1, 5);
+        reentrantTest("rt11", 2, 1);
+        reentrantTest("rt12", 2, 2);
+        reentrantTest("rt13", 2, 10);
+        
+        reentrantTest("rt14", 2, 10, true);
+        reentrantTest("rt15", 200, 10, true);
+        reentrantTest("rt16", 500, 1, true);
+        reentrantTest("rt17", 1000, 2, true);
+        reentrantTest("rt18", 10000, 10, true);
+        reentrantTest("rt19", -1, 1, true);
+        reentrantTest("rt20", -1, 10, true);
         
         simpleLockTest(true);
         simpleLockTest(false);
+    }
+    
+    @Override
+    protected void cleanup() {
+        this.buffers.clear();
+        super.cleanup();
     }
     
     protected void simpleLockTest(boolean thrown) {
@@ -69,15 +90,25 @@ public class SpinLockTest extends TestBase {
         }
     }
     
-    protected void reentrantTest(String prefix, final int levels, int concs) {
-        info("reentrantTest(): %s levels %s, concs %s", prefix, levels, concs);
+    protected void reentrantTest(String prefix, final int deep, int concs) {
+        reentrantTest(prefix, deep, concs, false);
+    }
+    
+    protected void reentrantTest(String prefix, final int deep, int concs, final boolean oomTest) {
+        info("reentrantTest(): %s deep %s, concs %s, oomTest %s", prefix, deep, concs, oomTest);
+        this.buffers.clear();
         
+        final AtomicReference<Throwable> cause = new AtomicReference<>();
         Thread [] workers = new Thread[concs];
         for (int i = 0; i < concs; ++i) {
             Thread worker = new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    reentry(levels);
+                    try {
+                        reentry(deep, oomTest);
+                    } catch (Throwable e) {
+                        cause.set(e);
+                    }
                 }
                 
             }, prefix+"-worker-"+ i);
@@ -86,6 +117,7 @@ public class SpinLockTest extends TestBase {
             workers[i] = worker;
         }
         
+        // Check
         for (int i = 0; i < concs; ++i) {
             try {
                 workers[i].join();
@@ -93,23 +125,35 @@ public class SpinLockTest extends TestBase {
                 throw new RuntimeException(e);
             }
         }
+        final Throwable e = cause.get();
+        if (e != null) {
+            throw new RuntimeException(e);
+        }
     }
     
-    protected void reentry(int levels) {
+    protected void reentry(int deep, boolean oomTest) {
+        if (deep == 0) {
+            return;
+        }
+        
         this.lock.lock();
         try {
-            if (levels < 0) {
-                info("infinite... "+
-                "But oraclejdk8 and openjdk7/8 no StackOverflowError "+
-                "on ubuntu 14 Travis-CI test environment so skip this test");
-                //reentry(levels);
-                //reentry(--levels);
+            if (oomTest) {
+                final byte[] buffer = new byte[1 << 20];
+                for (int i = 0; i < buffer.length; ++i) {
+                    buffer[i] = (byte)i;
+                }
+                this.buffers.add(buffer);
+            }
+            
+            if (deep < 0) {
+                reentry(deep, oomTest);
             } else {
-                if(--levels > 0) {
-                    reentry(levels);
+                if(--deep > 0) {
+                    reentry(deep, oomTest);
                 }
             }
-        } catch (IllegalStateException | StackOverflowError e) {
+        } catch (IllegalStateException | OutOfMemoryError e) {
             info("Expected exception: %s", e);
         } finally {
             this.lock.unlock();
