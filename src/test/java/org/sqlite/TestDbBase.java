@@ -80,7 +80,7 @@ public abstract class TestDbBase extends TestBase {
         },
         {"-D", dataDir, //"--trace-error", //"-T", 
             "--worker-count", "4", "--max-conns", "50",
-            "--journal-mode", "delete", "-S", "off"
+            "--journal-mode", "delete", "-S", "normal"
         },
         {"-D", dataDir, //"--trace-error", //"-T",
             "--worker-count", "4", "--max-conns", "50",
@@ -88,7 +88,7 @@ public abstract class TestDbBase extends TestBase {
         },
         {"-D", dataDir, //"--trace-error", //"-T", 
             "--worker-count", "4", "--max-conns", "50",
-            "--journal-mode", "delete", "-S", "off"
+            "--journal-mode", "delete", "-S", "normal"
         },
     };
     
