@@ -59,5 +59,5 @@ if [ "$JAR_ARG" != "" ] ; then
   if [ ! -d "$SQLITED_HOME/lib" ] ; then mkdir "$SQLITED_HOME"/lib ; fi
   mvn package -Dmaven.test.skip=true
   mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
-  copy "$SQLITED_HOME"/target/sqlite-server-0.3.29.jar "$SQLITED_HOME"/lib
+  cp "$SQLITED_HOME"/target/sqlite-server-0.3.29.jar "$SQLITED_HOME"/lib
 fi
