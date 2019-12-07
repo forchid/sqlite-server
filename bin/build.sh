@@ -27,9 +27,9 @@ TEST_ARG=
 JAR_ARG=
 for i in "$@"
 do
-  if [ "$i" == "jar" ]   ; then export JAR_ARG=$i  ; fi
-  if [ "$i" == "test" ]  ; then export TEST_ARG=$i ; fi
-  if [ "$i" == "clean" ] ; then export CLEAN_ARG=$i ; fi
+  if [ "$i" = "jar" ] ; then export JAR_ARG="$i" ; fi
+  if [ "$i" = "test" ] ; then export TEST_ARG="$i" ; fi
+  if [ "$i" = "clean" ] ; then export CLEAN_ARG="$i" ; fi
 done
 
 if [ "$CLEAN_ARG" = "clean" ] ; then
@@ -55,8 +55,8 @@ fi
 
 if [ "$JAR_ARG" != "" ] ; then
   echo "jar: package sqlite server"
-  if [ -d "%SQLITED_HOME%\lib" ] ; then rm -rf "$SQLITED_HOME"/lib ; fi
-  if [ ! -d "%SQLITED_HOME%\lib" ] ; then mkdir "$SQLITED_HOME"/lib" ; fi
+  if [ -d "$SQLITED_HOME/lib" ] ; then rm -rf "$SQLITED_HOME"/lib ; fi
+  if [ ! -d "$SQLITED_HOME/lib" ] ; then mkdir "$SQLITED_HOME"/lib ; fi
   mvn package -Dmaven.test.skip=true
   mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
   copy "$SQLITED_HOME"/target/sqlite-server-0.3.29.jar "$SQLITED_HOME"/lib
