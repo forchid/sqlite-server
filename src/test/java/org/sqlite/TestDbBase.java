@@ -74,7 +74,7 @@ public abstract class TestDbBase extends TestBase {
     };
     
     protected static final String [][] bootArgsList = new String[][] {
-        {"-D", dataDir, "--trace-error", "-T",
+        {"-D", dataDir, "--trace-error", //"-T",
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal"
         },
@@ -82,7 +82,7 @@ public abstract class TestDbBase extends TestBase {
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "delete", "-S", "off"
         },
-        {"-D", dataDir, "--trace-error", "-T",
+        {"-D", dataDir, "--trace-error", //"-T",
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal"
         },
