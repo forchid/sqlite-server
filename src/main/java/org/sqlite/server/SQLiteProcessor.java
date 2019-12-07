@@ -311,7 +311,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         final boolean readOnly = sqlStmt.inReadOnlyTx();
         
         if (readOnly && !sqlStmt.isQuery() && !sqlStmt.isTransaction()) {
-            String message = "Attempt to write a readonly transaction";
+            String message = "Attempt to write in a readonly transaction";
             throw convertError(SQLiteErrorCode.SQLITE_READONLY, message);
         }
     }
