@@ -34,16 +34,15 @@ if [ ! -d "$SQLITED_HOME/lib" ] ; then mkdir "$SQLITED_HOME/lib" ; fi
 if [ ! -d "$SQLITED_HOME/logs" ] ; then mkdir "$SQLITED_HOME/logs" ; fi
 if [ ! -d "$SQLITED_HOME/target" ] ; then mkdir "$SQLITED_HOME/target" ; fi
 
-mvn compile
-
 for i in "$@"
 do
   if [ "$i" = "test" ] ; then
+    mvn compile test-compile
     mvn dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/lib
-    export CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
-    for jar in "$SQLITED_HOME"/lib/*.jar; do
-      export CLASSPATH=$CLASSPATH:$jar
+    CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
+    for jar in "$SQLITED_HOME"/lib/*.jar ; do
+      CLASSPATH=$CLASSPATH:$jar
     done
-    java -Xmx128m org.sqlite.TestAll
+    java -Xmx128m -classpath "$CLASSPATH" org.sqlite.TestAll
   fi
 done
