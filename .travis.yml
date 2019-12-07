@@ -8,6 +8,22 @@ cache:
 
 matrix:
   include:
+    - jdk: oraclejdk13
+      dist: trusty
+      group: edge
+      sudo: required
+      before_script:
+        - "chmod +x ./bin/build.sh"
+        - "echo $JAVA_OPTS"
+        - "export JAVA_OPTS=-Xmx128m"
+    - jdk: oraclejdk11
+      dist: trusty
+      group: edge
+      sudo: required
+      before_script:
+        - "chmod +x ./bin/build.sh"
+        - "echo $JAVA_OPTS"
+        - "export JAVA_OPTS=-Xmx128m"
     - jdk: oraclejdk8
       dist: trusty
       group: edge
@@ -15,7 +31,15 @@ matrix:
       before_script:
         - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
-        - "export JAVA_OPTS=-Xmx256m"
+        - "export JAVA_OPTS=-Xmx128m"
+    - jdk: openjdk11
+      dist: trusty
+      group: edge
+      sudo: required
+      before_script:
+        - "chmod +x ./bin/build.sh"
+        - "echo $JAVA_OPTS"
+        - "export JAVA_OPTS=-Xmx128m"
     - jdk: openjdk8
       dist: trusty
       group: edge

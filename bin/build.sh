@@ -25,12 +25,22 @@ fi
 for i in "$@"
 do
   if [ "$i" = "clean" ] ; then
-    echo "clean: remove temp, lib and logs directories"
-    rm -rf "$SQLITED_HOME/temp" "$SQLITED_HOME/lib" "$SQLITED_HOME/logs"
+    echo "clean: remove temp, lib, logs and target directories"
+    rm -rf "$SQLITED_HOME/temp" "$SQLITED_HOME/lib" "$SQLITED_HOME/logs" "$SQLITED_HOME/target"
   fi
 done
 if [ ! -d "$SQLITED_HOME/temp" ] ; then mkdir "$SQLITED_HOME/temp" ; fi
 if [ ! -d "$SQLITED_HOME/lib" ] ; then mkdir "$SQLITED_HOME/lib" ; fi
 if [ ! -d "$SQLITED_HOME/logs" ] ; then mkdir "$SQLITED_HOME/logs" ; fi
+if [ ! -d "$SQLITED_HOME/target" ] ; then mkdir "$SQLITED_HOME/target" ; fi
 
-mvn "$@"
+mvn compile
+
+for i in "$@"
+do
+  if [ "$i" = "test" ] ; then
+    mvn dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/lib
+    export CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
+    java -Xmx128m -Djava.ext.dirs="$SQLITED_HOME"/lib org.sqlite.TestAll
+  fi
+done
