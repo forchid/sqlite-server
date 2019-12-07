@@ -62,3 +62,8 @@ server.close();
 server = SQLiteServer.create();
 server.bootAsync();
 ```
+
+# Documents
++ [How to build SQLite server](docs/Build.md)
++ How to init database and boot a SQLite server instance
++ SQLite SQL extension
