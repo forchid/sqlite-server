@@ -58,20 +58,20 @@ public class DropDatabaseStatement extends MetaStatement {
         this.db = StringUtils.toLowerEnglish(db);
     }
     
-    protected void postExecute(boolean resultSet) throws SQLException {
-        super.postExecute(resultSet);
-        
-        if (!isQuiet() && getJdbcStatement().getUpdateCount() == 0) {
-            throw convertError(SQLiteErrorCode.SQLITE_ERROR, "Database not exists");
-        }
-    }
-    
     @Override
     public void preExecute(int maxRows) throws SQLException {
         super.preExecute(maxRows);
         
         SQLiteProcessor proc = getContext();
         proc.deleteDbFile(this);
+    }
+    
+    protected void postExecute(boolean resultSet) throws SQLException {
+        super.postExecute(resultSet);
+        
+        if (!isQuiet() && getJdbcStatement().getUpdateCount() == 0) {
+            throw convertError(SQLiteErrorCode.SQLITE_ERROR, "Database not exists");
+        }
     }
     
     @Override

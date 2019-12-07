@@ -857,7 +857,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         
         // Do delete
         if (!dbFile.delete()) {
-            String message = String.format("Can't delete database file of '%s'", db);
+            String message = String.format("Can't delete database file of '%s'", dbFile);
             trace(log, "{}: {}", message, dbFile);
             throw convertError(SQLiteErrorCode.SQLITE_IOERR, message);
         }

@@ -5,7 +5,7 @@
   
   <groupId>org.sqlite</groupId>
   <artifactId>sqlite-server</artifactId>
-  <version>0.28.0</version>
+  <version>0.29.0</version>
   <packaging>jar</packaging>
   <name>SQLite database server</name>
   <url>https://github.com/little-pan/sqlite-server</url>
