@@ -153,7 +153,10 @@ public class SpinLockTest extends TestBase {
                     reentry(deep, oomTest);
                 }
             }
-        } catch (IllegalStateException | OutOfMemoryError e) {
+        } catch (IllegalStateException e) {
+            info("Expected exception: %s", e);
+        } catch (OutOfMemoryError e) {
+            this.buffers.clear(); // release
             info("Expected exception: %s", e);
         } finally {
             this.lock.unlock();
