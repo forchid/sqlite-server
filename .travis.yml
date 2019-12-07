@@ -15,7 +15,7 @@ matrix:
       before_script:
         - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
-        - "export JAVA_OPTS=-Xmx128m"
+        - "export JAVA_OPTS=-Xmx256m"
     - jdk: oraclejdk8
       dist: trusty
       group: edge
@@ -23,15 +23,15 @@ matrix:
       before_script:
         - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
-        - "export JAVA_OPTS=-Xmx128m"
-    - jdk: openjdk13
+        - "export JAVA_OPTS=-Xmx256m"
+    - jdk: openjdk11
       dist: trusty
       group: edge
       sudo: required
       before_script:
         - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
-        - "export JAVA_OPTS=-Xmx128m"
+        - "export JAVA_OPTS=-Xmx256m"
     - jdk: openjdk8
       dist: trusty
       group: edge
@@ -39,7 +39,7 @@ matrix:
       before_script:
         - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
-        - "export JAVA_OPTS=-Xmx128m"
+        - "export JAVA_OPTS=-Xmx256m"
     - jdk: openjdk7
       dist: trusty
       group: edge
@@ -47,4 +47,4 @@ matrix:
       before_script:
         - "chmod +x ./bin/build.sh"
         - "echo $JAVA_OPTS"
-        - "export JAVA_OPTS=-Xmx128m"
+        - "export JAVA_OPTS=-Xmx256m"
