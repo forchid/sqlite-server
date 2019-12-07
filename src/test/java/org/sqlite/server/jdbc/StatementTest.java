@@ -245,8 +245,11 @@ public class StatementTest extends TestDbBase {
                 s.executeUpdate("drop database test");
                 fail("Database 'test' in use");
             } catch (SQLException e) {
+                if (!"58030".equals(e.getSQLState())) {
+                    throw e;
+                }
+                
                 info("Expected: %s", e);
-                // OK
             }
         }
         // drop database test
