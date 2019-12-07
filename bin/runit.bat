@@ -26,10 +26,7 @@ cd /d "%BINDIR%"
 cd ..
 set SQLITED_HOME=%CD%
 cd /d "%CURDIR%"
-set CLASSPATH=.;%SQLITED_HOME%\target\classes;%SQLITED_HOME%\target\test-classes;^
-%SQLITED_HOME%\lib\*;%SQLITED_HOME%\conf
-
-rem mvn dependency:copy-dependencies -DoutputDirectory="%SQLITED_HOME%\lib"
+set CLASSPATH=.;%SQLITED_HOME%\lib\*;%SQLITED_HOME%\conf
 
 java %*
 

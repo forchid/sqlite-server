@@ -1,6 +1,6 @@
 language: java
 
-script: ./bin/build.sh clean test
+script: ./bin/build.sh clean test jar
 
 cache:
   directories:
