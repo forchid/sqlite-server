@@ -37,7 +37,7 @@ if [ ! -d "$SQLITED_HOME/target" ] ; then mkdir "$SQLITED_HOME/target" ; fi
 for i in "$@"
 do
   if [ "$i" = "test" ] ; then
-    mvn test-compile
+    mvn compile test-compile
     mvn dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/lib
     CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
     for jar in "$SQLITED_HOME"/lib/*.jar ; do
