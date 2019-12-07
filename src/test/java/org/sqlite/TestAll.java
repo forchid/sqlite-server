@@ -19,6 +19,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.junit.Test;
 import org.sqlite.server.SQLiteServerTest;
 import org.sqlite.server.jdbc.ConnectionTest;
 import org.sqlite.server.jdbc.PreparedStatementTest;
@@ -43,8 +44,9 @@ public class TestAll extends TestBase {
         new TestAll().test();
     }
 
+    @Test
     @Override
-    protected void doTest() throws SQLException {
+    public void doTest() throws SQLException {
         addAll().doTestAll();
     }
     

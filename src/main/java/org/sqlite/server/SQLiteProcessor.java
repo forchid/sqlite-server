@@ -835,7 +835,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     }
     
     public void deleteDbFile(DropDatabaseStatement stmt) throws SQLException {
-        String db = stmt.getDb();
+        final String db = stmt.getDb();
         Catalog catalog = getMetaDb().selectCatalog(db);
         if (catalog == null) {
             if (stmt.isQuiet()) {
@@ -853,6 +853,14 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             }
             String message = String.format("Database file of '%s' not exists", dbFile);
             throw convertError(SQLiteErrorCode.SQLITE_ERROR, message);
+        }
+        // fix - On UNIX-like system, a file can be deleted even if it's used, so that 
+        //we shouldn't delete the current database file.
+        // @since 0.3.29
+        if (db.equalsIgnoreCase(this.user.getDb())) {
+            String message = String.format("Can't delete current database file of '%s'", dbFile);
+            trace(log, "{}: {}", message, dbFile);
+            throw convertError(SQLiteErrorCode.SQLITE_IOERR, message);
         }
         
         // Do delete
