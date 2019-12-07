@@ -1,6 +1,6 @@
 language: java
 
-script: ./bin/build.sh clean test -e
+script: ./bin/build.sh clean test
 
 cache:
   directories:
