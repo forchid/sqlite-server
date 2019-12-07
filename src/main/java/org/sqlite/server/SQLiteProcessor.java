@@ -851,7 +851,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             if (stmt.isQuiet()) {
                 return;
             }
-            String message = String.format("Database file of '%s' not exists", db);
+            String message = String.format("Database file of '%s' not exists", dbFile);
             throw convertError(SQLiteErrorCode.SQLITE_ERROR, message);
         }
         
@@ -864,7 +864,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         for (String ext: new String[] {"-wal", "-shm", "-journal"}) {
             final File extFile = this.server.getDbFile(db+ext, dir);
             if (extFile.isFile() && !extFile.delete()) {
-                String message = String.format("Can't delete database extension file of '%s'", db);
+                String message = String.format("Can't delete database log file of '%s'", db);
                 log.error("{}: {}", message, extFile);
                 throw convertError(SQLiteErrorCode.SQLITE_IOERR, message);
             }
