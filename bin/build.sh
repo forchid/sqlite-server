@@ -43,7 +43,9 @@ export CLASSPATH=$SQLITED_HOME/target/classes:$SQLITED_HOME/target/test-classes\
 :$SQLITED_HOME/lib/dom4j-1.6.1.jar:$SQLITED_HOME/lib/tomcat-juli-8.5.29.jar:$SQLITED_HOME/lib/hibernate-commons-annotations-3.2.0.Final.jar\
 :$SQLITED_HOME/lib/tomcat-jdbc-8.5.29.jar
 
-if [ "$1" = "test" || "$2" = "test" ] ; cp "$SQLITED_HOME"/src/main/resources/* "$SQLITED_HOME"/target/classes/ ; fi
+if [ "$1" = "test" || "$2" = "test" ] ; then 
+  cp "$SQLITED_HOME"/src/main/resources/* "$SQLITED_HOME"/target/classes/
+fi
 
 "$JAVA_HOME/bin/javac" -sourcepath "$SQLITED_HOME/src/main/java" \
 -d "$SQLITED_HOME/target/classes" "$SQLITED_HOME/src/main/java/org/sqlite/server"/*.java
