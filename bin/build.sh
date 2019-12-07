@@ -20,12 +20,12 @@ if [ -z "$SQLITED_HOME" ] ; then
   echo "Error: SQLITED_HOME is not defined."
 fi
 
-if [ "$1" = "clean" || "$2" = "clean" ] ; then
+if [ "$1" = "clean" ] || [ "$2" = "clean" ] ; then
   echo "clean: remove temp, lib, logs and target directories"
   rm -rf "$SQLITED_HOME/temp" "$SQLITED_HOME/lib" "$SQLITED_HOME/logs" "$SQLITED_HOME/target"
 fi
 
-if [ "$1" != "test" && "$2" != "test" ] ; then exit 0 ; fi
+if [ "$1" != "test" ] && [ "$2" != "test" ] ; then exit 0 ; fi
 
 if [ ! -d "$SQLITED_HOME/temp" ] ; then mkdir "$SQLITED_HOME/temp" ; fi
 if [ ! -d "$SQLITED_HOME/lib" ] ; then mkdir "$SQLITED_HOME/lib" ; fi
@@ -43,7 +43,7 @@ export CLASSPATH=$SQLITED_HOME/target/classes:$SQLITED_HOME/target/test-classes\
 :$SQLITED_HOME/lib/dom4j-1.6.1.jar:$SQLITED_HOME/lib/tomcat-juli-8.5.29.jar:$SQLITED_HOME/lib/hibernate-commons-annotations-3.2.0.Final.jar\
 :$SQLITED_HOME/lib/tomcat-jdbc-8.5.29.jar
 
-if [ "$1" = "test" || "$2" = "test" ] ; then 
+if [ "$1" = "test" ] || [ "$2" = "test" ] ; then
   cp "$SQLITED_HOME"/src/main/resources/* "$SQLITED_HOME"/target/classes/
 fi
 
