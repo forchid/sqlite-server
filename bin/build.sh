@@ -41,7 +41,7 @@ do
   if [ "$i" = "test" ] ; then
     mvn dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/lib
     export CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
-    for jar in "$SQLITED_HOME"/*.jar; do
+    for jar in "$SQLITED_HOME"/lib/*.jar; do
       export CLASSPATH=$CLASSPATH:$jar
     done
     java -Xmx128m org.sqlite.TestAll
