@@ -22,6 +22,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
@@ -217,6 +218,7 @@ public abstract class TestDbBase extends TestBase {
     protected static void deleteDataDir(File dataDir) {
         assertTrue(!dataDir.exists() || dataDir.isDirectory());
         
+        info("Delete dataDir %s", dataDir);
         dataDir.list(new FilenameFilter() {
             @Override
             public boolean accept(File dir, String name) {
@@ -231,6 +233,7 @@ public abstract class TestDbBase extends TestBase {
                         } catch (InterruptedException e) {}
                     }
                     assertTrue(ok);
+                    info("Delete %s", f);
                     return ok;
                 }
                 
@@ -274,11 +277,13 @@ public abstract class TestDbBase extends TestBase {
             deleteDataDir(new File(dataDir));
             
             String[] initArgs = initArgsList[i];
+            info("Test environment.%d: initArgs = %s", this.envIndex, Arrays.toString(initArgs));
             SQLiteServer svr = SQLiteServer.create(initArgs);
             svr.initdb(initArgs);
             IoUtils.close(svr);
             
             String[] bootArgs = bootArgsList[i];
+            info("Test environment.%d: bootArgs = %s", this.envIndex, Arrays.toString(bootArgs));
             this.server = SQLiteServer.create(bootArgs);
             this.server.bootAsync(bootArgs);
             
