@@ -227,7 +227,7 @@ public class StatementTest extends TestDbBase {
             }
         }
         
-        // test-1: Database in default data directory
+        // test-1: Database in default temporary data directory
         // create database test
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
