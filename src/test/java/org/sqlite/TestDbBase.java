@@ -186,7 +186,9 @@ public abstract class TestDbBase extends TestBase {
         if (dataDir == null || dataDir.length() == 0) {
             dataDir = "sqlite3Test";
         }
-        return ("temp"+File.separator+dataDir);
+        final String baseDir = System.getProperty("SQLITED_HOME");
+        final String sep = File.separator;
+        return String.format("%s%s%s%s%s", baseDir, sep, "temp", sep, dataDir);
     }
     
     protected static String getExtraDir() {

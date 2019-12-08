@@ -13,14 +13,8 @@ if [ -z "$JAVA_HOME" ] ; then
   exit 1
 fi
 
-if [ "$SQLITED_HOME" = "" ] ; then
-  BIN_DIR=`dirname "$PRG"`
-  export SQLITED_HOME=`dirname "$BIN_DIR"`
-fi
-if [ ! -d "$SQLITED_HOME" ] ; then
-  echo "Error: SQLITED_HOME is not defined correctly."
-  exit 1
-fi
+BIN_DIR=`dirname "$PRG"`
+export SQLITED_HOME=`dirname "$BIN_DIR"`
 
 CLEAN_ARG=
 TEST_ARG=
@@ -45,8 +39,8 @@ if [ "$TEST_ARG" = "test" ] ; then
   if [ ! -d "$SQLITED_HOME/logs" ] ; then mkdir "$SQLITED_HOME/logs" ; fi
   if [ ! -d "$SQLITED_HOME/target" ] ; then mkdir "$SQLITED_HOME/target" ; fi
   
-  mvn package -Dmaven.test.skip=true
-  mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
+  mvn -f "$SQLITED_HOME"/pom.xml package -Dmaven.test.skip=true
+  mvn -f "$SQLITED_HOME"/pom.xml dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
   cp "$SQLITED_HOME"/target/*.jar "$SQLITED_HOME"/lib
   "$SQLITED_HOME"/bin/initdb.sh -D "$SQLITED_HOME"/temp -p 123456 -d test
   if [ $? != 0 ] ; then
@@ -55,13 +49,13 @@ if [ "$TEST_ARG" = "test" ] ; then
   fi
   echo "Test initdb ok"
   
-  mvn compile test-compile
-  mvn dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/test-lib
+  mvn -f "$SQLITED_HOME"/pom.xml compile test-compile
+  mvn -f "$SQLITED_HOME"/pom.xml dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/test-lib
   CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
   for jar in "$SQLITED_HOME"/test-lib/*.jar ; do
     CLASSPATH=$CLASSPATH:$jar
   done
-  java -Xmx256m -classpath "$CLASSPATH" org.sqlite.TestAll
+  java -Xmx256m -classpath "$CLASSPATH" -DSQLITED_HOME="$SQLITED_HOME" org.sqlite.TestAll
   if [ $? != 0 ] ; then
     echo "Test all test cases failed!"
     exit 1
@@ -73,8 +67,8 @@ if [ "$JAR_ARG" != "" ] ; then
   echo "jar: package sqlite server"
   if [ -d "$SQLITED_HOME/lib" ] ; then rm -rf "$SQLITED_HOME"/lib ; fi
   if [ ! -d "$SQLITED_HOME/lib" ] ; then mkdir "$SQLITED_HOME"/lib ; fi
-  mvn package -Dmaven.test.skip=true
-  mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
+  mvn -f "$SQLITED_HOME"/pom.xml package -Dmaven.test.skip=true
+  mvn -f "$SQLITED_HOME"/pom.xml dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
   cp "$SQLITED_HOME"/target/*.jar "$SQLITED_HOME"/lib
   if [ $? != 0 ] ; then
     echo "Package sqlite server failed!"

@@ -18,7 +18,7 @@ rem limitations under the License.
 rem ---------------------------------------------------------------------------
 rem Build script for the SQLite Server
 rem ---------------------------------------------------------------------------
-setlocal
+setlocal enabledelayedexpansion
 
 set CURDIR=%CD%
 
@@ -27,16 +27,11 @@ if not exist "%JAVA_HOME%" (
   exit /b 1
 )
 
-if "%SQLITED_HOME%" == "" (
-    cd /d %~dp0
-    cd ..
-    set SQLITED_HOME=%CD%
-    cd /d "%CURDIR%"
-)
-if not exist "%SQLITED_HOME%" (
-  echo Error: SQLITED_HOME is not defined.
-  exit /b 1
-)
+rem Set SQLITED_HOME environment variable
+cd /d %~dp0
+cd ..
+set SQLITED_HOME=!CD!
+cd /d "%CURDIR%"
 
 set JAR_ARG=
 set TEST_ARG=
@@ -76,13 +71,15 @@ if not exist "%SQLITED_HOME%\temp" md "%SQLITED_HOME%\temp"
 if not exist "%SQLITED_HOME%\test-lib" md "%SQLITED_HOME%\test-lib"
 if not exist "%SQLITED_HOME%\logs" md "%SQLITED_HOME%\logs"
 if not exist "%SQLITED_HOME%\target" md "%SQLITED_HOME%\target"
-call mvn compile test-compile
-call mvn dependency:copy-dependencies -DoutputDirectory="%SQLITED_HOME%\test-lib"
+
+call mvn -f "%SQLITED_HOME%\pom.xml" compile test-compile
+call mvn -f "%SQLITED_HOME%\pom.xml" dependency:copy-dependencies -DoutputDirectory="%SQLITED_HOME%\test-lib"
+
 set CLASSPATH=%SQLITED_HOME%\target\classes;%SQLITED_HOME%\target\test-classes;%SQLITED_HOME%\test-lib\*
 call "%SQLITED_HOME%\bin\initdb.bat" -D "%SQLITED_HOME%\temp" -p 123456 -d test
 if %ERRORLEVEL% NEQ 0 exit /b 1
 echo Test initdb ok
-call java -Xmx256m org.sqlite.TestAll
+call java -Xmx256m -DSQLITED_HOME="%SQLITED_HOME%" org.sqlite.TestAll
 if %ERRORLEVEL% NEQ 0 exit /b 1
 echo Test all ok
 goto execJar
@@ -91,8 +88,10 @@ goto execJar
 echo Jar: package sqlite server
 if exist "%SQLITED_HOME%\lib" del /S /Q "%SQLITED_HOME%\lib"
 if not exist "%SQLITED_HOME%\lib" md "%SQLITED_HOME%\lib"
-call mvn package -Dmaven.test.skip=true
-call mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="%SQLITED_HOME%\lib"
+call mvn -f "%SQLITED_HOME%\pom.xml" package -Dmaven.test.skip=true
+call mvn -f "%SQLITED_HOME%\pom.xml" dependency:copy-dependencies ^
+-DincludeScope=compile -DoutputDirectory="%SQLITED_HOME%\lib"
+
 xcopy "%SQLITED_HOME%"\target\*.jar "%SQLITED_HOME%\lib"
 goto execEnd
 
