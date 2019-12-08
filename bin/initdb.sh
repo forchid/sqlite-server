@@ -19,7 +19,15 @@
 # Initdb Script for the SQLite Server
 # -----------------------------------------------------------------------------
 
-PRGDIR=`dirname "$PRG"`
-EXECUTABLE=runit.sh
+export JAVA_OPTS=-Xmx64m
 
-exec "$PRGDIR"/"$EXECUTABLE" org.sqlite.server.SQLiteServer initdb "$@"
+if [ "$SQLITED_HOME" = "" ] ; then
+    BIN_DIR=`dirname "$PRG"`
+    export SQLITED_HOME=`dirname "$BIN_DIR"`
+fi
+if [ ! -d "$SQLITED_HOME" ] ; then
+  echo "Error: SQLITED_HOME is not defined correctly."
+  exit 1
+fi
+
+exec "$SQLITED_HOME"/bin/sqlited.sh initdb "$@"

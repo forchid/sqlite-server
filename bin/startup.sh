@@ -16,14 +16,18 @@
 # limitations under the License.
 
 # -----------------------------------------------------------------------------
-# Initdb/boot Script for the SQLite Server
+# Boot Script for the SQLite Server
 # -----------------------------------------------------------------------------
 
-PRGDIR=`dirname "$PRG"`
-export SQLITED_HOME=`dirname "$PRGDIR"`
-CLASSPATH=$SQLITED_HOME/conf
-for jar in "$SQLITED_HOME"/lib/*.jar ; do
-  CLASSPATH=$CLASSPATH:$jar
-done
+export JAVA_OPTS=-Xmx128m
 
-java -Xmx128m -classpath "$CLASSPATH" "$@" &
+if [ "$SQLITED_HOME" = "" ] ; then
+    BIN_DIR=`dirname "$PRG"`
+    export SQLITED_HOME=`dirname "$BIN_DIR"`
+fi
+if [ ! -d "$SQLITED_HOME" ] ; then
+  echo "Error: SQLITED_HOME is not defined correctly."
+  exit 1
+fi
+
+exec "$SQLITED_HOME"/bin/sqlited.sh boot "$@"
