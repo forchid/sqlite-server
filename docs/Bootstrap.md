@@ -6,7 +6,7 @@ $./bin/initdb.sh -D ./data -p 123456 -d test
 ```
 Then do bootstrap the SQLite Server instance:
 ```shell
-./bin/startup.sh -D ./data &
+$./bin/startup.sh -D ./data &
 ```
 Issue "psql" command, connect to the SQLite server:
 ```shell
