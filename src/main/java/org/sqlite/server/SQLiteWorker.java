@@ -163,10 +163,12 @@ public class SQLiteWorker implements Runnable {
     @Override
     public void run() {
         try {
-            for (; !isStopped() || this.processors.size() > 0;) {
+            SlotAllocator<SQLiteProcessor> processors = this.processors;
+            for (; !isStopped() || processors.size() > 0;) {
                 long timeout = minSelectTimeout();
                 int n;
                 if (timeout < 0L) {
+                    processIdle();
                     n = this.selector.select();
                 } else if (timeout == 0L) {
                     n = this.selector.selectNow();
@@ -202,6 +204,7 @@ public class SQLiteWorker implements Runnable {
         Selector selector = this.selector;
         long deadNano = System.nanoTime() + runNanos;
         // Q1: procQueue
+        SlotAllocator<SQLiteProcessor> processors = this.processors;
         for (;;) {
             if (runNanos > 0L && System.nanoTime() > deadNano) {
                 return;
@@ -216,7 +219,7 @@ public class SQLiteWorker implements Runnable {
                 p.setSelector(selector);
                 p.setWorker(this);
                 p.setName(this.name + "-" + p.getName());
-                if (this.processors.size() >= this.maxConns) {
+                if (processors.size() >= this.maxConns) {
                     p.tooManyConns();
                     p.stop();
                     p.enableWrite();
@@ -230,7 +233,7 @@ public class SQLiteWorker implements Runnable {
                     }
                     this.procsLock.lock();
                     try {
-                        final int slot = this.processors.allocate(p);
+                        final int slot = processors.allocate(p);
                         if (slot == -1) {
                             throw new IllegalStateException("Processor allocator full");
                         }
@@ -284,7 +287,23 @@ public class SQLiteWorker implements Runnable {
         }
     }
     
+    protected void processIdle() {
+        SlotAllocator<SQLiteProcessor> processors = this.processors;
+        this.procsLock.lock();
+        try {
+            for (int i = 0, n = processors.maxSlot(); i < n; ++i) {
+                SQLiteProcessor p = processors.get(i);
+                if (p != null && p.isStopped()) {
+                    p.write();
+                }
+            }
+        } finally {
+            this.procsLock.unlock();
+        }
+    }
+    
     protected void processIO() {
+        final Thread currThead = Thread.currentThread();
         Iterator<SelectionKey> keys = this.selector.selectedKeys().iterator();
         for (; keys.hasNext(); keys.remove()) {
             SelectionKey key = keys.next();
@@ -297,18 +316,18 @@ public class SQLiteWorker implements Runnable {
             if (key.isWritable()) {
                 try {
                     p = (SQLiteProcessor)key.attachment();
-                    Thread.currentThread().setName(p.getName());
+                    currThead.setName(p.getName());
                     p.write();
                 } finally {
-                    Thread.currentThread().setName(this.name);
+                    currThead.setName(this.name);
                 }
             } else if (key.isReadable()) {
                 try {
                     p = (SQLiteProcessor)key.attachment();
-                    Thread.currentThread().setName(p.getName());
+                    currThead.setName(p.getName());
                     p.read();
                 } finally {
-                    Thread.currentThread().setName(this.name);
+                    currThead.setName(this.name);
                 }
             } else {
                 key.cancel();
@@ -411,10 +430,11 @@ public class SQLiteWorker implements Runnable {
     }
 
     SQLiteProcessor getProcessor(int pid) {
+        SlotAllocator<SQLiteProcessor> processors = this.processors;
         this.procsLock.lock();
         try {
-            for (int i = 0, n = this.processors.maxSlot(); i < n; ++i) {
-                SQLiteProcessor p = this.processors.get(i);
+            for (int i = 0, n = processors.maxSlot(); i < n; ++i) {
+                SQLiteProcessor p = processors.get(i);
                 if (p != null && p.getId() == pid) {
                     return p;
                 }
@@ -426,12 +446,13 @@ public class SQLiteWorker implements Runnable {
     }
     
     public List<SQLiteProcessorState> getProcessorStates(final SQLiteProcessor processor) {
+        SlotAllocator<SQLiteProcessor> processors = this.processors;
         this.procsLock.lock();
         try {
             List<SQLiteProcessorState> states = new ArrayList<>();
             final User user = processor.getUser();
-            for (int i = 0, n = this.processors.maxSlot(); i < n; ++i) {
-                final SQLiteProcessor p = this.processors.get(i);
+            for (int i = 0, n = processors.maxSlot(); i < n; ++i) {
+                final SQLiteProcessor p = processors.get(i);
                 if (p == null) {
                     continue;
                 }

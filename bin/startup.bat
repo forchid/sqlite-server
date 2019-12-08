@@ -20,7 +20,7 @@ rem Boot script for the SQLite Server
 rem ---------------------------------------------------------------------------
 setlocal
 
-set JAVA_OPTS=-Xmx128m
+set JAVA_OPTS=-Xmx256m
 
 rem Guess SQLITED_HOME if not defined
 set "CURRENT_DIR=%cd%"

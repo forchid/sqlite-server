@@ -903,9 +903,50 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
                 && user.getHost().equals(other.getHost()));
     }
     
+    protected boolean shutdownInput() {
+        final SocketChannel ch = this.channel;
+        if (ch == null) {
+            return false;
+        }
+        
+        if (ch.isConnected() && ch.isOpen()) {
+            try {
+                trace(log, "{}: shutdown input", this);
+                ch.shutdownInput();
+                return true;
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        return false;
+    }
+    
+    protected boolean shutdownOutput() {
+        final SocketChannel ch = this.channel;
+        if (ch == null) {
+            return false;
+        }
+        
+        if (ch.isConnected() && ch.isOpen()) {
+            try {
+                trace(log, "{}: shutdown output", this);
+                ch.shutdownOutput();
+                return true;
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        return false;
+    }
+    
     public void stop() {
+        if (isStopped()) {
+            return;
+        }
         this.stopped = true;
         this.state.stop();
+        shutdownInput();
+        this.worker.wakeup();
     }
     
     public boolean isStopped() {
@@ -937,6 +978,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         this.savepointStack = null;
         
         // release connections
+        shutdownOutput();
         IoUtils.close(this.channel);
         this.channel = null;
         IoUtils.close(this.connection);

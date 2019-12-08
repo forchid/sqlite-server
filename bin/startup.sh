@@ -19,7 +19,7 @@
 # Boot Script for the SQLite Server
 # -----------------------------------------------------------------------------
 
-export JAVA_OPTS=-Xmx128m
+export JAVA_OPTS=-Xmx256m
 
 BIN_DIR=`dirname "$PRG"`
 export SQLITED_HOME=`dirname "$BIN_DIR"`

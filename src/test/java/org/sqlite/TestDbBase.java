@@ -36,7 +36,12 @@ import org.sqlite.server.util.IoUtils;
  *
  */
 public abstract class TestDbBase extends TestBase {
-    
+    static {
+        if (System.getProperty("SQLITED_HOME") == null) {
+            String defaultDir = System.getProperty("user.dir");
+            System.setProperty("SQLITED_HOME", defaultDir);
+        }
+    }
     protected static final String dataDir = getDataDir();
     
     protected static String user = "root";
@@ -94,6 +99,10 @@ public abstract class TestDbBase extends TestBase {
     
     protected DbTestEnv currentEnv;
     protected int envIndex, envMax;
+    
+    protected TestDbBase() {
+        
+    }
     
     protected void init() {
         this.envIndex = 0;
