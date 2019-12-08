@@ -25,8 +25,8 @@ if [ "$SQLITED_HOME" = "" ] ; then
     BIN_DIR=`dirname "$PRG"`
     export SQLITED_HOME=`dirname "$BIN_DIR"`
 fi
-if [ -z "$SQLITED_HOME" ] ; then
-  echo "Error: SQLITED_HOME is not defined."
+if [ ! -d "$SQLITED_HOME" ] ; then
+  echo "Error: SQLITED_HOME is not defined correctly."
   exit 1
 fi
 

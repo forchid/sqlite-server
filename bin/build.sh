@@ -14,11 +14,11 @@ if [ -z "$JAVA_HOME" ] ; then
 fi
 
 if [ "$SQLITED_HOME" = "" ] ; then
-    BIN_DIR=`dirname "$PRG"`
-    export SQLITED_HOME=`dirname "$BIN_DIR"`
+  BIN_DIR=`dirname "$PRG"`
+  export SQLITED_HOME=`dirname "$BIN_DIR"`
 fi
-if [ -z "$SQLITED_HOME" ] ; then
-  echo "Error: SQLITED_HOME is not defined."
+if [ ! -d "$SQLITED_HOME" ] ; then
+  echo "Error: SQLITED_HOME is not defined correctly."
   exit 1
 fi
 
@@ -50,8 +50,18 @@ if [ "$TEST_ARG" = "test" ] ; then
   for jar in "$SQLITED_HOME"/test-lib/*.jar ; do
     CLASSPATH=$CLASSPATH:$jar
   done
-  exec "$SQLITED_HOME"/bin/initdb.sh -D "$SQLITED_HOME"/temp -p 123456 -d test
-  exec java -Xmx256m -classpath "$CLASSPATH" org.sqlite.TestAll
+  "$SQLITED_HOME"/bin/initdb.sh -D "$SQLITED_HOME"/temp -p 123456 -d test
+  if [ $? != 0 ] ; then
+    echo "Test initdb failed!"
+    exit 1
+  fi
+  echo "Test initdb ok"
+  java -Xmx256m -classpath "$CLASSPATH" org.sqlite.TestAll
+  if [ $? != 0 ] ; then
+    echo "Test all test cases failed!"
+    exit 1
+  fi
+  echo "Test all test cases ok"
 fi
 
 if [ "$JAR_ARG" != "" ] ; then
@@ -61,4 +71,9 @@ if [ "$JAR_ARG" != "" ] ; then
   mvn package -Dmaven.test.skip=true
   mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
   cp "$SQLITED_HOME"/target/*.jar "$SQLITED_HOME"/lib
+  if [ $? != 0 ] ; then
+    echo "Package sqlite server failed!"
+    exit 1
+  fi
+  echo "Package sqlite server ok"
 fi
