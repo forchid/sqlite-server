@@ -15,6 +15,8 @@
  */
 package org.sqlite.server.sql.meta;
 
+import java.io.File;
+import java.io.IOException;
 import java.sql.SQLException;
 
 import org.slf4j.Logger;
@@ -119,6 +121,13 @@ public class CreateDatabaseStatement extends MetaStatement {
             sql = String.format("insert into '%s'.catalog(db, dir)values('%s', NULL)", 
                     metaSchema, db);
         } else {
+            try {
+                dir = new File(dir).getCanonicalPath();
+            } catch (IOException e) {
+                SQLiteErrorCode error = SQLiteErrorCode.SQLITE_ERROR;
+                String message = "Malformed path of data directory";
+                throw convertError(error, message);
+            }
             sql = String.format("insert into '%s'.catalog(db, dir)values('%s', '%s')", 
                     metaSchema, db, dir);
         }

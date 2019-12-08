@@ -475,6 +475,8 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
                 if (dbFile.getParentFile().equals(getDataDir())) {
                     // Default data directory
                     dataDir = null;
+                } else {
+                    dataDir = dbFile.getParentFile().getCanonicalPath();
                 }
             } catch (IOException e) {
                 String message = "Database file path illegal";

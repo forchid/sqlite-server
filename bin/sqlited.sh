@@ -19,18 +19,12 @@
 # SQLited Script for the SQLite Server
 # -----------------------------------------------------------------------------
 
-if [ "$SQLITED_HOME" = "" ] ; then
-    BIN_DIR=`dirname "$PRG"`
-    export SQLITED_HOME=`dirname "$BIN_DIR"`
-fi
-if [ ! -d "$SQLITED_HOME" ] ; then
-  echo "Error: SQLITED_HOME is not defined correctly."
-  exit 1
-fi
+BIN_DIR=`dirname "$PRG"`
+export SQLITED_HOME=`dirname "$BIN_DIR"`
 
 CLASSPATH="$SQLITED_HOME"/conf
 for jar in "$SQLITED_HOME"/lib/*.jar ; do
   CLASSPATH=$CLASSPATH:$jar
 done
 
-java $JAVA_OPTS -classpath "$CLASSPATH" org.sqlite.server.SQLiteServer "$@"
+java $JAVA_OPTS -classpath "$CLASSPATH" -DSQLITED_HOME="$SQLITED_HOME" org.sqlite.server.SQLiteServer "$@"

@@ -147,7 +147,9 @@ public class StatementTest extends TestDbBase {
                 if (dataDir == null) {
                     n = sa.executeUpdate("attach database 'attach.db' as a");
                 } else {
-                    n = sa.executeUpdate("attach database '"+dataDir+File.separator+"attach.db' as a");
+                    String attachDb = dataDir+File.separator+"attach.db";
+                    info("Test attach database: %s", attachDb);
+                    n = sa.executeUpdate("attach database '"+attachDb+"' as a");
                 }
                 assertTrue(0 == n);
                 sa.executeUpdate("create table a.test(id int primary key, name varchar(20))");
