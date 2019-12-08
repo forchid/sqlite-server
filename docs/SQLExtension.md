@@ -57,5 +57,6 @@ user(), current_user(), version(), server_version(), database(), current_databas
 
 ## Extension of DML
 ```SQL
-"INSERT RETURNING" statement of PostgreSQL style: "INSERT INTO... {VALUES()... | SELECT ...} RETURNING ..."
+1. "INSERT RETURNING" statement of PostgreSQL style: "INSERT INTO... {VALUES()... | SELECT ...} RETURNING ..."
+2. TRUNCATE \[TABLE\] \[schema_name.\]tbl_name
 ```

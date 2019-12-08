@@ -1,4 +1,4 @@
-# SQLite Server
+# SQLite Server (SQLited)
 A high performance [SQLite](https://www.sqlite.org/index.html) server engine based on the client/server architecture and org.xerial [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) project.
 + Inherit all characteristics of SQLite that is small, fast, self-contained, high-reliability, full-featured, and ACID complete SQL database engine
 + Implement a subset(PgServer) of [postgreSQL frontend/backend protocol](https://www.postgresql.org/docs/8.2/protocol.html) for supporting [pgjdbc](https://github.com/pgjdbc/pgjdbc) , psql, or ODBC
@@ -26,7 +26,8 @@ Console 1 Start SQLite server
 ```shell
 $./bin/initdb.sh -D ./data -p 123456 -d test
 $./bin/startup.sh -D ./data &
-2019-12-08 15:15:59.024 [SQLite PG server] INFO  org.sqlite.server.SQLiteServer.listen(565) - Ready for connections on localhost:3272, version 8.2.23-SQLited 0.3.29
+2019-12-08 15:15:59.024 [SQLite PG server] INFO  org.sqlite.server.SQLiteServer.listen(565) - Ready for connections 
+on localhost:3272, version 8.2.23-SQLited 0.3.29
 ```
 Console 2 Connect to SQLite server then execute query
 ```shell
