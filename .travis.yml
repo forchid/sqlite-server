@@ -14,8 +14,8 @@ matrix:
       sudo: required
       before_script:
         - "chmod +x ./bin/build.sh"
-	- "chmod +x ./bin/initdb.sh"
-	- "chmod +x ./bin/sqlited.sh"
+        - "chmod +x ./bin/initdb.sh"
+        - "chmod +x ./bin/sqlited.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
     - jdk: oraclejdk11
@@ -24,8 +24,8 @@ matrix:
       sudo: required
       before_script:
         - "chmod +x ./bin/build.sh"
-	- "chmod +x ./bin/initdb.sh"
-	- "chmod +x ./bin/sqlited.sh"
+        - "chmod +x ./bin/initdb.sh"
+        - "chmod +x ./bin/sqlited.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
     - jdk: oraclejdk8
@@ -34,8 +34,8 @@ matrix:
       sudo: required
       before_script:
         - "chmod +x ./bin/build.sh"
-	- "chmod +x ./bin/initdb.sh"
-	- "chmod +x ./bin/sqlited.sh"
+        - "chmod +x ./bin/initdb.sh"
+        - "chmod +x ./bin/sqlited.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
     - jdk: openjdk11
@@ -44,8 +44,8 @@ matrix:
       sudo: required
       before_script:
         - "chmod +x ./bin/build.sh"
-	- "chmod +x ./bin/initdb.sh"
-	- "chmod +x ./bin/sqlited.sh"
+        - "chmod +x ./bin/initdb.sh"
+        - "chmod +x ./bin/sqlited.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
     - jdk: openjdk8
@@ -54,8 +54,8 @@ matrix:
       sudo: required
       before_script:
         - "chmod +x ./bin/build.sh"
-	- "chmod +x ./bin/initdb.sh"
-	- "chmod +x ./bin/sqlited.sh"
+        - "chmod +x ./bin/initdb.sh"
+        - "chmod +x ./bin/sqlited.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
     - jdk: openjdk7
@@ -64,7 +64,7 @@ matrix:
       sudo: required
       before_script:
         - "chmod +x ./bin/build.sh"
-	- "chmod +x ./bin/initdb.sh"
-	- "chmod +x ./bin/sqlited.sh"
+        - "chmod +x ./bin/initdb.sh"
+        - "chmod +x ./bin/sqlited.sh"
         - "echo $JAVA_OPTS"
         - "export JAVA_OPTS=-Xmx128m"
