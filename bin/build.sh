@@ -13,7 +13,6 @@ if [ -z "$JAVA_HOME" ] ; then
   exit 1
 fi
 
-PRGDIR=`dirname "$PRG"`
 if [ "$SQLITED_HOME" = "" ] ; then
     BIN_DIR=`dirname "$PRG"`
     export SQLITED_HOME=`dirname "$BIN_DIR"`
@@ -51,7 +50,7 @@ if [ "$TEST_ARG" = "test" ] ; then
   for jar in "$SQLITED_HOME"/test-lib/*.jar ; do
     CLASSPATH=$CLASSPATH:$jar
   done
-  exec "$PRGDIR"/initdb.sh -D "$SQLITED_HOME"/temp -p 123456 -d test
+  exec "$SQLITED_HOME"/bin/initdb.sh -D "$SQLITED_HOME"/temp -p 123456 -d test
   exec java -Xmx256m -classpath "$CLASSPATH" org.sqlite.TestAll
 fi
 
