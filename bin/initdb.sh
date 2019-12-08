@@ -20,7 +20,14 @@
 # -----------------------------------------------------------------------------
 
 export JAVA_OPTS=-Xmx64m
-PRGDIR=`dirname "$PRG"`
-EXECUTABLE=sqlited.sh
 
-exec "$PRGDIR"/"$EXECUTABLE" initdb "$@"
+if [ "$SQLITED_HOME" = "" ] ; then
+    BIN_DIR=`dirname "$PRG"`
+    export SQLITED_HOME=`dirname "$BIN_DIR"`
+fi
+if [ -z "$SQLITED_HOME" ] ; then
+  echo "Error: SQLITED_HOME is not defined."
+  exit 1
+fi
+
+exec "$SQLITED_HOME"/bin/sqlited.sh initdb "$@"
