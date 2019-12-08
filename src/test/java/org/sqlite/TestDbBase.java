@@ -70,11 +70,11 @@ public abstract class TestDbBase extends TestBase {
     protected static final String [][] initArgsList = new String[][] {
         {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
         {"-D", dataDir, "-p", password, "--journal-mode", "delete", 
-            "-S", "off"
+            "-S", "normal"
         },
         {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
         {"-D", dataDir, "-p", password, "--journal-mode", "delete", 
-            "-S", "off"
+            "-S", "normal"
         },
     };
     
