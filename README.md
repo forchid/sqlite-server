@@ -1,4 +1,4 @@
-# SQLite Server
+# SQLite Server (SQLited)
 A high performance [SQLite](https://www.sqlite.org/index.html) server engine based on the client/server architecture and org.xerial [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) project.
 + Inherit all characteristics of SQLite that is small, fast, self-contained, high-reliability, full-featured, and ACID complete SQL database engine
 + Implement a subset(PgServer) of [postgreSQL frontend/backend protocol](https://www.postgresql.org/docs/8.2/protocol.html) for supporting [pgjdbc](https://github.com/pgjdbc/pgjdbc) , psql, or ODBC
@@ -14,14 +14,20 @@ A high performance [SQLite](https://www.sqlite.org/index.html) server engine bas
 + Added "show tables", "show columns", "show indexes", "show create table", "show create index" statements for querying schema information
 + Added "truncate [table] tbl_name" statement
 
+# Documents
++ [How to build SQLite server](docs/Build.md)
++ [How to init database and boot a SQLite server instance](docs/Bootstrap.md)
++ [SQLite SQL extension](docs/SQLExtension.md)
+
 # Examples
 1. Standalone SQLite server
 
 Console 1 Start SQLite server
 ```shell
-$java org.sqlite.server.SQLiteServer initdb -p 123456 -d test
-$java -Xmx128m org.sqlite.server.SQLiteServer boot
-2019-09-03 20:30:16.703 [SQLite server 0.3.27] INFO  SQLiteServer - Ready for connections on 127.0.0.1:3272
+$./bin/initdb.sh -D ./data -p 123456 -d test
+$./bin/startup.sh -D ./data &
+2019-12-08 15:15:59.024 [SQLite PG server] INFO  org.sqlite.server.SQLiteServer.listen(565) - 
+Ready for connections on localhost:3272, version 8.2.23-SQLited 0.3.29
 ```
 Console 2 Connect to SQLite server then execute query
 ```shell
@@ -62,8 +68,3 @@ server.close();
 server = SQLiteServer.create();
 server.bootAsync();
 ```
-
-# Documents
-+ [How to build SQLite server](docs/Build.md)
-+ How to init database and boot a SQLite server instance
-+ SQLite SQL extension
