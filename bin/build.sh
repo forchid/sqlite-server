@@ -46,7 +46,6 @@ if [ "$TEST_ARG" = "test" ] ; then
   if [ ! -d "$SQLITED_HOME/target" ] ; then mkdir "$SQLITED_HOME/target" ; fi
   
   mvn package -Dmaven.test.skip=true
-  
   mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
   cp "$SQLITED_HOME"/target/*.jar "$SQLITED_HOME"/lib
   "$SQLITED_HOME"/bin/initdb.sh -D "$SQLITED_HOME"/temp -p 123456 -d test
@@ -56,6 +55,7 @@ if [ "$TEST_ARG" = "test" ] ; then
   fi
   echo "Test initdb ok"
   
+  mvn compile test-compile
   mvn dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/test-lib
   CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
   for jar in "$SQLITED_HOME"/test-lib/*.jar ; do
