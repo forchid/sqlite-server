@@ -16,14 +16,11 @@
 # limitations under the License.
 
 # -----------------------------------------------------------------------------
-# Initdb/boot Script for the SQLite Server
+# Boot Script for the SQLite Server
 # -----------------------------------------------------------------------------
 
+export JAVA_OPTS=-Xmx128m
 PRGDIR=`dirname "$PRG"`
-export SQLITED_HOME=`dirname "$PRGDIR"`
-CLASSPATH=$SQLITED_HOME/conf
-for jar in "$SQLITED_HOME"/lib/*.jar ; do
-  CLASSPATH=$CLASSPATH:$jar
-done
+EXECUTABLE=sqlited.sh
 
-java -Xmx128m -classpath "$CLASSPATH" "$@" &
+exec "$PRGDIR"/"$EXECUTABLE" boot "$@"

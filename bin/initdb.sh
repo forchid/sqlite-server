@@ -19,7 +19,8 @@
 # Initdb Script for the SQLite Server
 # -----------------------------------------------------------------------------
 
+export JAVA_OPTS=-Xmx64m
 PRGDIR=`dirname "$PRG"`
-EXECUTABLE=runit.sh
+EXECUTABLE=sqlited.sh
 
-exec "$PRGDIR"/"$EXECUTABLE" org.sqlite.server.SQLiteServer initdb "$@"
+exec "$PRGDIR"/"$EXECUTABLE" initdb "$@"

@@ -16,10 +16,14 @@
 # limitations under the License.
 
 # -----------------------------------------------------------------------------
-# Sqlited Script for the SQLite Server
+# SQLited Script for the SQLite Server
 # -----------------------------------------------------------------------------
 
 PRGDIR=`dirname "$PRG"`
-EXECUTABLE=runit.sh
+export SQLITED_HOME=`dirname "$PRGDIR"`
+CLASSPATH=$SQLITED_HOME/conf
+for jar in "$SQLITED_HOME"/lib/*.jar ; do
+  CLASSPATH=$CLASSPATH:$jar
+done
 
-exec "$PRGDIR"/"$EXECUTABLE" org.sqlite.server.SQLiteServer boot "$@"
+java $JAVA_OPTS -classpath "$CLASSPATH" org.sqlite.server.SQLiteServer "$@" &

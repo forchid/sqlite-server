@@ -16,18 +16,30 @@ rem See the License for the specific language governing permissions and
 rem limitations under the License.
 
 rem ---------------------------------------------------------------------------
-rem Initdb/boot script for the SQLite Server
+rem Boot script for the SQLite Server
 rem ---------------------------------------------------------------------------
 setlocal
 
-set CURDIR=%CD%
-set BINDIR=%~dp0
-cd /d "%BINDIR%"
-cd ..
-set SQLITED_HOME=%CD%
-cd /d "%CURDIR%"
-set CLASSPATH=.;%SQLITED_HOME%\lib\*;%SQLITED_HOME%\conf
+set JAVA_OPTS=-Xmx128m
 
-java %*
+rem Guess SQLITED_HOME if not defined
+set "CURRENT_DIR=%cd%"
+if not "%SQLITED_HOME%" == "" goto gotHome
+set "SQLITED_HOME=%CURRENT_DIR%"
+if exist "%SQLITED_HOME%\bin\sqlited.bat" goto okHome
+cd ..
+set "SQLITED_HOME=%cd%"
+cd /d "%CURRENT_DIR%"
+:gotHome
+if exist "%SQLITED_HOME%\bin\sqlited.bat" goto okHome
+echo The SQLITED_HOME environment variable is not defined correctly
+echo This environment variable is needed to run this program
+goto end
+
+:okHome
+set "EXECUTABLE=%SQLITED_HOME%\bin\sqlited.bat"
+call "%EXECUTABLE%" boot %*
+
+:end
 
 endlocal
