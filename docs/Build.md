@@ -8,11 +8,11 @@ First we must set the JAVA_HOME environment variable, then add MAVEN_HOME/bin ap
 tar -xzvf ./sqlited-x.y.z.tar.gz
 cd sqlite-server-sqlited-x.y.z
 chmod +x bin/*.sh
-./bin/build.sh test jar
+./bin/build.sh clean test jar
 ```
 
 ## Build on Windows 8.1
 ```shell
 cd sqlite-server-sqlited-x.y.z
-.\bin\build.bat test jar
+.\bin\build.bat clean test jar
 ```
