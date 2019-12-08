@@ -21,6 +21,7 @@
 
 BIN_DIR=`dirname "$PRG"`
 export SQLITED_HOME=`dirname "$BIN_DIR"`
+export SQLITED_HOME=`readlink -f "$SQLITED_HOME"`
 
 CLASSPATH="$SQLITED_HOME"/conf
 for jar in "$SQLITED_HOME"/lib/*.jar ; do
