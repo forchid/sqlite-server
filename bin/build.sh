@@ -45,7 +45,7 @@ if [ "$TEST_ARG" = "test" ] ; then
   if [ ! -d "$SQLITED_HOME/logs" ] ; then mkdir "$SQLITED_HOME/logs" ; fi
   if [ ! -d "$SQLITED_HOME/target" ] ; then mkdir "$SQLITED_HOME/target" ; fi
   
-  package -Dmaven.test.skip=true
+  mvn package -Dmaven.test.skip=true
   
   mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
   cp "$SQLITED_HOME"/target/*.jar "$SQLITED_HOME"/lib
