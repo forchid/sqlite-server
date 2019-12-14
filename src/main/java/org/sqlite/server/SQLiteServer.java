@@ -1014,8 +1014,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --journal-mode  <mode>        SQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
                 "  --synchronous|-S<sync>        SQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
-                "  --auth-method|-A<authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'\n"+
-                "  --";
+                "  --auth-method|-A<authMethod> Available auth methods("+getAuthMethods()+"), default "+getAuthDefault();
     }
     
     protected String getBootHelp() {
