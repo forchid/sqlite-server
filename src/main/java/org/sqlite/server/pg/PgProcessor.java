@@ -1304,8 +1304,8 @@ public class PgProcessor extends SQLiteProcessor {
             } catch (SQLException e) {
                 long currentTime = System.currentTimeMillis();
                 int passTime = (int)(currentTime - proc.getCreateTime());
-                int connectTimeout = proc.server.getConnectTimeout();
-                int busyTimeout = connectTimeout - passTime;
+                int openTimeout = proc.server.getOpenTimeout();
+                int busyTimeout = openTimeout - passTime;
                 if (busyTimeout < 0 || !handleBlocked(timeout, e, busyTimeout)) {
                     proc.sendErrorResponse(e);
                     proc.stop();

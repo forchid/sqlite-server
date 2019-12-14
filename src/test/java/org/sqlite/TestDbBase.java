@@ -36,12 +36,7 @@ import org.sqlite.server.util.IoUtils;
  *
  */
 public abstract class TestDbBase extends TestBase {
-    static {
-        if (System.getProperty("SQLITED_HOME") == null) {
-            String defaultDir = System.getProperty("user.dir");
-            System.setProperty("SQLITED_HOME", defaultDir);
-        }
-    }
+    
     protected static final String dataDir = getDataDir();
     
     protected static String user = "root";
@@ -195,8 +190,7 @@ public abstract class TestDbBase extends TestBase {
         if (dataDir == null || dataDir.length() == 0) {
             dataDir = "sqlite3Test";
         }
-        String baseDir = System.getProperty("SQLITED_HOME");
-        baseDir = new File(baseDir).getAbsolutePath();
+        String baseDir = new File(SQLiteServer.SQLITED_HOME).getAbsolutePath();
         final String sep = File.separator;
         return String.format("%s%s%s%s%s", baseDir, sep, "temp", sep, dataDir);
     }
