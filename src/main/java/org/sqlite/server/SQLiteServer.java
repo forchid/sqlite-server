@@ -79,6 +79,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
     public static final int CONNECT_TIMEOUT_DEFAULT = 30000;
+    public static final long MAX_ALLOWED_PACKET_DEFAULT = 16L << 20;
     // SQLite settings
     public static final int BUSY_TIMEOUT_DEFAULT = 50000;
     public static final JournalMode JOURNAL_MODE_DEFAULT = JournalMode.WAL;
@@ -126,6 +127,10 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected TimestampFunc clockTimestampFunc;
     protected TimestampFunc sysdateFunc;
     
+    // Resource limit since v0.3.29 2019-12-14
+    protected long maxAllowedPacket = MAX_ALLOWED_PACKET_DEFAULT;
+    
+    // Life-cycle states
     private final AtomicBoolean inited = new AtomicBoolean(false);
     private volatile boolean stopped;
     
@@ -416,7 +421,9 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.workerCount = Math.min(MAX_WORKER_COUNT, n);
             } else if ("--auth-method".equals(a) || "-A".equals(a)) {
                 this.authMethod = toLowerEnglish(args[++i]);
-            } else if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
+            } else if ("--max-allowed-packet".equals(a)) {
+                this.maxAllowedPacket = Long.decode(args[++i]);
+            } if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
                 help = true;
             }
         }
@@ -773,6 +780,10 @@ public abstract class SQLiteServer implements AutoCloseable {
         return this.maxConns;
     }
     
+    public long getMaxAllowedPacket() {
+        return maxAllowedPacket;
+    }
+    
     public String getVersion() {
         return VERSION;
     }
@@ -1003,7 +1014,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --journal-mode  <mode>        SQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
                 "  --synchronous|-S<sync>        SQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
                 "  --protocol      <pg>          SQLite server protocol, default pg\n"+
-                "  --auth-method|-A<authMethod> Available auth methods("+getAuthMethods()+"), default '"+getAuthDefault()+"'";
+                "  --auth-method|-A<authMethod> Available auth methods("+getAuthMethods()+"), default "+getAuthDefault();
     }
     
     protected String getBootHelp() {
@@ -1020,7 +1031,8 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --busy-timeout  <millis>      SQL statement busy timeout, default "+BUSY_TIMEOUT_DEFAULT+"\n"+
                 "  --journal-mode  <mode>        SQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
                 "  --synchronous|-S<sync>        SQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
-                "  --protocol      <pg>          SQLite server protocol, default pg";
+                "  --protocol      <pg>          SQLite server protocol, default pg\n"+
+                "  --max-allowed-packet <number> Max allowed packet size, default " + MAX_ALLOWED_PACKET_DEFAULT;
     }
     
     protected static void doHelp(int status, String message) {

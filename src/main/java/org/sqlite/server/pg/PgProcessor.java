@@ -239,20 +239,30 @@ public class PgProcessor extends SQLiteProcessor {
                         | (inBuf.get(4) & 0xFF) << 0;
                 this.inSize -= 4;
                 server.trace(log, ">> message: type '{}'(c) {}, len {}", (char)x, x, this.inSize);
+                
+                // Check max message size for input buffer overflow issue
+                final long maxAllowedPacket = this.server.getMaxAllowedPacket();
+                if (this.inSize > maxAllowedPacket && maxAllowedPacket > 0) {
+                    sendErrorResponse("Message sent too big", "53400"/*Configuration_limit_exceeded*/);
+                    enableWrite();
+                    stop();
+                    return;
+                }
             }
             
             // 2. read body
             int buffered = inBuf.position() - 5;
-            if (buffered < inSize) {
-                inBuf = getReadBuffer(inSize - buffered);
+            if (buffered < this.inSize) {
+                inBuf = getReadBuffer(this.inSize - buffered);
                 n = ch.read(inBuf);
                 if (n < 0) {
-                    stop();
+                    trace(log, "{}: peer closed", this);
                     enableWrite();
+                    stop();
                     return;
                 }
                 buffered = inBuf.position() - 5;
-                if (buffered < inSize) {
+                if (buffered < this.inSize) {
                     return;
                 }
             }
@@ -889,13 +899,20 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     private void sendErrorResponse(String message) throws IOException {
+        sendErrorResponse(message, null);
+    }
+    
+    private void sendErrorResponse(String message, String sqlState) throws IOException {
+        if (sqlState == null) {
+            // PROTOCOL VIOLATION
+            sqlState = "08P01";
+        }
         server.trace(log, "Exception: {}", message);
         startMessage('E');
         write('S');
         writeString("ERROR");
         write('C');
-        // PROTOCOL VIOLATION
-        writeString("08P01");
+        writeString(sqlState);
         write('M');
         writeString(message);
         sendMessage();

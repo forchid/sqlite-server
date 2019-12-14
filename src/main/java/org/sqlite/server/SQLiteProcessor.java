@@ -594,12 +594,15 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
             return buf;
         }
         
-        final int lim = buf.limit();
-        freeSize = Math.max(freeSize + cap, minSize);
-        ByteBuffer newBuffer = ByteBuffer.allocate(pos + freeSize);
+        trace(log, "{}: allocate a new read buffer - pos {}, freeSize {}, request minSize {}", 
+            this, pos, freeSize, minSize);
+        freeSize = Math.max(freeSize << 1, minSize);
+        final int newSize = pos + freeSize;
+        ByteBuffer newBuffer = ByteBuffer.allocate(newSize);
         buf.flip();
         newBuffer.put(buf);
-        newBuffer.limit(lim);
+        // fixbug - dead-loop issue for setting newBuffer limit as buf.limit()
+        newBuffer.limit(newSize);
         return (this.readBuffer = newBuffer);
     }
     

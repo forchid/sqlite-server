@@ -81,19 +81,19 @@ public abstract class TestDbBase extends TestBase {
     protected static final String [][] bootArgsList = new String[][] {
         {"-D", dataDir, //"--trace-error", //"-T",
             "--worker-count", "4", "--max-conns", "50",
-            "--journal-mode", "wal"
+            "--journal-mode", "wal", "--max-allowed-packet", "0",
         },
         {"-D", dataDir, //"--trace-error", //"-T", 
             "--worker-count", "4", "--max-conns", "50",
-            "--journal-mode", "delete", "-S", "normal"
+            "--journal-mode", "delete", "-S", "normal",
         },
         {"-D", dataDir, //"--trace-error", //"-T",
             "--worker-count", "4", "--max-conns", "50",
-            "--journal-mode", "wal"
+            "--journal-mode", "wal", "--max-allowed-packet", "0x1000000",
         },
         {"-D", dataDir, //"--trace-error", //"-T", 
             "--worker-count", "4", "--max-conns", "50",
-            "--journal-mode", "delete", "-S", "normal"
+            "--journal-mode", "delete", "-S", "normal", "--max-allowed-packet", "0x10000",
         },
     };
     
@@ -311,6 +311,10 @@ public abstract class TestDbBase extends TestBase {
             this.dataSource.setPassword(password);
             
             this.simpleQuery = url.contains("preferQueryMode=simple");
+        }
+        
+        public long getMaxAllowedPacket() {
+            return this.server.getMaxAllowedPacket();
         }
         
         public int getWorkerCount() {
