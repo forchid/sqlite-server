@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import static java.lang.System.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -164,11 +165,24 @@ public class SQLiteWorker implements Runnable {
     public void run() {
         try {
             SlotAllocator<SQLiteProcessor> processors = this.processors;
+            long lastIdleCheck = 0L, idleCheckIntv = -1L;
+            
             for (; !isStopped() || processors.size() > 0;) {
-                long timeout = minSelectTimeout();
+                long  timeout = minSelectTimeout();
                 int n;
-                if (timeout < 0L) {
+                
+                // Idle check
+                if (timeout < 0L || (currentTimeMillis() - lastIdleCheck > idleCheckIntv)) {
+                    lastIdleCheck = currentTimeMillis();
                     processIdle();
+                    idleCheckIntv = idleCheckInterval();
+                    if (timeout < 0L) {
+                        timeout = idleCheckIntv;
+                    }
+                }
+                
+                // Do select
+                if (timeout < 0L) {
                     n = this.selector.select();
                 } else if (timeout == 0L) {
                     n = this.selector.selectNow();
@@ -176,6 +190,7 @@ public class SQLiteWorker implements Runnable {
                     n = this.selector.select(timeout);
                 }
                 this.wakeup.set(false);
+                
                 if (0 == n) {
                     processQueues(0L);
                     continue;
@@ -293,8 +308,51 @@ public class SQLiteWorker implements Runnable {
         try {
             for (int i = 0, n = processors.maxSlot(); i < n; ++i) {
                 SQLiteProcessor p = processors.get(i);
-                if (p != null && p.isStopped()) {
-                    p.write();
+                if (p != null) {
+                    final SQLiteProcessorState state = p.getState();
+                    final long timeout, start;
+                    String message = "timeout";
+                    state.lock();
+                    try {
+                        start = state.getStartTime();
+                        switch(state.getState()) {
+                        case SQLiteProcessorState.AUTH:
+                            timeout = this.server.getAuthTimeout();
+                            message = "Authentication timeout";
+                            break;
+                        case SQLiteProcessorState.SLEEP:
+                            timeout = this.server.getSleepTimeout();
+                            message = "Sleep timeout";
+                            break;
+                        case SQLiteProcessorState.SLEEP_IN_TX:
+                            timeout = this.server.getSleepInTxTimeout();
+                            message = "Sleep in transaction timeout";
+                            break;
+                        default:
+                            timeout = -1L;
+                            break;
+                        }
+                    } finally {
+                        state.unlock();
+                    }
+                    
+                    if (timeout > 0L) {
+                        long curr = System.currentTimeMillis();
+                        if (curr - start > timeout) {
+                            try {
+                                p.sendErrorResponse(message, "53400");
+                            } catch (IOException e) {
+                                // ignore
+                            } finally {
+                                IoUtils.close(p.getConnection());
+                                p.stop();
+                            }
+                        }
+                    }
+                    
+                    if (p.isStopped()) {
+                        p.write();
+                    }
                 }
             }
         } finally {
@@ -369,7 +427,7 @@ public class SQLiteWorker implements Runnable {
         if (!busyContext.isSleepable()) {
             this.dbIdle.set(false);
         }
-        process.state.setState("busy");
+        process.state.setStateText("busy");
         
         return true;
     }
@@ -385,6 +443,23 @@ public class SQLiteWorker implements Runnable {
             this.selector.wakeup();
             this.server.trace(log, "Hello '{}' db idle", this);
         }
+    }
+    
+    protected long idleCheckInterval() {
+        long timeout = this.server.getAuthTimeout();
+        
+        if (timeout <= 0L) {
+            timeout = this.server.getSleepInTxTimeout();
+        } else {
+            timeout = Math.min(this.server.getSleepInTxTimeout(), timeout);
+        }
+        if (timeout <= 0L) {
+            timeout = this.server.getSleepTimeout();
+        } else {
+            timeout = Math.min(this.server.getSleepTimeout(), timeout);
+        }
+        
+        return (timeout == 0L? -1L: timeout);
     }
     
     protected long minSelectTimeout() {

@@ -254,6 +254,7 @@ public class StatementTest extends TestDbBase {
                 info("Expected: %s", e);
             }
         }
+        sleep(100L);
         // drop database test
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
@@ -285,6 +286,7 @@ public class StatementTest extends TestDbBase {
                 // OK
             }
         }
+        sleep(100L);
         // drop database test
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();

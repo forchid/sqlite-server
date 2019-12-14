@@ -76,7 +76,8 @@ call mvn -f "%SQLITED_HOME%\pom.xml" compile test-compile
 call mvn -f "%SQLITED_HOME%\pom.xml" dependency:copy-dependencies -DoutputDirectory="%SQLITED_HOME%\test-lib"
 
 set CLASSPATH=%SQLITED_HOME%\target\classes;%SQLITED_HOME%\target\test-classes;%SQLITED_HOME%\test-lib\*
-call "%SQLITED_HOME%\bin\initdb.bat" -D "%SQLITED_HOME%\temp" -p 123456 -d test
+set JAVA_OPTS=-Xmx64m
+call "%SQLITED_HOME%\bin\sqlited.bat" initdb -D "%SQLITED_HOME%\temp" -p 123456 -d test
 if %ERRORLEVEL% NEQ 0 exit /b 1
 echo Test initdb ok
 call java -Xmx256m -DSQLITED_HOME="%SQLITED_HOME%" org.sqlite.TestAll

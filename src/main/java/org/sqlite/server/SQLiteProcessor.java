@@ -305,6 +305,10 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         this.slot = slot;
     }
     
+    protected SQLiteProcessorState getState() {
+        return this.state;
+    }
+    
     // SQLContext methods
     @Override
     public void checkReadOnly(SQLStatement sqlStmt) throws SQLException {
@@ -567,7 +571,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     protected void read() {
         try {
             if (isRunning()) {
-                this.state.setState("read data from network");
+                this.state.startRead();
                 process();
             } else {
                 this.worker.close(this); 
@@ -636,7 +640,6 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     
     protected void write() {
         try {
-            this.state.setState("flush data into network");
             flush();
         } catch (Exception e) {
             this.server.traceError(log, "flush error", e);
@@ -655,6 +658,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         for (;;) {
             ByteBuffer buf = nextWriteBuffer();
             if (buf != null) {
+                this.state.startWrite();
                 for (; buf.hasRemaining();) {
                     int n = ch.write(buf);
                     if (n == 0) {
@@ -666,6 +670,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
                 }
                 if (buf.hasRemaining()) {
                     this.writeQueue.offerFirst(buf);
+                    this.state.startSleep();
                     return;
                 }
                 continue;
@@ -685,7 +690,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
                 if (rb != null && rb.position() > 0) {
                     read();
                 }
-                this.state.setState("");
+                this.state.startSleep();
             } else {
                 this.worker.close(this);
             }
@@ -871,7 +876,7 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         // Do delete
         if (!dbFile.delete()) {
             String message = String.format("Can't delete database file of '%s'", dbFile);
-            trace(log, "{}: {}", message, dbFile);
+            trace(log, "{}: {}", this, message);
             throw convertError(SQLiteErrorCode.SQLITE_IOERR, message);
         }
         for (String ext: new String[] {"-wal", "-shm", "-journal"}) {
@@ -941,6 +946,9 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         }
         return false;
     }
+    
+    protected abstract void sendErrorResponse(String message, String sqlState) 
+        throws IOException;
     
     public void stop() {
         if (isStopped()) {

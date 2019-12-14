@@ -75,11 +75,14 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String USER_DEFAULT = "root";
     public static final String METADB_NAME  = "sqlite3.meta";
     public static final String HOST_DEFAULT = "localhost";
+    public static final int AUTH_TIMEOUT_DEFAULT = 5000;
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
     public static final int OPEN_TIMEOUT_DEFAULT = 30000;
     public static final long MAX_ALLOWED_PACKET_DEFAULT = 16L << 20;
+    public static final int SLEEP_TIMEOUT_DEFAULT = 300000;
+    public static final int SLEEP_IN_TX_TIMEOUT_DEFAULT = 30000;
     // SQLite settings
     public static final int BUSY_TIMEOUT_DEFAULT = 50000;
     public static final JournalMode JOURNAL_MODE_DEFAULT = JournalMode.WAL;
@@ -106,6 +109,9 @@ public abstract class SQLiteServer implements AutoCloseable {
     private int maxPid;
     protected int openTimeout = OPEN_TIMEOUT_DEFAULT;
     protected int busyTimeout = BUSY_TIMEOUT_DEFAULT;
+    protected int authTimeout = AUTH_TIMEOUT_DEFAULT;
+    protected int sleepTimeout = SLEEP_TIMEOUT_DEFAULT;
+    protected int sleepInTxTimeout = SLEEP_IN_TX_TIMEOUT_DEFAULT;
     protected JournalMode journalMode = JOURNAL_MODE_DEFAULT;
     protected SynchronousMode synchronous = SYNCHRONOUS_DEFAULT;
     private final ConcurrentMap<String, SQLContext> dbWriteLocks;
@@ -388,10 +394,12 @@ public abstract class SQLiteServer implements AutoCloseable {
         // Parse args
         for (int argc = args.length; i < argc; i++) {
             String a = args[i];
-            if ("--busy-timeout".equals(a)) {
+            if ("--auth-timeout".equals(a)) {
+                this.authTimeout = Integer.decode(args[++i]);
+            } else if ("--busy-timeout".equals(a)) {
                 int busyTimeout = Integer.decode(args[++i]);
                 if (busyTimeout < 0) {
-                    throw new IllegalArgumentException("--busy-timeout " + busyTimeout);
+                    throw new IllegalArgumentException(a+" " + busyTimeout);
                 }
                 this.busyTimeout = busyTimeout;
             } else if ("--trace".equals(a) || "-T".equals(a)) {
@@ -417,6 +425,10 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.journalMode = JournalMode.valueOf(mode);
             } else if ("--max-conns".equals(a)) {
                 this.maxConns = Integer.decode(args[++i]);
+            } else if ("--sleep-timeout".equals(a)) {
+                this.sleepTimeout = Integer.decode(args[++i]);
+            } else if ("--sleep-in-tx-timeout".equals(a)) {
+                this.sleepInTxTimeout = Integer.decode(args[++i]);
             } else if ("--synchronous".equals(a) || "-S".equals(a)) {
                 String mode = StringUtils.toUpperEnglish(args[++i]);
                 this.synchronous = SynchronousMode.valueOf(mode);
@@ -735,6 +747,10 @@ public abstract class SQLiteServer implements AutoCloseable {
         return this.traceError;
     }
     
+    public int getAuthTimeout() {
+        return this.authTimeout;
+    }
+    
     public int getBusyTimeout() {
         return this.busyTimeout;
     }
@@ -814,6 +830,14 @@ public abstract class SQLiteServer implements AutoCloseable {
             states.addAll(worker.getProcessorStates(processor));
         }
         return states;
+    }
+    
+    public int getSleepTimeout() {
+        return this.sleepTimeout;
+    }
+    
+    public int getSleepInTxTimeout() {
+        return this.sleepInTxTimeout;
     }
     
     public boolean inDataDir(String filename) {
@@ -1035,6 +1059,8 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --protocol      <pg>          \tSQLite server protocol, default pg\n"+
                 "  --trace|-T                    \tTrace SQLite server execution\n" +
                 "  --trace-error                 \tTrace error information of SQLite server execution\n"+
+                "  --sleep-timeout <millis>      \tProcess sleep timeout when idle, default "+SLEEP_TIMEOUT_DEFAULT+"ms\n"+
+                "  --sleep-in-tx-timeout <millis>\tProcess sleep timeout in transaction, default "+SLEEP_IN_TX_TIMEOUT_DEFAULT+"ms\n"+
                 "  --synchronous|-S<sync>        \tSQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
                 "  --worker-count  <number>      \tSQLite worker number, default CPU cores and max "+MAX_WORKER_COUNT;
     }
