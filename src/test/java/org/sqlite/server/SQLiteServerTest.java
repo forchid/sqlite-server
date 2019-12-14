@@ -16,7 +16,9 @@
 package org.sqlite.server;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 import org.sqlite.TestDbBase;
 import org.sqlite.server.util.IoUtils;
@@ -36,6 +38,10 @@ public class SQLiteServerTest extends TestDbBase {
     @Override
     protected void doTest() throws SQLException {
         initdbTest();
+        
+        maxAllowedPacketTest(1);
+        maxAllowedPacketTest(2);
+        maxAllowedPacketTest(10);
     }
 
     private void initdbTest() throws SQLException {
@@ -171,6 +177,42 @@ public class SQLiteServerTest extends TestDbBase {
         IoUtils.close(server);
         assertTrue(!server.isOpen());
         assertTrue(server.isStopped());
+    }
+    
+    private void maxAllowedPacketTest(int times) throws SQLException {
+        for (int i = 0; i < times; ++i) {
+            doMaxAllowedPacketTest();
+        }
+    }
+    
+    private void doMaxAllowedPacketTest() throws SQLException {
+        final long maxPacket = this.currentEnv.getMaxAllowedPacket();
+        
+        try (Connection conn = getConnection()) {
+            PreparedStatement ps;
+            Statement stmt = conn.createStatement();
+            stmt.executeUpdate("drop table if exists test_blob");
+            stmt.executeUpdate("create table test_blob(id integer primary key, value blob)");
+            stmt.close();
+            
+            ps = conn.prepareStatement("insert into test_blob(value)values(?)");
+            for (int size: new int[]{
+                    1<<10, 2<<10,  4<<10,  16<< 10, 64<<10, 256<<10, 
+                    1<<20, 10<<20, 16<<20, 20<<20 }) {
+                try {
+                    byte[] blob = new byte[size];
+                    ps.setBytes(1, blob);
+                    ps.executeUpdate();
+                    ps.clearParameters();
+                } catch (SQLException e) {
+                    final String sqlState = e.getSQLState();
+                    if (maxPacket <= 0L || size < maxPacket || (!sqlState.startsWith("08"))) {
+                        throw e;
+                    }
+                }
+            }
+            ps.close();
+        }
     }
     
 }
