@@ -45,7 +45,7 @@ public class ProcessIdleTest extends TestDbBase {
             s.execute(sql);
             
             info("ProcessIdleTest: idle...");
-            sleep(this.currentEnv.getSleepInTxTimeout() + 250L);
+            sleep(this.currentEnv.getSleepInTxTimeout() + 1000L);
             info("ProcessIdleTest: wakeup");
             
             try {

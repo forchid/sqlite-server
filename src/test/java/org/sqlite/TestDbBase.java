@@ -43,53 +43,53 @@ public abstract class TestDbBase extends TestBase {
     protected static String password = "123456";
     
     protected static final String [] environments = {
-        "SQLite WAL pg extended query environment", "SQLite DELETE pg extended query environment",
-        "SQLite WAL pg simple query environment", "SQLite DELETE pg simple query environment",
+        "SQLite WAL pg extended query environment", //"SQLite DELETE pg extended query environment",
+        "SQLite WAL pg simple query environment", //"SQLite DELETE pg simple query environment",
     };
     
     protected static final String [] urls = {
         "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
             "?preferQueryMode=extended&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
             ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
-        "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
-            "?preferQueryMode=extended&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
-            ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
-        "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
-            "?preferQueryMode=simple&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
-            ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
+        //"jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
+        //    "?preferQueryMode=extended&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
+        //    ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
         "jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
             "?preferQueryMode=simple&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
             ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
+        //"jdbc:postgresql://localhost:"+getPortDefault()+"/"+getDbDefault()+
+        //    "?preferQueryMode=simple&socketFactory=org.sqlite.server.jdbc.pg.PgSocketFactory"
+        //    ,//"&loggerLevel=TRACE&loggerFile=./logs/pgjdbc.log",
     };
     
     protected static final String [][] initArgsList = new String[][] {
         {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
-        {"-D", dataDir, "-p", password, "--journal-mode", "delete", 
-            "-S", "normal"
-        },
+        //{"-D", dataDir, "-p", password, "--journal-mode", "delete", 
+        //    "-S", "normal"
+        //},
         {"-D", dataDir, "-p", password, "--journal-mode", "wal"},
-        {"-D", dataDir, "-p", password, "--journal-mode", "delete", 
-            "-S", "normal"
-        },
+        //{"-D", dataDir, "-p", password, "--journal-mode", "delete", 
+        //    "-S", "normal"
+        //},
     };
     
     protected static final String [][] bootArgsList = new String[][] {
         {"-D", dataDir, //"--trace-error", "-T",
-            "--worker-count", "4", "--max-conns", "50", "--sleep-in-tx-timeout", "60000",
+            "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal", "--max-allowed-packet", "0", 
         },
-        {"-D", dataDir, //"--trace-error", "-T", 
-            "--worker-count", "4", "--max-conns", "50", "--sleep-in-tx-timeout", "60000",
-            "--journal-mode", "delete", "-S", "normal", 
-        },
+        //{"-D", dataDir, //"--trace-error", "-T", 
+        //    "--worker-count", "4", "--max-conns", "50",
+        //    "--journal-mode", "delete", "-S", "normal", 
+        //},
         {"-D", dataDir, //"--trace-error", "-T",
-            "--worker-count", "4", "--max-conns", "50", "--sleep-in-tx-timeout", "60000",
+            "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal", "--max-allowed-packet", "0x1000000", 
         },
-        {"-D", dataDir, //"--trace-error", "-T", 
-            "--worker-count", "4", "--max-conns", "50", "--sleep-in-tx-timeout", "60000",
-            "--journal-mode", "delete", "-S", "normal", "--max-allowed-packet", "0x10000",
-        },
+        //{"-D", dataDir, //"--trace-error", "-T", 
+        //    "--worker-count", "4", "--max-conns", "50",
+        //    "--journal-mode", "delete", "-S", "normal", "--max-allowed-packet", "0x10000",
+        //},
     };
     
     protected DbTestEnv currentEnv;
