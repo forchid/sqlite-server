@@ -168,13 +168,14 @@ public class SQLiteWorker implements Runnable {
             long lastIdleCheck = 0L, idleCheckIntv = -1L;
             
             for (; !isStopped() || processors.size() > 0;) {
-                long  timeout = minSelectTimeout();
+                final long  curr = currentTimeMillis();
+                long timeout = minSelectTimeout(curr);
                 int n;
                 
                 // Idle check
-                if (timeout < 0L || (currentTimeMillis() - lastIdleCheck > idleCheckIntv)) {
-                    lastIdleCheck = currentTimeMillis();
-                    processIdle();
+                if (curr - lastIdleCheck >= idleCheckIntv) {
+                    lastIdleCheck = curr;
+                    processIdle(curr);
                     idleCheckIntv = idleCheckInterval();
                     if (timeout < 0L) {
                         timeout = idleCheckIntv;
@@ -302,7 +303,7 @@ public class SQLiteWorker implements Runnable {
         }
     }
     
-    protected void processIdle() {
+    protected void processIdle(final long curr) {
         SlotAllocator<SQLiteProcessor> processors = this.processors;
         this.procsLock.lock();
         try {
@@ -337,7 +338,6 @@ public class SQLiteWorker implements Runnable {
                     }
                     
                     if (timeout > 0L) {
-                        long curr = System.currentTimeMillis();
                         if (curr - start > timeout) {
                             try {
                                 p.sendErrorResponse(message, "53400");
@@ -462,7 +462,7 @@ public class SQLiteWorker implements Runnable {
         return (timeout == 0L? -1L: timeout);
     }
     
-    protected long minSelectTimeout() {
+    protected long minSelectTimeout(final long curr) {
         SlotAllocator<SQLiteProcessor> busyProcs = this.busyProcs;
         long timeout = -1L;
         
@@ -491,7 +491,7 @@ public class SQLiteWorker implements Runnable {
                 }
             }
             
-            long remTime = busyContext.getTimeoutTime() - System.currentTimeMillis();
+            long remTime = busyContext.getTimeoutTime() - curr;
             if (timeout > remTime || timeout < 0L) {
                 if (remTime <= 0L) {
                     timeout = 0L;

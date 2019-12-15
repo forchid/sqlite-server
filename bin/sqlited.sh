@@ -23,9 +23,11 @@ BIN_DIR=`dirname "$PRG"`
 export SQLITED_HOME=`dirname "$BIN_DIR"`
 export SQLITED_HOME=`readlink -f "$SQLITED_HOME"`
 
-CLASSPATH="$SQLITED_HOME"/conf
-for jar in "$SQLITED_HOME"/lib/*.jar ; do
-  CLASSPATH=$CLASSPATH:$jar
-done
+if [ "$CLASSPATH" = "" ] ; then
+  export CLASSPATH="$SQLITED_HOME"/conf
+  for jar in "$SQLITED_HOME"/lib/*.jar ; do
+    export CLASSPATH=$CLASSPATH:$jar
+  done
+fi
 
-java $JAVA_OPTS -classpath "$CLASSPATH" -DSQLITED_HOME="$SQLITED_HOME" org.sqlite.server.SQLiteServer "$@"
+java $JAVA_OPTS -DSQLITED_HOME="$SQLITED_HOME" org.sqlite.server.SQLiteServer "$@"

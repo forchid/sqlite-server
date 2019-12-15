@@ -286,6 +286,8 @@ public class TransactionTest extends TestDbBase {
                         Transaction reader = readers[j];
                         reader.join();
                         assertTrue(reader.isOk());
+                        // + Heart-beat
+                        s.executeQuery("select 1");
                     }
                 } catch (InterruptedException e) {
                     fail("Interrupted");
@@ -320,6 +322,8 @@ public class TransactionTest extends TestDbBase {
                         Transaction tx = txList[j];
                         tx.join();
                         assertTrue(tx.isOk());
+                        // + Heart-beat
+                        s.executeQuery("select 1");
                     }
                 } catch (InterruptedException e) {
                     fail("Interrupted");
@@ -351,6 +355,8 @@ public class TransactionTest extends TestDbBase {
                         Transaction tx = txList[j];
                         tx.join();
                         assertTrue(tx.isOk());
+                        // + Heart-beat
+                        s.executeQuery("select 1");
                     }
                 } catch (InterruptedException e) {
                     fail("Interrupted");

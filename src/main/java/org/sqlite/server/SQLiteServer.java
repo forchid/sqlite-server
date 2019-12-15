@@ -75,7 +75,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String USER_DEFAULT = "root";
     public static final String METADB_NAME  = "sqlite3.meta";
     public static final String HOST_DEFAULT = "localhost";
-    public static final int AUTH_TIMEOUT_DEFAULT = 5000;
+    public static final int AUTH_TIMEOUT_DEFAULT = 15000;
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;

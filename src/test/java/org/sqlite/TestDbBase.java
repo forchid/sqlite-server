@@ -74,19 +74,19 @@ public abstract class TestDbBase extends TestBase {
     };
     
     protected static final String [][] bootArgsList = new String[][] {
-        {"-D", dataDir, "--trace-error", "-T",
+        {"-D", dataDir, //"--trace-error", "-T",
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal", "--max-allowed-packet", "0",
         },
-        {"-D", dataDir, "--trace-error", "-T", 
+        {"-D", dataDir, //"--trace-error", "-T", 
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "delete", "-S", "normal",
         },
-        {"-D", dataDir, "--trace-error", "-T",
+        {"-D", dataDir, //"--trace-error", "-T",
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal", "--max-allowed-packet", "0x1000000",
         },
-        {"-D", dataDir, "--trace-error", "-T", 
+        {"-D", dataDir, //"--trace-error", "-T", 
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "delete", "-S", "normal", "--max-allowed-packet", "0x10000",
         },
@@ -296,7 +296,8 @@ public abstract class TestDbBase extends TestBase {
             String url = urls[i];
             this.dataSource = new DataSource();
             int maxActive = this.server.getMaxConns() * getWorkerCount();
-            this.dataSource.setMaxActive(maxActive);
+            maxActive -= getWorkerCount();
+            this.dataSource.setMaxActive(Math.max(10, maxActive));
             this.dataSource.setMaxIdle(10);
             this.dataSource.setMinIdle(0);
             this.dataSource.setDriverClassName("org.postgresql.Driver");

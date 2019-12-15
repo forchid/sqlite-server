@@ -803,7 +803,7 @@ public class StatementTest extends TestDbBase {
         
         try {
             for (int i = 0; i < cons; ++i) {
-                tests [i].join(3000L);
+                tests [i].join();
             }
             assertTrue(successes.get() == cons);
         } catch (InterruptedException e) {
