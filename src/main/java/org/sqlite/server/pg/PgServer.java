@@ -109,7 +109,7 @@ public class PgServer extends SQLiteServer {
     @Override
     public String getBootHelp() {
         return super.getBootHelp() + "\n"
-                + "  --key|-K  <key> <keyDatabase> The database specified by the arg key";
+                + "  --key|-K  <key> <keyDatabase> \tThe database specified by the arg key";
     }
 
     @Override

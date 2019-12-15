@@ -254,6 +254,7 @@ public class StatementTest extends TestDbBase {
                 info("Expected: %s", e);
             }
         }
+        sleep(100L);
         // drop database test
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
@@ -285,6 +286,7 @@ public class StatementTest extends TestDbBase {
                 // OK
             }
         }
+        sleep(100L);
         // drop database test
         try (Connection conn = getConnection(true)) {
             Statement s = conn.createStatement();
@@ -801,7 +803,7 @@ public class StatementTest extends TestDbBase {
         
         try {
             for (int i = 0; i < cons; ++i) {
-                tests [i].join(3000L);
+                tests [i].join();
             }
             assertTrue(successes.get() == cons);
         } catch (InterruptedException e) {

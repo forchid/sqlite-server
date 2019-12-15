@@ -576,7 +576,7 @@ public class PgProcessor extends SQLiteProcessor {
                     this.xQueryFailed = false;
                     break;
                 }
-                this.state.setState("executing");
+                this.state.setStateText("executing");
                 processXQuery(p, maxRows);
                 break;
             }
@@ -725,6 +725,7 @@ public class PgProcessor extends SQLiteProcessor {
             break;
         }
         this.authMethod.init(this.user.getUser(), this.user.getPassword());
+        this.state.startAuth();
         
         PgServer server = getServer();
         server.trace(log, "authMethod {}", this.authMethod);
@@ -898,11 +899,12 @@ public class PgProcessor extends SQLiteProcessor {
         sendMessage();
     }
     
-    private void sendErrorResponse(String message) throws IOException {
+    protected void sendErrorResponse(String message) throws IOException {
         sendErrorResponse(message, null);
     }
     
-    private void sendErrorResponse(String message, String sqlState) throws IOException {
+    @Override
+    protected void sendErrorResponse(String message, String sqlState) throws IOException {
         if (sqlState == null) {
             // PROTOCOL VIOLATION
             sqlState = "08P01";
@@ -986,27 +988,20 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     private void sendReadyForQuery() throws IOException {
+        final boolean autocommit = isAutoCommit();
+        
         startMessage('Z');
-        char c;
-        try {
-            SQLiteConnection conn = getConnection();
-            boolean autocommit = conn.getAutoCommit();
-            if (autocommit) {
-                // idle
-                c = 'I';
-            } else {
-                // in a transaction block
-                c = 'T';
-            }
-            trace(log, "SQLite ready: autoCommit {}", autocommit);
-        } catch (SQLException e) {
-            // failed transaction block
-            c = 'E';
+        final char c;
+        if (autocommit) {
+            // idle
+            c = 'I';
+        } else {
+            // in a transaction block
+            c = 'T';
         }
+        trace(log, "SQLite ready: autoCommit {}", autocommit);
         write((byte) c);
         sendMessage();
-        
-        this.state.startSleep();
     }
     
     private void sendDataRow(ResultSet rs, int[] formatCodes) throws IOException, SQLException {
@@ -1304,8 +1299,8 @@ public class PgProcessor extends SQLiteProcessor {
             } catch (SQLException e) {
                 long currentTime = System.currentTimeMillis();
                 int passTime = (int)(currentTime - proc.getCreateTime());
-                int connectTimeout = proc.server.getConnectTimeout();
-                int busyTimeout = connectTimeout - passTime;
+                int openTimeout = proc.server.getOpenTimeout();
+                int busyTimeout = openTimeout - passTime;
                 if (busyTimeout < 0 || !handleBlocked(timeout, e, busyTimeout)) {
                     proc.sendErrorResponse(e);
                     proc.stop();
@@ -1315,7 +1310,6 @@ public class PgProcessor extends SQLiteProcessor {
             
             proc.sendAuthenticationOk();
             proc.initDone = true;
-            proc.state.startSleep();
             finish();
         }
         
@@ -1399,7 +1393,7 @@ public class PgProcessor extends SQLiteProcessor {
                     this.rs = stmt.getResultSet();
                 }
                 // the meta-data is sent in the prior 'Describe'
-                proc.state.setState("fetch result set from database");
+                proc.state.setStateText("fetch result set from database");
                 for (; this.rs.next(); ) {
                     proc.sendDataRow(this.rs, this.p.resultColumnFormat);
                     if (proc.canFlush()) {
@@ -1477,7 +1471,7 @@ public class PgProcessor extends SQLiteProcessor {
                         }
                     } else {
                         // Continue write remaining resultSet
-                        proc.state.setState("fetch result set from database");
+                        proc.state.setStateText("fetch result set from database");
                         for (; this.rs.next(); ) {
                             proc.sendDataRow(this.rs, null);
                             if (proc.canFlush()) {
@@ -1520,7 +1514,7 @@ public class PgProcessor extends SQLiteProcessor {
                         boolean result = sqlStmt.execute(0);
                         setBusyContext(null);
                         if (result) {
-                            proc.state.setState("fetch result set from database");
+                            proc.state.setStateText("fetch result set from database");
                             ResultSet rs = sqlStmt.getResultSet();
                             ResultSetMetaData meta = rs.getMetaData();
                             proc.sendRowDescription(meta);

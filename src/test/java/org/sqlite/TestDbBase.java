@@ -36,12 +36,7 @@ import org.sqlite.server.util.IoUtils;
  *
  */
 public abstract class TestDbBase extends TestBase {
-    static {
-        if (System.getProperty("SQLITED_HOME") == null) {
-            String defaultDir = System.getProperty("user.dir");
-            System.setProperty("SQLITED_HOME", defaultDir);
-        }
-    }
+    
     protected static final String dataDir = getDataDir();
     
     protected static String user = "root";
@@ -79,19 +74,19 @@ public abstract class TestDbBase extends TestBase {
     };
     
     protected static final String [][] bootArgsList = new String[][] {
-        {"-D", dataDir, //"--trace-error", //"-T",
+        {"-D", dataDir, //"--trace-error", "-T",
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal", "--max-allowed-packet", "0",
         },
-        {"-D", dataDir, //"--trace-error", //"-T", 
+        {"-D", dataDir, //"--trace-error", "-T", 
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "delete", "-S", "normal",
         },
-        {"-D", dataDir, //"--trace-error", //"-T",
+        {"-D", dataDir, //"--trace-error", "-T",
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "wal", "--max-allowed-packet", "0x1000000",
         },
-        {"-D", dataDir, //"--trace-error", //"-T", 
+        {"-D", dataDir, //"--trace-error", "-T", 
             "--worker-count", "4", "--max-conns", "50",
             "--journal-mode", "delete", "-S", "normal", "--max-allowed-packet", "0x10000",
         },
@@ -195,8 +190,7 @@ public abstract class TestDbBase extends TestBase {
         if (dataDir == null || dataDir.length() == 0) {
             dataDir = "sqlite3Test";
         }
-        String baseDir = System.getProperty("SQLITED_HOME");
-        baseDir = new File(baseDir).getAbsolutePath();
+        String baseDir = new File(SQLiteServer.SQLITED_HOME).getAbsolutePath();
         final String sep = File.separator;
         return String.format("%s%s%s%s%s", baseDir, sep, "temp", sep, dataDir);
     }
@@ -302,7 +296,8 @@ public abstract class TestDbBase extends TestBase {
             String url = urls[i];
             this.dataSource = new DataSource();
             int maxActive = this.server.getMaxConns() * getWorkerCount();
-            this.dataSource.setMaxActive(maxActive);
+            maxActive -= getWorkerCount();
+            this.dataSource.setMaxActive(Math.max(10, maxActive));
             this.dataSource.setMaxIdle(10);
             this.dataSource.setMinIdle(0);
             this.dataSource.setDriverClassName("org.postgresql.Driver");

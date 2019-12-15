@@ -60,23 +60,23 @@ if [ "$TEST_ARG" = "test" ] ; then
   if [ ! -d "$SQLITED_HOME/logs" ] ; then mkdir "$SQLITED_HOME/logs" ; fi
   if [ ! -d "$SQLITED_HOME/target" ] ; then mkdir "$SQLITED_HOME/target" ; fi
   
-  mvn -f "$SQLITED_HOME"/pom.xml package -Dmaven.test.skip=true
-  mvn -f "$SQLITED_HOME"/pom.xml dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory="$SQLITED_HOME"/lib
-  cp "$SQLITED_HOME"/target/*.jar "$SQLITED_HOME"/lib
-  "$SQLITED_HOME"/bin/initdb.sh -D "$SQLITED_HOME"/temp -p 123456 -d test
+  if [ "$CLEAN_ARG" = "clean" -o ! -f "$SQLITED_HOME"/target/classes/org/sqlite/server/SQLiteServer.class ] ; then
+    mvn -f "$SQLITED_HOME"/pom.xml compile test-compile
+    mvn -f "$SQLITED_HOME"/pom.xml dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/test-lib
+  fi
+  export CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
+  for jar in "$SQLITED_HOME"/test-lib/*.jar ; do
+    export CLASSPATH=$CLASSPATH:$jar
+  done
+  
+  "$SQLITED_HOME"/bin/sqlited.sh initdb -D "$SQLITED_HOME"/temp -p 123456 -d test
   if [ $? != 0 ] ; then
     echo "Test initdb failed!"
     exit 1
   fi
   echo "Test initdb ok"
   
-  mvn -f "$SQLITED_HOME"/pom.xml compile test-compile
-  mvn -f "$SQLITED_HOME"/pom.xml dependency:copy-dependencies -DoutputDirectory="$SQLITED_HOME"/test-lib
-  CLASSPATH="$SQLITED_HOME"/target/classes:"$SQLITED_HOME"/target/test-classes
-  for jar in "$SQLITED_HOME"/test-lib/*.jar ; do
-    CLASSPATH=$CLASSPATH:$jar
-  done
-  java -Xmx256m -classpath "$CLASSPATH" -DSQLITED_HOME="$SQLITED_HOME" org.sqlite.TestAll
+  java -Xmx256m -DSQLITED_HOME="$SQLITED_HOME" org.sqlite.TestAll
   if [ $? != 0 ] ; then
     echo "Test all test cases failed!"
     exit 1

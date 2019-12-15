@@ -28,18 +28,23 @@ import org.sqlite.sql.SQLStatement;
  */
 public class SQLiteProcessorState implements AutoCloseable {
     
+    public static final int INIT = 0x0000, AUTH = 0x0001, OPEN = 0x0002, 
+        QUERY  = 0x0004,  SLEEP  = 0x0008, SLEEP_IN_TX = 0x0010,
+        STOPPED= 0x0020,  CLOSED = 0x0040, READ = 0x0080, WRITE= 0x0100;
+    
     private final SpinLock lock = new SpinLock();
     
     protected final SQLiteProcessor processor;
     protected String command;
     protected long startTime;
-    protected String state = "";
+    protected int state = INIT;
+    protected String stateText = "";
     protected String sql;
     
     public SQLiteProcessorState(SQLiteProcessor processor) {
         this.processor = processor;
         this.startTime = System.currentTimeMillis();
-        this.state = "init";
+        this.stateText = "init";
     }
     
     public SQLiteProcessor getProcessor() {
@@ -99,14 +104,23 @@ public class SQLiteProcessorState implements AutoCloseable {
         }
     }
     
-    public String getState() {
-        return state;
-    }
-    
-    public void setState(String state) {
+    public int getState() {
         this.lock.lock();
         try {
-            this.state = state;
+            return this.state;
+        } finally {
+            this.lock.unlock();
+        }
+    }
+    
+    public String getStateText() {
+        return this.stateText;
+    }
+    
+    public void setStateText(String stateText) {
+        this.lock.lock();
+        try {
+            this.stateText = stateText;
         } finally {
             this.lock.unlock();
         }
@@ -130,12 +144,60 @@ public class SQLiteProcessorState implements AutoCloseable {
         return getInfo(false);
     }
     
+    public void lock() {
+        this.lock.lock();
+    }
+    
+    public void unlock() {
+        this.lock.unlock();
+    }
+    
+    public void startAuth() {
+        this.lock.lock();
+        try {
+            this.command = "Auth";
+            this.startTime = System.currentTimeMillis();
+            this.state = AUTH;
+            this.stateText = "start authentication";
+            this.sql = null;
+        } finally {
+            this.lock.unlock();
+        }
+    }
+    
     public void startOpen() {
         this.lock.lock();
         try {
             this.command = "Open";
             this.startTime = System.currentTimeMillis();
-            this.state = "open and init database";
+            this.state = OPEN;
+            this.stateText = "open and init database";
+            this.sql = null;
+        } finally {
+            this.lock.unlock();
+        }
+    }
+    
+    public void startRead() {
+        this.lock.lock();
+        try {
+            this.command = "Read";
+            this.startTime = System.currentTimeMillis();
+            this.state = READ;
+            this.stateText = "read data from network";
+            this.sql = null;
+        } finally {
+            this.lock.unlock();
+        }
+    }
+    
+    public void startWrite() {
+        this.lock.lock();
+        try {
+            this.command = "Write";
+            this.startTime = System.currentTimeMillis();
+            this.state = WRITE;
+            this.stateText = "flush data into network";
             this.sql = null;
         } finally {
             this.lock.unlock();
@@ -151,7 +213,8 @@ public class SQLiteProcessorState implements AutoCloseable {
         try {
             this.command = "Query";
             this.startTime = System.currentTimeMillis();
-            this.state = state;
+            this.state = QUERY;
+            this.stateText = state;
             this.sql = sqlStatement.toString();
         } finally {
             this.lock.unlock();
@@ -159,11 +222,24 @@ public class SQLiteProcessorState implements AutoCloseable {
     }
     
     public void startSleep() {
+        boolean inTx = false;
+        if (this.processor.isOpen()) {
+            if (this.processor.getConnection() != null) {
+                inTx = !this.processor.isAutoCommit();
+            }
+        }
+        
         this.lock.lock();
         try {
             this.command = "Sleep";
             this.startTime = System.currentTimeMillis();
-            this.state = "";
+            if (inTx) {
+                this.state = SLEEP_IN_TX;
+                this.stateText = "idle in transaction";
+            } else {
+                this.state = SLEEP;
+                this.stateText = "idle";
+            }
             this.sql = null;
         } finally {
             this.lock.unlock();
@@ -177,6 +253,7 @@ public class SQLiteProcessorState implements AutoCloseable {
             copy.command = this.command;
             copy.startTime = this.startTime;
             copy.state = this.state;
+            copy.stateText = this.stateText;
             copy.sql = this.sql;
         } finally {
             this.lock.unlock();
@@ -190,7 +267,8 @@ public class SQLiteProcessorState implements AutoCloseable {
         try {
             this.command = null;
             this.startTime = System.currentTimeMillis();
-            this.state = "stopped";
+            this.state = STOPPED;
+            this.stateText = "stopped";
             this.sql = null;
         } finally {
             this.lock.unlock();
@@ -207,7 +285,8 @@ public class SQLiteProcessorState implements AutoCloseable {
         try {
             this.command = null;
             this.startTime = System.currentTimeMillis();
-            this.state = "closed";
+            this.state = CLOSED;
+            this.stateText = "closed";
             this.sql = null;
         } finally {
             this.lock.unlock();

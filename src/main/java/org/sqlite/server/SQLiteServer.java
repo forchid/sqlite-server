@@ -68,18 +68,21 @@ import static org.sqlite.SQLiteConfig.Pragma;
  */
 public abstract class SQLiteServer implements AutoCloseable {
     
-    static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
+    public static final String SQLITED_HOME = initSQLitedHome();
     
     public static final String NAME = "SQLite server";
     public static final String VERSION = "0.3.29";
     public static final String USER_DEFAULT = "root";
     public static final String METADB_NAME  = "sqlite3.meta";
     public static final String HOST_DEFAULT = "localhost";
+    public static final int AUTH_TIMEOUT_DEFAULT = 15000;
     public static final int PORT_DEFAULT = 3272;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
-    public static final int CONNECT_TIMEOUT_DEFAULT = 30000;
+    public static final int OPEN_TIMEOUT_DEFAULT = 30000;
     public static final long MAX_ALLOWED_PACKET_DEFAULT = 16L << 20;
+    public static final int SLEEP_TIMEOUT_DEFAULT = 300000;
+    public static final int SLEEP_IN_TX_TIMEOUT_DEFAULT = 30000;
     // SQLite settings
     public static final int BUSY_TIMEOUT_DEFAULT = 50000;
     public static final JournalMode JOURNAL_MODE_DEFAULT = JournalMode.WAL;
@@ -89,6 +92,8 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String CMD_INITDB = "initdb";
     public static final String CMD_BOOT   = "boot";
     public static final String CMD_HELP   = "help";
+    
+    private static final Logger log = LoggerFactory.getLogger(SQLiteServer.class);
     
     protected SQLiteMetaDb metaDb;
     protected String command;
@@ -102,8 +107,11 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected int port = PORT_DEFAULT;
     protected int maxConns = MAX_CONNS_DEFAULT;
     private int maxPid;
-    protected int connectTimeout = CONNECT_TIMEOUT_DEFAULT;
+    protected int openTimeout = OPEN_TIMEOUT_DEFAULT;
     protected int busyTimeout = BUSY_TIMEOUT_DEFAULT;
+    protected int authTimeout = AUTH_TIMEOUT_DEFAULT;
+    protected int sleepTimeout = SLEEP_TIMEOUT_DEFAULT;
+    protected int sleepInTxTimeout = SLEEP_IN_TX_TIMEOUT_DEFAULT;
     protected JournalMode journalMode = JOURNAL_MODE_DEFAULT;
     protected SynchronousMode synchronous = SYNCHRONOUS_DEFAULT;
     private final ConcurrentMap<String, SQLContext> dbWriteLocks;
@@ -386,10 +394,12 @@ public abstract class SQLiteServer implements AutoCloseable {
         // Parse args
         for (int argc = args.length; i < argc; i++) {
             String a = args[i];
-            if ("--busy-timeout".equals(a)) {
+            if ("--auth-timeout".equals(a)) {
+                this.authTimeout = Integer.decode(args[++i]);
+            } else if ("--busy-timeout".equals(a)) {
                 int busyTimeout = Integer.decode(args[++i]);
                 if (busyTimeout < 0) {
-                    throw new IllegalArgumentException("--busy-timeout " + busyTimeout);
+                    throw new IllegalArgumentException(a+" " + busyTimeout);
                 }
                 this.busyTimeout = busyTimeout;
             } else if ("--trace".equals(a) || "-T".equals(a)) {
@@ -404,6 +414,8 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.host = args[++i];
             } else if ("--db".equals(a) || "-d".equals(a)) {
                 this.dbName = args[++i];
+            } else if ("--open-timeout".equals(a)) {
+                this.openTimeout = Integer.decode(args[++i]);
             } else if ("--port".equals(a) || "-P".equals(a)) {
                 this.port = Integer.decode(args[++i]);
             } else if ("--data-dir".equals(a) || "-D".equals(a)) {
@@ -413,6 +425,10 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.journalMode = JournalMode.valueOf(mode);
             } else if ("--max-conns".equals(a)) {
                 this.maxConns = Integer.decode(args[++i]);
+            } else if ("--sleep-timeout".equals(a)) {
+                this.sleepTimeout = Integer.decode(args[++i]);
+            } else if ("--sleep-in-tx-timeout".equals(a)) {
+                this.sleepInTxTimeout = Integer.decode(args[++i]);
             } else if ("--synchronous".equals(a) || "-S".equals(a)) {
                 String mode = StringUtils.toUpperEnglish(args[++i]);
                 this.synchronous = SynchronousMode.valueOf(mode);
@@ -423,7 +439,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.authMethod = toLowerEnglish(args[++i]);
             } else if ("--max-allowed-packet".equals(a)) {
                 this.maxAllowedPacket = Long.decode(args[++i]);
-            } if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
+            } else if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
                 help = true;
             }
         }
@@ -459,7 +475,7 @@ public abstract class SQLiteServer implements AutoCloseable {
         this.startNanos = System.nanoTime();
         clockTimestampFunc = new TimestampFunc(this, "clock_timestamp", 6);
         this.startTime = clockTimestampFunc.getTimestamp();
-        trace(log, "Starting...");
+        log.info("SQLITED_HOME '{}'", SQLITED_HOME);
         
         if (!isInited()) {
             throw new IllegalStateException(name + " hasn't been initialized");
@@ -491,7 +507,6 @@ public abstract class SQLiteServer implements AutoCloseable {
             this.startTimeFunc = new StringResultFunc(this.startTime);
             this.sysdateFunc = new TimestampFunc(this, "sysdate");
             
-            trace(log, "Start OK");
             failed = false;
         } catch (IOException e) {
             throw new NetworkException("Can't create server socket", e);
@@ -732,12 +747,16 @@ public abstract class SQLiteServer implements AutoCloseable {
         return this.traceError;
     }
     
+    public int getAuthTimeout() {
+        return this.authTimeout;
+    }
+    
     public int getBusyTimeout() {
         return this.busyTimeout;
     }
     
-    public int getConnectTimeout() {
-        return this.connectTimeout;
+    public int getOpenTimeout() {
+        return this.openTimeout;
     }
     
     public String getName() {
@@ -811,6 +830,14 @@ public abstract class SQLiteServer implements AutoCloseable {
             states.addAll(worker.getProcessorStates(processor));
         }
         return states;
+    }
+    
+    public int getSleepTimeout() {
+        return this.sleepTimeout;
+    }
+    
+    public int getSleepInTxTimeout() {
+        return this.sleepInTxTimeout;
     }
     
     public boolean inDataDir(String filename) {
@@ -1003,36 +1030,39 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected String getInitDbHelp() {
         return getName() + " " + getVersion() + " since 2019\n" +
                 "Usage: java "+getClass().getName()+" "+CMD_INITDB+" [OPTIONS]\n" +
-                "  --help|-h|-?                  Show this message\n" +
-                "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
-                "  --user|-U       <user>        Superuser's name, default "+USER_DEFAULT+"\n"+
-                "  --password|-p   <password>    Superuser's password, must be provided in non-trust auth\n"+
-                "  --db|-d         <dbName>      Initialized database, default as the user name\n"+
-                "  --host|-H       <host>        Superuser's login host, IP, or '%', default "+HOST_DEFAULT+"\n"+
-                "  --trace|-T                    Trace SQLite server execution\n" +
-                "  --trace-error                 Trace error information of SQLite server execution\n"+
-                "  --journal-mode  <mode>        SQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
-                "  --synchronous|-S<sync>        SQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
-                "  --protocol      <pg>          SQLite server protocol, default pg\n"+
-                "  --auth-method|-A<authMethod> Available auth methods("+getAuthMethods()+"), default "+getAuthDefault();
+                "  --auth-method|-A<authMethod>  \tAvailable auth methods("+getAuthMethods()+"), default "+getAuthDefault()+"\n"+
+                "  --data-dir|-D   <path>        \tSQLite server data dir, default sqlite3Data in user home\n"+
+                "  --db|-d         <dbName>      \tInitialized database, default as the user name\n"+
+                "  --help|-h|-?                  \tShow this message\n" +
+                "  --host|-H       <host>        \tSuperuser's login host, IP, or '%', default "+HOST_DEFAULT+"\n"+
+                "  --journal-mode  <mode>        \tSQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
+                "  --password|-p   <password>    \tSuperuser's password, must be provided in non-trust auth\n"+
+                "  --protocol      <pg>          \tSQLite server protocol, default pg\n"+
+                "  --synchronous|-S<sync>        \tSQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
+                "  --trace|-T                    \tTrace SQLite server execution\n" +
+                "  --trace-error                 \tTrace error information of SQLite server execution\n"+
+                "  --user|-U       <user>        \tSuperuser's name, default "+USER_DEFAULT;
     }
     
     protected String getBootHelp() {
         return getName() + " " + getVersion() + " since 2019\n" +
                 "Usage: java "+getClass().getName()+" "+CMD_BOOT+" [OPTIONS]\n"+
-                "  --help|-h|-?                  Show this message\n" +
-                "  --data-dir|-D   <path>        SQLite server data dir, default sqlite3Data in user home\n"+
-                "  --host|-H       <host>        SQLite server listen host or IP, default "+HOST_DEFAULT+"\n"+
-                "  --port|-P       <number>      SQLite server listen port, default "+PORT_DEFAULT+"\n"+
-                "  --max-conns     <number>      Max client connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
-                "  --worker-count  <number>      SQLite worker number, default CPU cores and max "+MAX_WORKER_COUNT+"\n"+
-                "  --trace|-T                    Trace SQLite server execution\n" +
-                "  --trace-error                 Trace error information of SQLite server execution\n"+
-                "  --busy-timeout  <millis>      SQL statement busy timeout, default "+BUSY_TIMEOUT_DEFAULT+"\n"+
-                "  --journal-mode  <mode>        SQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
-                "  --synchronous|-S<sync>        SQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
-                "  --protocol      <pg>          SQLite server protocol, default pg\n"+
-                "  --max-allowed-packet <number> Max allowed packet size, default " + MAX_ALLOWED_PACKET_DEFAULT;
+                "  --busy-timeout  <millis>      \tSQL statement busy timeout, default "+BUSY_TIMEOUT_DEFAULT+"ms\n"+
+                "  --data-dir|-D   <path>        \tSQLite server data dir, default sqlite3Data in user home\n"+
+                "  --help|-h|-?                  \tShow this message\n" +
+                "  --host|-H       <host>        \tSQLite server listen host or IP, default "+HOST_DEFAULT+"\n"+
+                "  --journal-mode  <mode>        \tSQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
+                "  --max-allowed-packet <number> \tMax allowed packet size, default " + MAX_ALLOWED_PACKET_DEFAULT+"B\n"+
+                "  --max-conns     <number>      \tMax client connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
+                "  --open-timeout  <millis>      \tOpen SQLite database timeout, default "+OPEN_TIMEOUT_DEFAULT+"ms\n"+
+                "  --port|-P       <number>      \tSQLite server listen port, default "+PORT_DEFAULT+"\n"+
+                "  --protocol      <pg>          \tSQLite server protocol, default pg\n"+
+                "  --trace|-T                    \tTrace SQLite server execution\n" +
+                "  --trace-error                 \tTrace error information of SQLite server execution\n"+
+                "  --sleep-timeout <millis>      \tProcess sleep timeout when idle, default "+SLEEP_TIMEOUT_DEFAULT+"ms\n"+
+                "  --sleep-in-tx-timeout <millis>\tProcess sleep timeout in transaction, default "+SLEEP_IN_TX_TIMEOUT_DEFAULT+"ms\n"+
+                "  --synchronous|-S<sync>        \tSQLite synchronous mode, default "+SYNCHRONOUS_DEFAULT+ "\n"+
+                "  --worker-count  <number>      \tSQLite worker number, default CPU cores and max "+MAX_WORKER_COUNT;
     }
     
     protected static void doHelp(int status, String message) {
@@ -1049,9 +1079,19 @@ public abstract class SQLiteServer implements AutoCloseable {
         return name + " " + version + " since 2019\n" +
                 "Usage: java "+serverClazz.getName()+" <COMMAND> [OPTIONS]\n"+
                 "COMMAND: \n"+
-                "  initdb  Initialize SQLite server database\n" +
-                "  boot    Bootstap SQLite server\n" +
-                "  help    Show this help message";
+                "  boot    \tBootstap SQLite server\n" +
+                "  initdb  \tInitialize SQLite server database\n" +
+                "  help    \tShow this help message";
+    }
+    
+    private static String initSQLitedHome() {
+        String sqlitedHome = System.getProperty("SQLITED_HOME");
+        if (sqlitedHome == null) {
+            sqlitedHome = System.getProperty("user.dir");
+            System.setProperty("SQLITED_HOME", sqlitedHome);
+        }
+        
+        return sqlitedHome;
     }
 
 }

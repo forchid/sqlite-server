@@ -36,6 +36,7 @@ goto end
 
 :okHome
 set "EXECUTABLE=%SQLITED_HOME%\bin\sqlited.bat"
+set CLASSPATH=
 call "%EXECUTABLE%" initdb %*
 
 :end

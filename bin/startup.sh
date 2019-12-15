@@ -24,5 +24,6 @@ export JAVA_OPTS=-Xmx256m
 BIN_DIR=`dirname "$PRG"`
 export SQLITED_HOME=`dirname "$BIN_DIR"`
 export SQLITED_HOME=`readlink -f "$SQLITED_HOME"`
+unset CLASSPATH
 
 exec "$SQLITED_HOME"/bin/sqlited.sh boot "$@"

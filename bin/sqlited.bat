@@ -33,7 +33,9 @@ echo This environment variable is needed to run this program
 goto end
 
 :okHome
-set CLASSPATH=.;%SQLITED_HOME%\lib\*;%SQLITED_HOME%\conf
+if "%CLASSPATH%" == "" (
+  set CLASSPATH=.;%SQLITED_HOME%\lib\*;%SQLITED_HOME%\conf
+)
 java %JAVA_OPTS% -DSQLITED_HOME="%SQLITED_HOME%" org.sqlite.server.SQLiteServer %*
 
 :end

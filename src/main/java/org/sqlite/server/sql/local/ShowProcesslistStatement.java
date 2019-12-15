@@ -94,7 +94,7 @@ public class ShowProcesslistStatement extends LocalStatement {
                 ps.setString(++i, state.getDb());
                 ps.setString(++i, state.getCommand());
                 ps.setInt(++i, state.getTime());
-                ps.setString(++i, state.getState());
+                ps.setString(++i, state.getStateText());
                 ps.setString(++i, state.getInfo(isFull()));
                 ps.addBatch();
             }
