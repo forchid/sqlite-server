@@ -141,7 +141,8 @@ public class TransactionTest extends TestDbBase {
                     boolean failed = true;
                     try {
                         // Case-1. "read only" transaction mode in BEGIN
-                        try (Connection conn = getConnection()) {
+                        try (Connection conn = getConnection(true)) {
+                            conn.setAutoCommit(true);
                             Statement stmt = conn.createStatement();
                             
                             stmt.executeUpdate("begin read only");
@@ -151,7 +152,8 @@ public class TransactionTest extends TestDbBase {
                         }
                         
                         // Case-2. "read only" transaction mode in "SET TRANSACTION"
-                        try (Connection conn = getConnection()) {
+                        try (Connection conn = getConnection(true)) {
+                            conn.setAutoCommit(true);
                             Statement stmt = conn.createStatement();
                             
                             stmt.executeUpdate("begin");
@@ -191,7 +193,8 @@ public class TransactionTest extends TestDbBase {
                         }
                         
                         // Case-2. "read only" transaction mode in "SET SESSION characteristics as TRANSACTION"
-                        try (Connection conn = getConnection()) {
+                        try (Connection conn = getConnection(true)) {
+                            conn.setAutoCommit(true);
                             Statement stmt = conn.createStatement();
                             conn.setReadOnly(true);
                             
