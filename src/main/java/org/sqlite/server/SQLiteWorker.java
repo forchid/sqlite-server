@@ -168,8 +168,7 @@ public class SQLiteWorker implements Runnable {
             long lastIdleCheck = 0L, idleCheckIntv = -1L;
             
             for (; !isStopped() || processors.size() > 0;) {
-                final long  curr = currentTimeMillis();
-                long timeout = minSelectTimeout(curr);
+                final long  curr = currentTimeMillis(), timeout;
                 int n;
                 
                 // Idle check
@@ -177,12 +176,10 @@ public class SQLiteWorker implements Runnable {
                     lastIdleCheck = curr;
                     processIdle(curr);
                     idleCheckIntv = idleCheckInterval();
-                    if (timeout < 0L) {
-                        timeout = idleCheckIntv;
-                    }
                 }
                 
                 // Do select
+                timeout = minSelectTimeout(curr, idleCheckIntv);
                 if (timeout < 0L) {
                     n = this.selector.select();
                 } else if (timeout == 0L) {
@@ -337,16 +334,14 @@ public class SQLiteWorker implements Runnable {
                         state.unlock();
                     }
                     
-                    if (timeout > 0L) {
-                        if (curr - start > timeout) {
-                            try {
-                                p.sendErrorResponse(message, "53400");
-                            } catch (IOException e) {
-                                // ignore
-                            } finally {
-                                IoUtils.close(p.getConnection());
-                                p.stop();
-                            }
+                    if (timeout > 0L && curr - start > timeout) {
+                        try {
+                            p.sendErrorResponse(message, "53400");
+                        } catch (IOException e) {
+                            // ignore
+                        } finally {
+                            IoUtils.close(p.getConnection());
+                            p.stop();
                         }
                     }
                     
@@ -462,7 +457,7 @@ public class SQLiteWorker implements Runnable {
         return (timeout == 0L? -1L: timeout);
     }
     
-    protected long minSelectTimeout(final long curr) {
+    protected long minSelectTimeout(final long curr, final long idleCheckIntv) {
         SlotAllocator<SQLiteProcessor> busyProcs = this.busyProcs;
         long timeout = -1L;
         
@@ -499,6 +494,10 @@ public class SQLiteWorker implements Runnable {
                 }
                 timeout = remTime;
             }
+        }
+        
+        if (timeout < 0L) {
+            timeout = idleCheckIntv;
         }
         
         return timeout;

@@ -335,6 +335,11 @@ public abstract class TestDbBase extends TestBase {
             
             super.close();
         }
+
+        public long getSleepInTxTimeout() {
+            return this.server.getSleepInTxTimeout();
+        }
+        
     }
     
     protected static class DbTestEnvIterator implements Iterator<TestEnv> {
