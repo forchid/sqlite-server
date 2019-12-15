@@ -212,6 +212,8 @@ public class TransactionTest extends TestDbBase {
                             connectionTest(conn, "select 1", "1");
                             doReadOnlyTxTest(stmt, false);
                             stmt.execute("rollback");
+                            
+                            conn.setReadOnly(false);
                         }
                         failed = false;
                     } catch (SQLException e) {
