@@ -52,7 +52,9 @@ public class ProcessIdleTest extends TestDbBase {
                 conn.rollback();
                 fail("Not closed after idle timeout");
             } catch (SQLException e) {
-                if (!e.getSQLState().startsWith("08")) {
+                String sqlState = e.getSQLState();
+                if (!sqlState.startsWith("53")/*On LINUX?*/ 
+                        && !sqlState.startsWith("08")/*On windows?*/) {
                     throw e;
                 }
             }
