@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.Test;
+import org.sqlite.server.ProcessIdleTest;
 import org.sqlite.server.SQLiteServerTest;
 import org.sqlite.server.jdbc.ConnectionTest;
 import org.sqlite.server.jdbc.PreparedStatementTest;
@@ -78,6 +79,7 @@ public class TestAll extends TestBase {
         add(new DateTimeUtilsTest()).
         add(new HibernateTest()).
         add(new PreparedStatementTest()).
+        add(new ProcessIdleTest()).
         add(new SpinLockTest()).
         add(new StatementTest()).
         add(new SQLReaderTest()).

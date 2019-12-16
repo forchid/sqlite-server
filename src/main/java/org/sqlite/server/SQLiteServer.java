@@ -82,7 +82,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final int OPEN_TIMEOUT_DEFAULT = 30000;
     public static final long MAX_ALLOWED_PACKET_DEFAULT = 16L << 20;
     public static final int SLEEP_TIMEOUT_DEFAULT = 300000;
-    public static final int SLEEP_IN_TX_TIMEOUT_DEFAULT = 30000;
+    public static final int SLEEP_IN_TX_TIMEOUT_DEFAULT = 60000;
     // SQLite settings
     public static final int BUSY_TIMEOUT_DEFAULT = 50000;
     public static final JournalMode JOURNAL_MODE_DEFAULT = JournalMode.WAL;
