@@ -30,6 +30,7 @@ import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.LocalStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
 import org.sqlite.server.sql.local.ShowProcesslistStatement;
+import org.sqlite.server.sql.local.ShowStatusStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
@@ -911,6 +912,13 @@ public class SQLParserTest extends TestBase {
         showProcesslistTest("SHOW full PROCESSLIST", 1, true);
         showProcesslistTest("SHOW FULL PROCESSLIST;", 1, true);
         
+        showStatusTest("show status;", 1);
+        showStatusTest("show status", 1);
+        showStatusTest("show status ", 1);
+        showStatusTest("show status; show status;", 2);
+        showStatusTest("show status;show status ", 2);
+        showStatusTest("show status; /*show*/show status ", 2);
+        
         showTablesTest("show tables; SHOW tables; show TABLES; SHOW TABLES", 4, null, null);
         showTablesTest("show tables; SHOW tables; show TABLES; SHOW TABLES", 4, null, null);
         showTablesTest("show tables; /**a**/SHOW tables; show TABLES/**a**/;/**a**/SHOW TABLES", 4, null, null);
@@ -1539,6 +1547,23 @@ public class SQLParserTest extends TestBase {
             ShowProcesslistStatement s = (ShowProcesslistStatement)stmt;
             assertTrue(stmt instanceof LocalStatement);
             assertTrue(full == s.isFull());
+            ++i;
+            parser.remove();
+        }
+        overTest(parser, i, stmts);
+    }
+    
+    private void showStatusTest(String sqls, int stmts) {
+        SQLParser parser = new SQLParser(sqls);
+        int i = 0;
+        for (SQLStatement stmt: parser) {
+            info("Test SHOW STATUS %s", stmt);
+            assertTrue("SHOW STATUS".equals(stmt.getCommand()));
+            assertTrue(stmt.isQuery());
+            assertTrue(!stmt.isEmpty());
+            assertTrue(!stmt.isTransaction());
+            assertTrue(!stmt.isComment());
+            assertTrue(stmt instanceof ShowStatusStatement);
             ++i;
             parser.remove();
         }
