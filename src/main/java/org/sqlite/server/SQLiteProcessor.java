@@ -37,6 +37,7 @@ import org.sqlite.server.func.SleepFunc;
 import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.UserFunc;
+import org.sqlite.server.sql.SQLMetric;
 import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.DropDatabaseStatement;
@@ -97,6 +98,8 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
     private String metaSchema = null;
     protected SQLiteLocalDb localDb;
     protected Stack<TransactionStatement> savepointStack;
+    
+    protected long sqlStartNanoTime;
     
     protected SQLiteProcessor(SQLiteServer server, SocketChannel channel, int id) 
             throws NetworkException {
@@ -381,6 +384,49 @@ public abstract class SQLiteProcessor extends SQLContext implements AutoCloseabl
         conn.getConnectionConfig().setAutoCommit(false);
         this.savepointStack.push(txSql);
         trace(log, "{}, '{}' readOnly {}", tx, this, this.readOnly);
+    }
+    
+    @Override
+    protected void preExecute(SQLStatement s) {
+        final SQLMetric metric = this.worker.sqlMetric;
+        
+        switch(s.getCommand()) {
+        case "SELECT":
+            metric.selectStmts++;
+            break;
+        case "UPDATE":
+            metric.updateStmts++;
+            break;
+        case "INSERT":
+            metric.insertStmts++;
+            break;
+        case "DELETE":
+            metric.deleteStmts++;
+            break;
+        default:
+            break;
+        }
+        metric.totalStmts++;
+        
+        long longTime = this.server.getLongQueryNanoTime();
+        if (longTime > 0L) {
+            this.sqlStartNanoTime = System.nanoTime();
+        } else {
+            this.sqlStartNanoTime = 0L;
+        }
+    }
+    
+    @Override
+    protected void postExecute(SQLStatement s) {
+        long longTime = this.server.getLongQueryNanoTime();
+        final SQLMetric metric = this.worker.getSQLMetric();
+        
+        if (longTime > 0L && this.sqlStartNanoTime > 0L) {
+            if (System.nanoTime() - this.sqlStartNanoTime > longTime) {
+                metric.slowStmts++;
+            }
+        }
+        this.sqlStartNanoTime = 0L;
     }
     
     @Override

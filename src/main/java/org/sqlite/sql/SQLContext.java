@@ -112,5 +112,9 @@ public abstract class SQLContext {
     public abstract String getDbName();
     
     public abstract File getDataDir();
+
+    protected abstract void preExecute(SQLStatement s);
+    
+    protected abstract void postExecute(SQLStatement s);
     
 }

@@ -28,6 +28,7 @@ import static java.lang.System.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.sqlite.server.sql.SQLMetric;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.server.util.IoUtils;
 import org.sqlite.server.util.SlotAllocator;
@@ -61,6 +62,8 @@ public class SQLiteWorker implements Runnable {
     protected final SpinLock procsLock = new SpinLock();
     private final SlotAllocator<SQLiteProcessor> processors;
     private final SlotAllocator<SQLiteProcessor> busyProcs;
+    
+    protected final SQLMetric sqlMetric = new SQLMetric();
     
     public SQLiteWorker(SQLiteServer server, int id) {
         this.server = server;
@@ -501,6 +504,10 @@ public class SQLiteWorker implements Runnable {
         }
         
         return timeout;
+    }
+    
+    public SQLMetric getSQLMetric() {
+        return this.sqlMetric;
     }
 
     SQLiteProcessor getProcessor(int pid) {

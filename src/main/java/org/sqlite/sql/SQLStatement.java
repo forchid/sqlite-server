@@ -220,19 +220,24 @@ public class SQLStatement implements AutoCloseable {
         }
         
         context.trace(log, "execute sql \"{}\"", this);
-        if (this.prepared) {
-            // Execute batch prepared statement in an implicit transaction for ACID
-            if (shouldBeginImplicitTx(autoCommit, writable)) {
-                execute("begin immediate");
-                Transaction tx = new Transaction(context, true);
-                context.setTransaction(tx);
-                context.trace(log, "tx: begin an implicit {}", tx);
+        context.preExecute(this);
+        try {
+            if (this.prepared) {
+                // Execute batch prepared statement in an implicit transaction for ACID
+                if (shouldBeginImplicitTx(autoCommit, writable)) {
+                    execute("begin immediate");
+                    Transaction tx = new Transaction(context, true);
+                    context.setTransaction(tx);
+                    context.trace(log, "tx: begin an implicit {}", tx);
+                }
+                PreparedStatement ps = getPreparedStatement();
+                resultSet = ps.execute();
+            } else {
+                String sql = getExecutableSQL();
+                resultSet = this.jdbcStatement.execute(sql);
             }
-            PreparedStatement ps = getPreparedStatement();
-            resultSet = ps.execute();
-        } else {
-            String sql = getExecutableSQL();
-            resultSet = this.jdbcStatement.execute(sql);
+        } finally {
+            context.postExecute(this);
         }
         
         final Transaction tx = context.getTransaction();
