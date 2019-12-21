@@ -35,6 +35,7 @@ import org.sqlite.server.sql.TruncateTableStatement;
 import org.sqlite.server.sql.local.KillStatement;
 import org.sqlite.server.sql.local.SetTransactionStatement;
 import org.sqlite.server.sql.local.ShowProcesslistStatement;
+import org.sqlite.server.sql.local.ShowStatusStatement;
 import org.sqlite.server.sql.meta.AlterUserStatement;
 import org.sqlite.server.sql.meta.CreateDatabaseStatement;
 import org.sqlite.server.sql.meta.CreateUserStatement;
@@ -967,6 +968,8 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             if (nextStringIf("processlist") != -1) {
                 return parseShowProcesslist(true);
             }
+        } else if (nextStringIf("status") != -1) {
+            return parseShowStatus();
         } else if (nextStringIf("tables") != -1) {
             return parseShowTables();
         } else if (nextStringIf("columns") != -1 || nextStringIf("fields") != -1) {
@@ -1199,6 +1202,14 @@ public class SQLParser implements Iterator<SQLStatement>, Iterable<SQLStatement>
             ShowProcesslistStatement stmt = new ShowProcesslistStatement(this.sql);
             stmt.setFull(full);
             return stmt;
+        }
+        
+        throw syntaxError();
+    }
+    
+    protected ShowStatusStatement parseShowStatus() {
+        if (nextEnd()) {
+            return new ShowStatusStatement(this.sql);
         }
         
         throw syntaxError();
