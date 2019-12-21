@@ -28,8 +28,10 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import org.sqlite.server.SQLiteProcessor;
+import org.sqlite.server.SQLiteServer;
+import org.sqlite.server.sql.SQLMetric;
 
-/** "SHOW STATUS" statement that shows server current status, includes memory, 
+/** "SHOW STATUS" statement that shows server current status, includes SQL, memory, 
  * thread, runtime and OS information.
  * 
  * @author little-pan
@@ -47,7 +49,8 @@ public class ShowStatusStatement extends LocalStatement {
     @Override
     protected String getSQL(String localSchema) throws SQLException {
         final String f = 
-                "select Mem_Committed, Mem_Max, Mem_Used, "
+                "select Select_Stmts, Update_Stmts, Insert_Stmts, Delete_Stmts, Total_Stmts, Slow_Stmts, "
+                + "Mem_Committed, Mem_Max, Mem_Used, "
                 + "OS_Arch, OS_Name, OS_Version, "
                 + "RT_Name, RT_Start_Time, RT_Uptime, RT_Vendor, RT_Version, "
                 + "Thread_Count, Thread_Daemon_Count, Thread_Peak_Count, Thread_Started_Count, "
@@ -64,9 +67,15 @@ public class ShowStatusStatement extends LocalStatement {
         String f, sql;
         // CREATE TABLE
         f = "create table if not exists '%s'.%s("
-                + "`Mem_Committed` bigint null,"
-                + "`Mem_Max` bigint not null,"
-                + "`Mem_Used` bigint not null,"
+                + "`Select_Stmts` bigint,"
+                + "`Update_Stmts` bigint,"
+                + "`Insert_Stmts` bigint,"
+                + "`Delete_Stmts` bigint,"
+                + "`Total_Stmts` bigint,"
+                + "`Slow_Stmts` bigint,"
+                + "`Mem_Committed` bigint,"
+                + "`Mem_Max` bigint,"
+                + "`Mem_Used` bigint,"
                 + "`OS_Arch` varchar(80),"
                 + "`OS_Name` varchar(64),"
                 + "`OS_Version` varchar(64),"
@@ -96,12 +105,15 @@ public class ShowStatusStatement extends LocalStatement {
         
         // Collect processor state
         SQLiteProcessor processor = super.getContext();
+        SQLiteServer server = processor.getServer();
         // INSERT new data for query
-        f = "insert into '%s'.%s(`Mem_Committed`, `Mem_Max`, `Mem_Used`, `OS_Arch`, `OS_Name`, `OS_Version`, "
+        f = "insert into '%s'.%s(`Select_Stmts`, `Update_Stmts`, `Insert_Stmts`, `Delete_Stmts`, "
+                + "`Total_Stmts`, `Slow_Stmts`,"
+                + "`Mem_Committed`, `Mem_Max`, `Mem_Used`, `OS_Arch`, `OS_Name`, `OS_Version`, "
                 + "`RT_Name`, `RT_Start_Time`, `RT_Uptime`, `RT_Vendor`, `RT_Version`, "
                 + "`Thread_Count`, `Thread_Daemon_Count`, `Thread_Peak_Count`, `Thread_Started_Count`, "
                 + "`Sys_Load_Average`)"
-                + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         sql = format(f, localSchema, TBL_NAME);
         try (PreparedStatement ps = processor.getConnection().prepareStatement(sql)) {
             MemoryMXBean memMxBean = ManagementFactory.getMemoryMXBean();
@@ -113,6 +125,15 @@ public class ShowStatusStatement extends LocalStatement {
             DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             int i = 0;
             long v = -1;
+            
+            // SQL metric
+            SQLMetric sqlMetric = server.getSQLMetric();
+            ps.setLong(++i, sqlMetric.selectStmts);
+            ps.setLong(++i, sqlMetric.updateStmts);
+            ps.setLong(++i, sqlMetric.insertStmts);
+            ps.setLong(++i, sqlMetric.deleteStmts);
+            ps.setLong(++i, sqlMetric.totalStmts);
+            ps.setLong(++i, sqlMetric.slowStmts);
             
             // Memory committed
             if (heapMemUsage.getCommitted() > 0) {

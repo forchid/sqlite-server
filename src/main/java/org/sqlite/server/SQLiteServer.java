@@ -50,6 +50,7 @@ import org.sqlite.server.func.StringResultFunc;
 import org.sqlite.server.func.TimestampFunc;
 import org.sqlite.server.func.VersionFunc;
 import org.sqlite.server.pg.PgServer;
+import org.sqlite.server.sql.SQLMetric;
 import org.sqlite.server.sql.meta.Catalog;
 import org.sqlite.server.sql.meta.User;
 import org.sqlite.server.util.IoUtils;
@@ -77,6 +78,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String HOST_DEFAULT = "localhost";
     public static final int AUTH_TIMEOUT_DEFAULT = 15000;
     public static final int PORT_DEFAULT = 3272;
+    public static final int LONG_QUERY_TIME_DEFAULT = 2000;
     public static final int MAX_CONNS_DEFAULT = 50;
     public static final int MAX_WORKER_COUNT  = 128;
     public static final int OPEN_TIMEOUT_DEFAULT = 30000;
@@ -112,6 +114,8 @@ public abstract class SQLiteServer implements AutoCloseable {
     protected int authTimeout = AUTH_TIMEOUT_DEFAULT;
     protected int sleepTimeout = SLEEP_TIMEOUT_DEFAULT;
     protected int sleepInTxTimeout = SLEEP_IN_TX_TIMEOUT_DEFAULT;
+    protected long longQueryNanoTime = LONG_QUERY_TIME_DEFAULT * 1000000L;
+    
     protected JournalMode journalMode = JOURNAL_MODE_DEFAULT;
     protected SynchronousMode synchronous = SYNCHRONOUS_DEFAULT;
     private final ConcurrentMap<String, SQLContext> dbWriteLocks;
@@ -439,6 +443,8 @@ public abstract class SQLiteServer implements AutoCloseable {
                 this.authMethod = toLowerEnglish(args[++i]);
             } else if ("--max-allowed-packet".equals(a)) {
                 this.maxAllowedPacket = Long.decode(args[++i]);
+            } else if("--long-query-time".equals(a)) {
+                this.longQueryNanoTime = Long.decode(args[++i]) * 1000000L;
             } else if ("--help".equals(a) || "-h".equals(a) || "-?".equals(a)) {
                 help = true;
             }
@@ -791,6 +797,10 @@ public abstract class SQLiteServer implements AutoCloseable {
         return new File(this.dataDir, dbName);
     }
     
+    public long getLongQueryNanoTime() {
+        return this.longQueryNanoTime;
+    }
+    
     protected SQLiteMetaDb getMetaDb() {
         return this.metaDb;
     }
@@ -838,6 +848,25 @@ public abstract class SQLiteServer implements AutoCloseable {
     
     public int getSleepInTxTimeout() {
         return this.sleepInTxTimeout;
+    }
+    
+    public SQLMetric getSQLMetric() {
+        final SQLiteWorker[] workers = this.workers;
+        final SQLMetric metric = new SQLMetric();
+        
+        for (final SQLiteWorker worker: workers) {
+            if (worker != null) {
+                SQLMetric m = worker.getSQLMetric();
+                metric.deleteStmts += m.deleteStmts;
+                metric.insertStmts += m.insertStmts;
+                metric.selectStmts += m.selectStmts;
+                metric.updateStmts += m.updateStmts;
+                metric.totalStmts  += m.totalStmts;
+                metric.slowStmts   += m.slowStmts;
+            }
+        }
+        
+        return metric;
     }
     
     public boolean inDataDir(String filename) {
@@ -1052,6 +1081,7 @@ public abstract class SQLiteServer implements AutoCloseable {
                 "  --help|-h|-?                  \tShow this message\n" +
                 "  --host|-H       <host>        \tSQLite server listen host or IP, default "+HOST_DEFAULT+"\n"+
                 "  --journal-mode  <mode>        \tSQLite journal mode, default "+JOURNAL_MODE_DEFAULT+"\n"+
+                "  --long-query-time <millis>    \tLong SQL query time, default "+LONG_QUERY_TIME_DEFAULT+"ms\n"+
                 "  --max-allowed-packet <number> \tMax allowed packet size, default " + MAX_ALLOWED_PACKET_DEFAULT+"B\n"+
                 "  --max-conns     <number>      \tMax client connections limit, default "+MAX_CONNS_DEFAULT+"\n"+
                 "  --open-timeout  <millis>      \tOpen SQLite database timeout, default "+OPEN_TIMEOUT_DEFAULT+"ms\n"+
