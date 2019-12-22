@@ -28,6 +28,7 @@ and transaction management.
 1. CREATE {DATABASE | SCHEMA} [IF NOT EXISTS] dbname [{LOCATION | DIRECTORY} 'data-dir']
 2. "DROP {DATABASE | SCHEMA} [IF EXISTS] dbname", requires superuser privilege
 3. SHOW [ALL] DATABASES
+4. SHOW STATUS
 ```
 
 ## Connection management
