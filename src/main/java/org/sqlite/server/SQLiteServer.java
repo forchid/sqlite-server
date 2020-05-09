@@ -72,7 +72,7 @@ public abstract class SQLiteServer implements AutoCloseable {
     public static final String SQLITED_HOME = initSQLitedHome();
     
     public static final String NAME = "SQLite server";
-    public static final String VERSION = "0.3.29";
+    public static final String VERSION = "0.3.30";
     public static final String USER_DEFAULT = "root";
     public static final String METADB_NAME  = "sqlite3.meta";
     public static final String HOST_DEFAULT = "localhost";
