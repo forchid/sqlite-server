@@ -212,10 +212,10 @@ public class PgProcessor extends SQLiteProcessor {
         SQLiteWorker worker = this.worker;
         SocketChannel ch = getChannel();
         
-        int rem = 0;
+        int rem;
         do {
             ByteBuffer inBuf = getReadBuffer(5);
-            int n = 0;
+            int n;
             
             if (this.inSize == -1) {
                 // 1. read header
@@ -236,7 +236,7 @@ public class PgProcessor extends SQLiteProcessor {
                 this.inSize = (inBuf.get(1) & 0xFF) << 24
                         | (inBuf.get(2) & 0xFF) << 16
                         | (inBuf.get(3) & 0xFF) << 8
-                        | (inBuf.get(4) & 0xFF) << 0;
+                        | (inBuf.get(4) & 0xFF);
                 this.inSize -= 4;
                 server.trace(log, ">> message: type '{}'(c) {}, len {}", (char)x, x, this.inSize);
                 
@@ -322,18 +322,23 @@ public class PgProcessor extends SQLiteProcessor {
                             break;
                         }
                         String value = readString();
-                        if ("user".equals(param)) {
-                            this.userName = value;
-                        } else if ("database".equals(param)) {
-                            this.databaseName = server.checkKeyAndGetDatabaseName(value);
-                        } else if ("client_encoding".equals(param)) {
-                            // UTF8
-                            this.clientEncoding = value;
-                        } else if ("DateStyle".equals(param)) {
-                            if (value.indexOf(',') < 0) {
-                                value += ", MDY";
-                            }
-                            this.dateStyle = value;
+                        switch (param) {
+                            case "user":
+                                this.userName = value;
+                                break;
+                            case "database":
+                                this.databaseName = server.checkKeyAndGetDatabaseName(value);
+                                break;
+                            case "client_encoding":
+                                // UTF8
+                                this.clientEncoding = value;
+                                break;
+                            case "DateStyle":
+                                if (value.indexOf(',') < 0) {
+                                    value += ", MDY";
+                                }
+                                this.dateStyle = value;
+                                break;
                         }
                         // extra_float_digits 2
                         // geqo on (Genetic Query Optimization)
@@ -351,7 +356,7 @@ public class PgProcessor extends SQLiteProcessor {
                         this.databaseName = this.userName;
                     }
                     this.databaseName = StringUtils.toLowerEnglish(this.databaseName);
-                    User user = null;
+                    User user;
                     try {
                         user = server.selectUser(getRemoteAddress(), this.userName, this.databaseName);
                     } catch (SQLException e) {
@@ -392,7 +397,7 @@ public class PgProcessor extends SQLiteProcessor {
                 try (SQLParser parser = newSQLParser(readString())) {
                     SQLStatement sqlStmt = parser.next();
                     // check for single SQL prepared statement
-                    for (; parser.hasNext(); ) {
+                    while (parser.hasNext()) {
                         SQLStatement next = parser.next();
                         if (sqlStmt.isEmpty()) {
                             IoUtils.close(sqlStmt);
@@ -535,7 +540,7 @@ public class PgProcessor extends SQLiteProcessor {
                         }
                     }
                 } else if (type == 'P') {
-                    Portal p = portals.get(name);
+                    Portal p = this.portals.get(name);
                     if (p == null) {
                         sendErrorResponse("Portal not found: " + name);
                     } else {
@@ -678,30 +683,26 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     protected void destroyPrepared(String name) {
-        Prepared p = prepared.remove(name);
+        Prepared p = this.prepared.remove(name);
         if (p != null) {
-            server.trace(log, "Destroy");
-            server.trace(log, "the named '{}' prepared and it's all portal", name);
+            this.server.trace(log, "Destroy");
+            this.server.trace(log, "the named '{}' prepared and it's all portal", name);
             IoUtils.close(p.sql);
             // Need to close all generated portals by this prepared
-            Iterator<Entry<String, Portal>> i;
-            for (i = portals.entrySet().iterator(); i.hasNext(); ) {
-                Portal po = i.next().getValue();
+            Iterator<Entry<String, Portal>> it = this.portals.entrySet().iterator();
+            while (it.hasNext()) {
+                Portal po = it.next().getValue();
                 if (po.prep == p) {
-                    i.remove();
+                    it.remove();
                 }
             }
         }
     }
     
     private static boolean formatAsText(int pgType) {
-        switch (pgType) {
         // TODO: add more types to send as binary once compatibility is
         // confirmed
-        case PgServer.PG_TYPE_BYTEA:
-            return false;
-        }
-        return true;
+        return (pgType != PgServer.PG_TYPE_BYTEA);
     }
     
     private static int getTypeSize(int pgType, int precision) {
@@ -716,13 +717,11 @@ public class PgProcessor extends SQLiteProcessor {
     }
     
     private void sendAuthenticationMessage() throws IOException {
-        switch (this.user.getAuthMethod()) {
-        case PgServer.AUTH_PASSWORD:
+        if (PgServer.AUTH_PASSWORD.equals(this.user.getAuthMethod())) {
             sendAuthenticationCleartextPassword();
-            break;
-        default: // md5
+        } else {
+            // md5
             sendAuthenticationMD5Password();
-            break;
         }
         this.authMethod.init(this.user.getUser(), this.user.getPassword());
         this.state.startAuth();
@@ -930,7 +929,7 @@ public class PgProcessor extends SQLiteProcessor {
         .put(1, (byte)(len >>> 24))
         .put(2, (byte)(len >>> 16))
         .put(3, (byte)(len >>> 8))
-        .put(4, (byte)(len >>> 0));
+        .put(4, (byte)(len));
         
         offerWriteBuffer(buffer);
         if (this.needFlush) {
@@ -1092,12 +1091,10 @@ public class PgProcessor extends SQLiteProcessor {
         }
         if (text) {
             // plain text
-            switch (pgType) {
-            case PgServer.PG_TYPE_BOOL:
+            if (pgType == PgServer.PG_TYPE_BOOL) {
                 writeInt(1);
-                dataOut.writeByte(rs.getInt(column) == 1 ? 't' : 'f');
-                break;
-            default:
+                this.dataOut.writeByte(rs.getInt(column) == 1 ? 't' : 'f');
+            } else {
                 String value = rs.getString(column);
                 byte[] data = value.getBytes(getEncoding());
                 writeInt(data.length);
@@ -1378,11 +1375,7 @@ public class PgProcessor extends SQLiteProcessor {
             this.p = p;
             this.async = async;
         }
-        
-        XQueryWriteTask(PgProcessor proc, Portal p) {
-            this(proc, p, false);
-        }
-            
+
         @Override
         protected void execute() throws IOException {
             PgProcessor proc = (PgProcessor)this.proc;
@@ -1394,7 +1387,7 @@ public class PgProcessor extends SQLiteProcessor {
                 }
                 // the meta-data is sent in the prior 'Describe'
                 proc.state.setStateText("fetch result set from database");
-                for (; this.rs.next(); ) {
+                while (this.rs.next()) {
                     proc.sendDataRow(this.rs, this.p.resultColumnFormat);
                     if (proc.canFlush()) {
                         this.async = true;
@@ -1403,7 +1396,7 @@ public class PgProcessor extends SQLiteProcessor {
                         return;
                     }
                 }
-                
+
                 // detach only after resultSet finished
                 int n = stmt.getUpdateCount();
                 proc.sendCommandComplete(stmt, n, true);
@@ -1418,6 +1411,7 @@ public class PgProcessor extends SQLiteProcessor {
                 if (resetTask) {
                     proc.writeTask = null;
                     IoUtils.close(this.rs);
+                    this.rs = null;
                 }
             }
             
@@ -1434,7 +1428,7 @@ public class PgProcessor extends SQLiteProcessor {
         ResultSet rs;
         // Complete blocked state
         private boolean completeBlocked;
-        private boolean resultSet;
+        private boolean hasResultSet;
         private int updateCount;
         
         QueryTask(PgProcessor proc, String query) {
@@ -1453,10 +1447,11 @@ public class PgProcessor extends SQLiteProcessor {
                 if (getBusyContext() == null) {
                     if (this.rs == null) {
                         // check empty query string
-                        for (; sqlStmt == null;) {
+                        while (sqlStmt == null) {
                             if (this.parser.hasNext()) {
                                 SQLStatement s = this.parser.next();
                                 if (s.isEmpty()) {
+                                    IoUtils.close(s);
                                     continue;
                                 }
                                 sqlStmt = s;
@@ -1472,7 +1467,7 @@ public class PgProcessor extends SQLiteProcessor {
                     } else {
                         // Continue write remaining resultSet
                         proc.state.setStateText("fetch result set from database");
-                        for (; this.rs.next(); ) {
+                        while (this.rs.next()) {
                             proc.sendDataRow(this.rs, null);
                             if (proc.canFlush()) {
                                 proc.enableWrite();
@@ -1493,7 +1488,7 @@ public class PgProcessor extends SQLiteProcessor {
                     if (this.completeBlocked) {
                         assert this.rs == null;
                         // retry to complete
-                        SQLStatement stmt = success(sqlStmt, this.updateCount, this.resultSet);
+                        SQLStatement stmt = success(sqlStmt, this.updateCount, this.hasResultSet);
                         if (this.completeBlocked) {
                             resetTask = false;
                             return;
@@ -1502,8 +1497,8 @@ public class PgProcessor extends SQLiteProcessor {
                         next = sqlStmt != null;
                     } // else execution blocked
                 }
-                
-                for (; next; ) {
+
+                while (next) {
                     boolean timeout = true;
                     try {
                         sqlStmt.setContext(proc);
@@ -1518,7 +1513,7 @@ public class PgProcessor extends SQLiteProcessor {
                             ResultSet rs = sqlStmt.getResultSet();
                             ResultSetMetaData meta = rs.getMetaData();
                             proc.sendRowDescription(meta);
-                            for (; rs.next(); ) {
+                            while (rs.next()) {
                                 proc.sendDataRow(rs, null);
                                 if (proc.canFlush()) {
                                     this.async = true;
@@ -1530,8 +1525,9 @@ public class PgProcessor extends SQLiteProcessor {
                                     return;
                                 }
                             }
+                            IoUtils.close(rs);
                             int count = sqlStmt.getUpdateCount();
-                            SQLStatement stmt = success(sqlStmt, count, result);
+                            SQLStatement stmt = success(sqlStmt, count, true);
                             if (this.completeBlocked) {
                                 resetTask = false;
                                 return;
@@ -1540,7 +1536,7 @@ public class PgProcessor extends SQLiteProcessor {
                             next = sqlStmt != null;
                         } else {
                             int count = sqlStmt.getUpdateCount();
-                            SQLStatement stmt = success(sqlStmt, count, result);
+                            SQLStatement stmt = success(sqlStmt, count, false);
                             if (this.completeBlocked) {
                                 resetTask = false;
                                 return;
@@ -1585,9 +1581,11 @@ public class PgProcessor extends SQLiteProcessor {
             } finally {
                 if (resetTask) {
                     proc.writeTask = null;
-                    IoUtils.close(sqlStmt);
-                    IoUtils.close(this.curStmt);
+                    IoUtils.close(this.rs);
                     this.rs = null;
+                    IoUtils.close(this.curStmt);
+                    this.curStmt = null;
+                    IoUtils.close(sqlStmt);
                     IoUtils.close(parser);
                 }
             }
@@ -1601,7 +1599,7 @@ public class PgProcessor extends SQLiteProcessor {
         }
         
         // Handle complete(true)
-        SQLStatement success(SQLStatement sqlStmt, int updateCount, boolean resultSet) 
+        SQLStatement success(SQLStatement sqlStmt, int updateCount, boolean hasResultSet)
                 throws SQLException, IOException {
             PgProcessor proc = (PgProcessor)this.proc;
             boolean timeout = true;
@@ -1617,7 +1615,7 @@ public class PgProcessor extends SQLiteProcessor {
                 if (handleBlocked(timeout, cause)) {
                     this.curStmt = sqlStmt;
                     this.updateCount = updateCount;
-                    this.resultSet = resultSet;
+                    this.hasResultSet = hasResultSet;
                     this.completeBlocked = true;
                     this.async = true;
                     return null;
@@ -1625,13 +1623,15 @@ public class PgProcessor extends SQLiteProcessor {
                 this.completeBlocked = false;
                 throw cause;
             }
-            
+
+            IoUtils.close(this.rs);
+            IoUtils.close(this.curStmt);
             IoUtils.close(sqlStmt);
             this.curStmt = null;
             this.rs = null;
             this.updateCount = 0;
-            this.resultSet = false;
-            proc.sendCommandComplete(sqlStmt, updateCount, resultSet);
+            this.hasResultSet = false;
+            proc.sendCommandComplete(sqlStmt, updateCount, hasResultSet);
             
             // try next
             if (this.parser.hasNext()) {
