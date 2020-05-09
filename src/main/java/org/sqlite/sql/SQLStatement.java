@@ -345,7 +345,7 @@ public class SQLStatement implements AutoCloseable {
 
     @Override
     public void close() {
-        IoUtils.close(jdbcStatement);
+        IoUtils.close(this.jdbcStatement);
         this.jdbcStatement = null;
         this.context = null;
         this.open = false;
