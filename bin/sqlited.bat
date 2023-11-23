@@ -20,13 +20,13 @@ rem Sqlited script for the SQLite Server
 rem ---------------------------------------------------------------------------
 setlocal
 
-rem Guess SQLITED_HOME if not defined
+rem set SQLITED_HOME
 set "CURRENT_DIR=%cd%"
-set "SQLITED_HOME=%CURRENT_DIR%"
-if exist "%SQLITED_HOME%\bin\sqlited.bat" goto okHome
+cd /d %~dp0
 cd ..
 set "SQLITED_HOME=%cd%"
-cd /d "%CURRENT_DIR%"
+cd /d %CURRENT_DIR%
+
 if exist "%SQLITED_HOME%\bin\sqlited.bat" goto okHome
 echo The SQLITED_HOME environment variable is not defined correctly
 echo This environment variable is needed to run this program
