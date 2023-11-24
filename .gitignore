@@ -9,3 +9,4 @@
 /*.zip
 /temp/
 /test-lib/
+**/*.class

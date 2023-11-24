@@ -15,7 +15,7 @@ chmod +x bin/*.sh
 ./bin/build.sh clean test jar
 ```
 
-## Build on Windows with source
+## Build on Windows with unzipped source
 ```shell
 cd sqlite-server-sqlited-x.y.z
 .\bin\build.bat clean test jar

@@ -36,8 +36,7 @@ public class CleartextPassword extends SQLiteAuthMethod {
         return ConvertUtils.hexBytes(this.storePassword);
     }
     
-    @Override
-    public boolean equals(Object o) {
+    public boolean authenticate(Object o) {
         if (this == o) {
             return true;
         }

@@ -84,8 +84,7 @@ public class MD5Password extends SQLiteAuthMethod {
         }
     }
     
-    @Override
-    public boolean equals(Object o) {
+    public boolean authenticate(Object o) {
         if (this == o) {
             return true;
         }
@@ -104,7 +103,7 @@ public class MD5Password extends SQLiteAuthMethod {
             String md5s = (String)o;
             try {
                 byte[] md5 = md5s.getBytes(ENCODING);
-                return (equals(md5));
+                return (Arrays.equals(encode(), md5));
             } catch (UnsupportedEncodingException e) {
                 return false;
             }

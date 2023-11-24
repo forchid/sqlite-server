@@ -58,7 +58,6 @@ public abstract class SQLiteAuthMethod {
     
     public abstract String getName();
     
-    @Override
-    public abstract boolean equals(Object o);
+    public abstract boolean authenticate(Object o);
     
 }
