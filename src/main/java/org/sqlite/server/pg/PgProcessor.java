@@ -206,7 +206,7 @@ public class PgProcessor extends SQLiteProcessor {
         }
     }
     
-    @Override
+
     protected void process() throws IOException {
         PgServer server = getServer();
         SQLiteWorker worker = this.worker;
@@ -382,7 +382,7 @@ public class PgProcessor extends SQLiteProcessor {
                 this.needFlush = true;
                 
                 String password = readString();
-                if (!this.authMethod.equals(password)) {
+                if (!this.authMethod.authenticate(password)) {
                     sendErrorAuth();
                     break;
                 }
@@ -606,6 +606,7 @@ public class PgProcessor extends SQLiteProcessor {
                 break;
             }
             default:
+            	// TODO: This should be an error condition, should fail and fix for unknown message from normal use
                 server.trace(log, "Unsupported message: type {}(c) {}", (char) x, x);
                 break;
             }

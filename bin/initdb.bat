@@ -22,9 +22,13 @@ setlocal
 
 set JAVA_OPTS=-Xmx64m
 
-rem Guess SQLITED_HOME if not defined
+rem set SQLITED_HOME
 set "CURRENT_DIR=%cd%"
-set "SQLITED_HOME=%CURRENT_DIR%"
+cd /d %~dp0
+cd ..
+set "SQLITED_HOME=%cd%"
+cd /d %CURRENT_DIR%
+
 if exist "%SQLITED_HOME%\bin\sqlited.bat" goto okHome
 cd ..
 set "SQLITED_HOME=%cd%"

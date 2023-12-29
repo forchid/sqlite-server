@@ -39,8 +39,7 @@ public class TrustAuthMethod extends SQLiteAuthMethod {
         return null;
     }
     
-    @Override
-    public boolean equals(Object o) {
+    public boolean authenticate(Object o) {
         return true;
     }
     
